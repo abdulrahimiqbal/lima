@@ -1,0 +1,153 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ManagerDecision",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "candidate_answer",
+        "alternatives",
+        "target_frontier_node",
+        "world_family",
+        "bounded_claim",
+        "formal_obligations",
+        "expected_information_gain",
+        "why_this_next",
+        "update_rules",
+        "self_improvement_note"
+    ],
+    "properties": {
+        "candidate_answer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "stance",
+                "summary",
+                "confidence"
+            ],
+            "properties": {
+                "stance": {
+                    "type": "string",
+                    "enum": [
+                        "likely_true",
+                        "likely_false",
+                        "undecided"
+                    ]
+                },
+                "summary": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                }
+            }
+        },
+        "alternatives": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "summary",
+                    "confidence"
+                ],
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                    }
+                }
+            }
+        },
+        "target_frontier_node": {
+            "type": "string",
+            "minLength": 1
+        },
+        "world_family": {
+            "type": "string",
+            "enum": [
+                "direct",
+                "bridge",
+                "reformulate",
+                "finite_check",
+                "counterexample",
+                "local_to_global",
+                "invariant_lift",
+                "structural_case_split"
+            ]
+        },
+        "bounded_claim": {
+            "type": "string",
+            "minLength": 1
+        },
+        "formal_obligations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+                "type": "string",
+                "minLength": 1
+            }
+        },
+        "expected_information_gain": {
+            "type": "string",
+            "minLength": 1
+        },
+        "why_this_next": {
+            "type": "string",
+            "minLength": 1
+        },
+        "update_rules": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "if_proved",
+                "if_refuted",
+                "if_blocked",
+                "if_inconclusive"
+            ],
+            "properties": {
+                "if_proved": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "if_refuted": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "if_blocked": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "if_inconclusive": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        },
+        "self_improvement_note": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "proposal",
+                "reason"
+            ],
+            "properties": {
+                "proposal": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

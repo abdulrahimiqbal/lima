@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111827;
+        --panel: #1f2937;
+        --muted: #9ca3af;
+        --text: #f9fafb;
+        --accent: #60a5fa;
+        --border: #374151;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      .grid-2 {
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+      }
+      h1, h2, h3 {
+        margin-top: 0;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        margin-right: 8px;
+      }
+      input, textarea, button, select {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #0f172a;
+        color: var(--text);
+        padding: 12px;
+        font: inherit;
+      }
+      textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+      button {
+        background: var(--accent);
+        border: none;
+        color: #0b1020;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .actions > * {
+        flex: 1 1 160px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #0b1220;
+        border-radius: 14px;
+        padding: 14px;
+        border: 1px solid var(--border);
+        overflow: auto;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      .node {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .status-open { border-left: 4px solid var(--accent); }
+      .status-active { border-left: 4px solid var(--accent); }
+      .status-blocked { border-left: 4px solid var(--warn); }
+      .status-proved { border-left: 4px solid var(--good); }
+      .status-refuted { border-left: 4px solid var(--bad); }
+      .campaign-list button {
+        text-align: left;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      .small { font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap grid">
+      <div class="panel">
+        <h1>{{ title }}</h1>
+        <p class="muted">Simple manager/core split for Lima Learning. The manager chooses one bounded move. The core executes it and stores the verdict.</p>
+        <div>
+          <span class="pill">manager: {{ manager_backend }}</span>
+          <span class="pill">executor: {{ executor_backend }}</span>
+          <span class="pill">/healthz ready</span>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>Create campaign</h2>
+          <label>Title</label>
+          <input id="title" placeholder="Twin prime exploration" />
+          <br /><br />
+          <label>Problem statement</label>
+          <textarea id="problem">State your conjecture or research question here.</textarea>
+          <br />
+          <label>Operator notes (one per line)</label>
+          <textarea id="notes">Prefer smaller formal jobs
+Avoid repeating the same world after a hard blocker</textarea>
+          <br />
+          <div class="actions">
+            <button onclick="createCampaign()">Create campaign</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Campaigns</h2>
+          <div id="campaigns" class="campaign-list"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>Selected campaign</h2>
+          <div id="campaign-detail" class="muted">Select a campaign.</div>
+          <div class="actions">
+            <button class="secondary" onclick="stepCampaign()">Step once</button>
+            <button class="secondary" onclick="pauseCampaign()">Pause</button>
+            <button class="secondary" onclick="resumeCampaign()">Resume</button>
+            <button class="secondary" onclick="refreshSelected()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Manager interface</h2>
+          <pre id="manager-interface">Loading...</pre>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>Frontier</h2>
+          <div id="frontier"></div>
+        </div>
+        <div class="panel">
+          <h2>Decision and result</h2>
+          <h3>Last manager decision</h3>
+          <pre id="decision">None yet.</pre>
+          <h3>Last execution result</h3>
+          <pre id="result">None yet.</pre>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>Memory</h2>
+          <pre id="memory">None yet.</pre>
+        </div>
+        <div class="panel">
+          <h2>Recent events</h2>
+          <pre id="events">None yet.</pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let selectedCampaignId = null;
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        return response.json();
+      }
+
+      function pretty(value) {
+        return JSON.stringify(value, null, 2);
+      }
+
+      async function loadInterfaces() {
+        const data = await api('/api/system/interfaces');
+        document.getElementById('manager-interface').textContent = pretty(data);
+      }
+
+      async function loadCampaigns() {
+        const campaigns = await api('/api/campaigns');
+        const container = document.getElementById('campaigns');
+        container.innerHTML = '';
+        campaigns.forEach((campaign) => {
+          const button = document.createElement('button');
+          button.innerHTML = `<strong>${campaign.title}</strong><br><span class="small">${campaign.id} · ${campaign.status} · tick ${campaign.tick_count}</span>`;
+          button.onclick = () => selectCampaign(campaign.id);
+          container.appendChild(button);
+          container.appendChild(document.createElement('br'));
+          container.appendChild(document.createElement('br'));
+        });
+      }
+
+      async function createCampaign() {
+        const title = document.getElementById('title').value.trim();
+        const problem = document.getElementById('problem').value.trim();
+        const notes = document.getElementById('notes').value
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        const campaign = await api('/api/campaigns', {
+          method: 'POST',
+          body: JSON.stringify({
+            title,
+            problem_statement: problem,
+            operator_notes: notes,
+            auto_run: true,
+          }),
+        });
+        selectedCampaignId = campaign.id;
+        await loadCampaigns();
+        await renderCampaign(campaign);
+      }
+
+      async function selectCampaign(campaignId) {
+        selectedCampaignId = campaignId;
+        await refreshSelected();
+      }
+
+      async function refreshSelected() {
+        if (!selectedCampaignId) return;
+        const campaign = await api(`/api/campaigns/${selectedCampaignId}`);
+        await renderCampaign(campaign);
+      }
+
+      async function renderCampaign(campaign) {
+        document.getElementById('campaign-detail').innerHTML = `
+          <strong>${campaign.title}</strong><br>
+          <span class="muted">${campaign.problem_statement}</span><br><br>
+          <span class="pill">${campaign.id}</span>
+          <span class="pill">status: ${campaign.status}</span>
+          <span class="pill">tick: ${campaign.tick_count}</span>
+        `;
+        document.getElementById('memory').textContent = pretty(campaign.memory);
+        document.getElementById('decision').textContent = pretty(campaign.last_manager_decision || { message: 'No decision yet' });
+        document.getElementById('result').textContent = pretty(campaign.last_execution_result || { message: 'No result yet' });
+
+        const frontier = document.getElementById('frontier');
+        frontier.innerHTML = '';
+        campaign.frontier.forEach((node) => {
+          const div = document.createElement('div');
+          div.className = `node status-${node.status}`;
+          div.innerHTML = `
+            <strong>${node.text}</strong><br>
+            <span class="small">${node.id} · ${node.kind} · ${node.status} · priority ${node.priority}</span>
+          `;
+          frontier.appendChild(div);
+        });
+
+        const events = await api(`/api/campaigns/${campaign.id}/events?limit=20`);
+        document.getElementById('events').textContent = pretty(events);
+      }
+
+      async function stepCampaign() {
+        if (!selectedCampaignId) return;
+        const campaign = await api(`/api/campaigns/${selectedCampaignId}/step`, { method: 'POST' });
+        await renderCampaign(campaign);
+        await loadCampaigns();
+      }
+
+      async function pauseCampaign() {
+        if (!selectedCampaignId) return;
+        const campaign = await api(`/api/campaigns/${selectedCampaignId}/control`, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'pause' }),
+        });
+        await renderCampaign(campaign);
+        await loadCampaigns();
+      }
+
+      async function resumeCampaign() {
+        if (!selectedCampaignId) return;
+        const campaign = await api(`/api/campaigns/${selectedCampaignId}/control`, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'resume' }),
+        });
+        await renderCampaign(campaign);
+        await loadCampaigns();
+      }
+
+      loadInterfaces();
+      loadCampaigns();
+      setInterval(() => {
+        if (selectedCampaignId) refreshSelected();
+        loadCampaigns();
+      }, 10000);
+    </script>
+  </body>
+</html>
