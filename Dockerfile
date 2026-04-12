@@ -6,14 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install system dependencies if needed (e.g. git for private pip installs)
+# Install system dependencies
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
-
-# Try to install aristotle-mcp, but don't fail if it's private
-RUN pip install "aristotle-mcp @ git+https://github.com/septract/lean-aristotle-mcp.git" || echo "Optional aristotlelib not installed"
 
 COPY . ./
 
