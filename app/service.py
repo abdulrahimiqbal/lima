@@ -420,6 +420,208 @@ class CampaignService:
             "database": "ok",
         }
 
+    def get_operator_brief(self, campaign_id: str) -> dict:
+        """Assemble a comprehensive operator brief for the UI."""
+        campaign = self.get_campaign(campaign_id)
+        system = self.system_status()
+        
+        # Ops section
+        executor_conn = system["executor"]["connectivity"]
+        ops = {
+            "manager_backend": campaign.manager_backend,
+            "manager_model": system["manager"].get("model"),
+            "executor_backend": campaign.executor_backend,
+            "executor_connectivity_status": executor_conn.get("status"),
+            "executor_connectivity_reason": executor_conn.get("reason"),
+            "database_status": system.get("database"),
+            "self_improvement_enabled": system["self_improvement"]["enabled"],
+            "campaign_status": campaign.status,
+            "tick_count": campaign.tick_count,
+        }
+        
+        # Campaign Now section
+        target_node_text = None
+        if campaign.last_manager_decision:
+            target_id = campaign.last_manager_decision.get("target_frontier_node")
+            if target_id:
+                for node in campaign.frontier:
+                    if node.id == target_id:
+                        target_node_text = node.text
+                        break
+        
+        candidate = campaign.current_candidate_answer
+        campaign_now = {
+            "title": campaign.title,
+            "problem_statement": campaign.problem_statement,
+            "candidate_stance": candidate.stance if candidate else None,
+            "candidate_summary": candidate.summary if candidate else None,
+            "candidate_confidence": candidate.confidence if candidate else None,
+            "target_frontier_node_id": campaign.last_manager_decision.get("target_frontier_node") if campaign.last_manager_decision else None,
+            "target_frontier_node_text": target_node_text,
+            "world_family": campaign.last_manager_decision.get("world_family") if campaign.last_manager_decision else None,
+            "bounded_claim": campaign.last_manager_decision.get("bounded_claim") if campaign.last_manager_decision else None,
+        }
+        
+        # Manager Understanding section
+        manager_understanding = {
+            "problem_summary": None,
+            "candidate_answer_seen": None,
+            "target_node_id_confirmed": None,
+            "target_node_text_confirmed": None,
+            "operator_notes_seen": [],
+            "relevant_memory_seen": {
+                "blocked_patterns": [],
+                "useful_lemmas": [],
+                "recent_failures": [],
+            },
+            "constraints_seen": [],
+            "open_uncertainties": [],
+            "why_not_other_frontier_nodes": None,
+        }
+        
+        if campaign.last_manager_decision:
+            receipt = campaign.last_manager_decision.get("manager_read_receipt")
+            if receipt:
+                manager_understanding = {
+                    "problem_summary": receipt.get("problem_summary"),
+                    "candidate_answer_seen": receipt.get("candidate_answer_seen"),
+                    "target_node_id_confirmed": receipt.get("target_node_id_confirmed"),
+                    "target_node_text_confirmed": receipt.get("target_node_text_confirmed"),
+                    "operator_notes_seen": receipt.get("operator_notes_seen", []),
+                    "relevant_memory_seen": receipt.get("relevant_memory_seen", {
+                        "blocked_patterns": [],
+                        "useful_lemmas": [],
+                        "recent_failures": [],
+                    }),
+                    "constraints_seen": receipt.get("constraints_seen", []),
+                    "open_uncertainties": receipt.get("open_uncertainties", []),
+                    "why_not_other_frontier_nodes": receipt.get("why_not_other_frontier_nodes"),
+                }
+        
+        # Verification section
+        verification = {
+            "channel_used": None,
+            "status": None,
+            "failure_type": None,
+            "executor_backend": None,
+            "timing_ms": None,
+            "notes": None,
+            "approved_jobs_count": None,
+            "rejected_jobs_count": None,
+            "approved_proof_jobs": [],
+            "approved_evidence_jobs": [],
+            "rejected_obligations": [],
+            "rejected_reasons": {},
+        }
+        
+        if campaign.last_execution_result:
+            result = campaign.last_execution_result
+            verification = {
+                "channel_used": result.get("channel_used"),
+                "status": result.get("status"),
+                "failure_type": result.get("failure_type"),
+                "executor_backend": result.get("executor_backend"),
+                "timing_ms": result.get("timing_ms"),
+                "notes": result.get("notes"),
+                "approved_jobs_count": result.get("approved_jobs_count"),
+                "rejected_jobs_count": result.get("rejected_jobs_count"),
+                "approved_proof_jobs": result.get("approved_proof_jobs", []),
+                "approved_evidence_jobs": result.get("approved_evidence_jobs", []),
+                "rejected_obligations": result.get("rejected_obligations", []),
+                "rejected_reasons": result.get("raw", {}).get("rejected_reasons", {}),
+            }
+        
+        # Discovery section
+        spawned_nodes = []
+        if campaign.last_execution_result:
+            spawned = campaign.last_execution_result.get("spawned_nodes", [])
+            spawned_nodes = [
+                {"id": n.get("id"), "text": n.get("text"), "kind": n.get("kind")}
+                for n in spawned
+            ]
+        
+        discovery = {
+            "spawned_nodes_count": len(spawned_nodes),
+            "spawned_nodes": spawned_nodes,
+            "useful_lemmas": campaign.memory.useful_lemmas,
+            "blocked_patterns": campaign.memory.blocked_patterns,
+            "recent_failures": campaign.memory.recent_failures,
+            "policy_notes": campaign.memory.policy_notes,
+            "evidence_streaks": campaign.memory.evidence_streaks,
+            "formalization_streaks": campaign.memory.formalization_streaks,
+            "timeout_streaks": campaign.memory.timeout_streaks,
+        }
+        
+        # Self-Improvement section
+        self_improvement = {
+            "local_proposal": None,
+            "local_reason": None,
+            "global_status": None,
+            "global_version": None,
+            "global_reason": None,
+            "global_patch": None,
+        }
+        
+        if campaign.last_manager_decision:
+            si_note = campaign.last_manager_decision.get("self_improvement_note")
+            if si_note:
+                self_improvement["local_proposal"] = si_note.get("proposal")
+                self_improvement["local_reason"] = si_note.get("reason")
+        
+        # Next section
+        next_action = {
+            "why_this_next": None,
+            "expected_information_gain": None,
+            "if_proved": None,
+            "if_refuted": None,
+            "if_blocked": None,
+            "if_inconclusive": None,
+            "recommended_operator_action": None,
+        }
+        
+        if campaign.last_manager_decision:
+            next_action["why_this_next"] = campaign.last_manager_decision.get("why_this_next")
+            next_action["expected_information_gain"] = campaign.last_manager_decision.get("expected_information_gain")
+            update_rules = campaign.last_manager_decision.get("update_rules", {})
+            next_action["if_proved"] = update_rules.get("if_proved")
+            next_action["if_refuted"] = update_rules.get("if_refuted")
+            next_action["if_blocked"] = update_rules.get("if_blocked")
+            next_action["if_inconclusive"] = update_rules.get("if_inconclusive")
+        
+        # Synthesize recommended operator action
+        if campaign.last_execution_result:
+            result = campaign.last_execution_result
+            failure_type = result.get("failure_type")
+            status = result.get("status")
+            channel = result.get("channel_used")
+            
+            if failure_type == "formalization_failed":
+                next_action["recommended_operator_action"] = "Rewrite the claim as a clean structured formal obligation and retry."
+            elif failure_type == "proof_failed":
+                next_action["recommended_operator_action"] = "Split the target into a smaller lemma or add missing assumptions."
+            elif failure_type == "timeout":
+                next_action["recommended_operator_action"] = "Shrink scope and retry a smaller proof job."
+            elif status == "inconclusive" and channel == "computational_evidence":
+                next_action["recommended_operator_action"] = "Treat this as discovery, not verification; convert patterns into a formal lemma."
+            elif status == "blocked":
+                next_action["recommended_operator_action"] = "Adjust scope or split obligations to pass submission gate."
+            elif status == "proved":
+                next_action["recommended_operator_action"] = "Continue to next frontier node."
+            elif status == "refuted":
+                next_action["recommended_operator_action"] = "Update candidate answer and explore alternative approaches."
+            else:
+                next_action["recommended_operator_action"] = "Review result and decide next step based on update rules."
+        
+        return {
+            "ops": ops,
+            "campaign_now": campaign_now,
+            "manager_understanding": manager_understanding,
+            "verification": verification,
+            "discovery": discovery,
+            "self_improvement": self_improvement,
+            "next": next_action,
+        }
+
     def smoke_aristotle(self, *, strict_live_probe: bool = False) -> dict:
         return self.executor.check_connectivity(strict_live_probe=strict_live_probe)
 

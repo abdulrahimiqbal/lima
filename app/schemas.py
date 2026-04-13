@@ -115,6 +115,18 @@ class SelfImprovementNote(BaseModel):
     reason: str
 
 
+class ManagerReadReceipt(BaseModel):
+    problem_summary: str
+    candidate_answer_seen: str | None = None
+    target_node_id_confirmed: str
+    target_node_text_confirmed: str
+    operator_notes_seen: list[str] = Field(default_factory=list)
+    relevant_memory_seen: dict[str, list[str]] = Field(default_factory=dict)
+    constraints_seen: list[str] = Field(default_factory=list)
+    open_uncertainties: list[str] = Field(default_factory=list)
+    why_not_other_frontier_nodes: str
+
+
 class FrontierNode(BaseModel):
     id: str = Field(default_factory=lambda: f"F-{uuid4().hex[:10]}")
     text: str
@@ -174,6 +186,7 @@ class ManagerDecision(BaseModel):
     why_this_next: str
     update_rules: UpdateRules
     self_improvement_note: SelfImprovementNote
+    manager_read_receipt: ManagerReadReceipt | None = None
     obligation_hints: dict[str, Any] = Field(default_factory=dict)
     manager_backend: str = "rules"
 

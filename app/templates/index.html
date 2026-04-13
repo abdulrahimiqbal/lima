@@ -120,6 +120,41 @@
         color: var(--text);
       }
       .small { font-size: 12px; }
+      .brief-section {
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .brief-section:last-child {
+        border-bottom: none;
+      }
+      .brief-label {
+        font-weight: 600;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .brief-value {
+        margin-bottom: 12px;
+      }
+      .brief-list {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+      .brief-list li {
+        margin-bottom: 4px;
+      }
+      .operator-brief-panel {
+        grid-column: 1 / -1;
+      }
+      .pills-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
     </style>
   </head>
   <body>
@@ -162,8 +197,6 @@ Avoid repeating the same world after a hard blocker</textarea>
         <div class="panel">
           <h2>Selected campaign</h2>
           <div id="campaign-detail" class="muted">Select a campaign.</div>
-          <h3>Current candidate answer</h3>
-          <pre id="candidate-answer">No candidate answer yet.</pre>
           <div class="actions">
             <button class="secondary" onclick="stepCampaign()">Step once</button>
             <button class="secondary" onclick="pauseCampaign()">Pause</button>
@@ -173,34 +206,17 @@ Avoid repeating the same world after a hard blocker</textarea>
         </div>
 
         <div class="panel">
-          <h2>Manager interface</h2>
-          <pre id="manager-interface">Loading...</pre>
-        </div>
-      </div>
-
-      <div class="grid grid-2">
-        <div class="panel">
           <h2>Frontier</h2>
           <div id="frontier"></div>
         </div>
-        <div class="panel">
-          <h2>Decision and result</h2>
-          <h3>Last manager decision</h3>
-          <pre id="decision">None yet.</pre>
-          <h3>Last execution result</h3>
-          <pre id="result">None yet.</pre>
-        </div>
       </div>
 
-      <div class="grid grid-2">
-        <div class="panel">
-          <h2>Memory</h2>
-          <pre id="memory">None yet.</pre>
+      <div class="panel operator-brief-panel" id="operator-brief-container" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="margin: 0;">System Operator Brief</h2>
+          <button class="secondary" onclick="refreshSelected()" style="width: auto; padding: 8px 16px;">Refresh</button>
         </div>
-        <div class="panel">
-          <h2>Recent events</h2>
-          <pre id="events">None yet.</pre>
-        </div>
+        <div id="operator-brief-content"></div>
       </div>
     </div>
 
@@ -346,8 +362,9 @@ Avoid repeating the same world after a hard blocker</textarea>
       }
 
       async function loadInterfaces() {
+        // Keep for debugging if needed, but don't display prominently
         const data = await api('/api/system/interfaces');
-        document.getElementById('manager-interface').textContent = pretty(data);
+        // Removed display
       }
 
       async function loadCampaigns() {
@@ -383,7 +400,7 @@ Avoid repeating the same world after a hard blocker</textarea>
         });
         selectedCampaignId = campaign.id;
         await loadCampaigns();
-        await renderCampaign(campaign);
+        await refreshSelected();
       }
 
       async function selectCampaign(campaignId) {
@@ -394,23 +411,18 @@ Avoid repeating the same world after a hard blocker</textarea>
       async function refreshSelected() {
         if (!selectedCampaignId) return;
         const campaign = await api(`/api/campaigns/${selectedCampaignId}`);
-        await renderCampaign(campaign);
+        const brief = await api(`/api/campaigns/${selectedCampaignId}/operator-brief`);
+        await renderCampaign(campaign, brief);
       }
 
-      async function renderCampaign(campaign) {
+      async function renderCampaign(campaign, brief) {
         document.getElementById('campaign-detail').innerHTML = `
           <strong>${campaign.title}</strong><br>
-          <span class="muted">${campaign.problem_statement}</span><br><br>
+          <span class="muted">${trimText(campaign.problem_statement, 200)}</span><br><br>
           <span class="pill">${campaign.id}</span>
           <span class="pill">status: ${campaign.status}</span>
           <span class="pill">tick: ${campaign.tick_count}</span>
         `;
-        document.getElementById('candidate-answer').textContent = pretty(
-          campaign.current_candidate_answer || { message: 'No candidate answer yet' }
-        );
-        document.getElementById('memory').textContent = pretty(campaign.memory);
-        document.getElementById('decision').textContent = pretty(campaign.last_manager_decision || { message: 'No decision yet' });
-        document.getElementById('result').textContent = pretty(campaign.last_execution_result || { message: 'No result yet' });
 
         const frontier = document.getElementById('frontier');
         frontier.innerHTML = '';
@@ -418,20 +430,295 @@ Avoid repeating the same world after a hard blocker</textarea>
           const div = document.createElement('div');
           div.className = `node status-${node.status}`;
           div.innerHTML = `
-            <strong>${node.text}</strong><br>
+            <strong>${trimText(node.text, 120)}</strong><br>
             <span class="small">${node.id} · ${node.kind} · ${node.status} · priority ${node.priority}</span>
           `;
           frontier.appendChild(div);
         });
 
-        const events = await api(`/api/campaigns/${campaign.id}/events?limit=20`);
-        document.getElementById('events').textContent = renderEvents(events, campaign.status);
+        // Render operator brief
+        renderOperatorBrief(brief);
+      }
+
+      function renderOperatorBrief(brief) {
+        const container = document.getElementById('operator-brief-container');
+        const content = document.getElementById('operator-brief-content');
+        container.style.display = 'block';
+
+        const ops = brief.ops;
+        const opsText = `Manager ${ops.manager_backend} ${ops.manager_model ? `(${ops.manager_model})` : ''} is online. Executor ${ops.executor_backend} is ${ops.executor_connectivity_status || 'unknown'}. Database ${ops.database_status || 'unknown'}. Self-improvement ${ops.self_improvement_enabled ? 'enabled' : 'disabled'}. Campaign ${ops.campaign_status} at tick ${ops.tick_count}.`;
+
+        const cn = brief.campaign_now;
+        const candidateText = cn.candidate_stance 
+          ? `${cn.candidate_stance} (confidence: ${cn.candidate_confidence?.toFixed(2) || 'N/A'}): ${cn.candidate_summary || 'No summary'}`
+          : 'No candidate answer yet';
+
+        const mu = brief.manager_understanding;
+        const verif = brief.verification;
+        const disc = brief.discovery;
+        const si = brief.self_improvement;
+        const next = brief.next;
+
+        let html = `
+          <div class="pills-row">
+            <span class="pill">${ops.manager_backend}</span>
+            <span class="pill">${ops.executor_backend}</span>
+            <span class="pill">db: ${ops.database_status}</span>
+            <span class="pill">SI: ${ops.self_improvement_enabled ? 'on' : 'off'}</span>
+            <span class="pill">${ops.campaign_status}</span>
+            <span class="pill">tick ${ops.tick_count}</span>
+          </div>
+
+          <div class="brief-section">
+            <h3>Ops</h3>
+            <p>${opsText}</p>
+          </div>
+
+          <div class="brief-section">
+            <h3>Campaign Now</h3>
+            <div class="brief-value">
+              <div class="brief-label">Title</div>
+              <div>${cn.title}</div>
+            </div>
+            <div class="brief-value">
+              <div class="brief-label">Problem</div>
+              <div>${trimText(cn.problem_statement, 300)}</div>
+            </div>
+            <div class="brief-value">
+              <div class="brief-label">Candidate Answer</div>
+              <div>${candidateText}</div>
+            </div>
+            ${cn.target_frontier_node_id ? `
+            <div class="brief-value">
+              <div class="brief-label">Current Target</div>
+              <div><strong>${cn.target_frontier_node_id}</strong>: ${trimText(cn.target_frontier_node_text || 'N/A', 200)}</div>
+            </div>
+            ` : ''}
+            ${cn.world_family ? `
+            <div class="brief-value">
+              <div class="brief-label">Strategy</div>
+              <div>${cn.world_family}</div>
+            </div>
+            ` : ''}
+            ${cn.bounded_claim ? `
+            <div class="brief-value">
+              <div class="brief-label">Bounded Claim</div>
+              <div>${trimText(cn.bounded_claim, 250)}</div>
+            </div>
+            ` : ''}
+          </div>
+
+          <div class="brief-section">
+            <h3>Manager Read & Understanding</h3>
+            ${mu.problem_summary ? `
+            <div class="brief-value">
+              <div class="brief-label">Problem Summary</div>
+              <div>${trimText(mu.problem_summary, 200)}</div>
+            </div>
+            ` : ''}
+            ${mu.candidate_answer_seen ? `
+            <div class="brief-value">
+              <div class="brief-label">Candidate Answer Seen</div>
+              <div>${trimText(mu.candidate_answer_seen, 150)}</div>
+            </div>
+            ` : ''}
+            ${mu.target_node_id_confirmed ? `
+            <div class="brief-value">
+              <div class="brief-label">Confirmed Target Node</div>
+              <div><strong>${mu.target_node_id_confirmed}</strong>: ${trimText(mu.target_node_text_confirmed || '', 150)}</div>
+            </div>
+            ` : ''}
+            ${mu.operator_notes_seen && mu.operator_notes_seen.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Operator Notes Seen</div>
+              <ul class="brief-list">
+                ${mu.operator_notes_seen.map(note => `<li>${trimText(note, 120)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${mu.relevant_memory_seen && Object.keys(mu.relevant_memory_seen).length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Relevant Memory Seen</div>
+              ${mu.relevant_memory_seen.blocked_patterns && mu.relevant_memory_seen.blocked_patterns.length > 0 ? `
+                <div><strong>Blocked patterns:</strong> ${mu.relevant_memory_seen.blocked_patterns.slice(0, 3).map(p => trimText(p, 80)).join('; ')}</div>
+              ` : ''}
+              ${mu.relevant_memory_seen.useful_lemmas && mu.relevant_memory_seen.useful_lemmas.length > 0 ? `
+                <div><strong>Useful lemmas:</strong> ${mu.relevant_memory_seen.useful_lemmas.slice(0, 3).map(l => trimText(l, 80)).join('; ')}</div>
+              ` : ''}
+              ${mu.relevant_memory_seen.recent_failures && mu.relevant_memory_seen.recent_failures.length > 0 ? `
+                <div><strong>Recent failures:</strong> ${mu.relevant_memory_seen.recent_failures.slice(0, 2).map(f => trimText(f, 80)).join('; ')}</div>
+              ` : ''}
+            </div>
+            ` : ''}
+            ${mu.constraints_seen && mu.constraints_seen.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Constraints Seen</div>
+              <ul class="brief-list">
+                ${mu.constraints_seen.slice(0, 5).map(c => `<li>${trimText(c, 100)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${mu.open_uncertainties && mu.open_uncertainties.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Open Uncertainties</div>
+              <ul class="brief-list">
+                ${mu.open_uncertainties.map(u => `<li>${trimText(u, 120)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${mu.why_not_other_frontier_nodes ? `
+            <div class="brief-value">
+              <div class="brief-label">Why This Node</div>
+              <div>${trimText(mu.why_not_other_frontier_nodes, 200)}</div>
+            </div>
+            ` : ''}
+            ${!mu.problem_summary && !mu.target_node_id_confirmed ? '<p class="muted">No manager understanding data yet.</p>' : ''}
+          </div>
+
+          <div class="brief-section">
+            <h3>Verification</h3>
+            ${verif.status ? `
+            <div class="brief-value">
+              <div class="brief-label">Status</div>
+              <div><strong>${verif.status}</strong>${verif.failure_type ? ` (${verif.failure_type})` : ''}</div>
+            </div>
+            <div class="brief-value">
+              <div class="brief-label">Channel</div>
+              <div>${verif.channel_used || 'none'} via ${verif.executor_backend || 'unknown'}</div>
+            </div>
+            ${verif.timing_ms ? `
+            <div class="brief-value">
+              <div class="brief-label">Timing</div>
+              <div>${formatDurationMs(verif.timing_ms)}</div>
+            </div>
+            ` : ''}
+            ${verif.notes ? `
+            <div class="brief-value">
+              <div class="brief-label">Notes</div>
+              <div>${trimText(verif.notes, 250)}</div>
+            </div>
+            ` : ''}
+            <div class="brief-value">
+              <div class="brief-label">Jobs</div>
+              <div>Approved: ${verif.approved_jobs_count || 0}, Rejected: ${verif.rejected_jobs_count || 0}</div>
+            </div>
+            ${verif.approved_proof_jobs && verif.approved_proof_jobs.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Approved Proof Jobs</div>
+              <ul class="brief-list">
+                ${verif.approved_proof_jobs.map(j => `<li>${trimText(j, 150)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${verif.rejected_obligations && verif.rejected_obligations.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Rejected Obligations</div>
+              <ul class="brief-list">
+                ${verif.rejected_obligations.slice(0, 3).map(o => {
+                  const reason = verif.rejected_reasons[o] || 'unknown reason';
+                  return `<li>${trimText(o, 100)} <span class="muted">(${reason})</span></li>`;
+                }).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ` : '<p class="muted">No verification result yet.</p>'}
+          </div>
+
+          <div class="brief-section">
+            <h3>Discovery</h3>
+            ${disc.spawned_nodes_count > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Spawned Nodes</div>
+              <div>${disc.spawned_nodes_count} new nodes</div>
+              ${disc.spawned_nodes.length > 0 ? `
+              <ul class="brief-list">
+                ${disc.spawned_nodes.slice(0, 5).map(n => `<li><strong>${n.id}</strong> (${n.kind}): ${trimText(n.text, 120)}</li>`).join('')}
+              </ul>
+              ` : ''}
+            </div>
+            ` : ''}
+            ${disc.useful_lemmas && disc.useful_lemmas.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Useful Lemmas</div>
+              <ul class="brief-list">
+                ${disc.useful_lemmas.slice(0, 3).map(l => `<li>${trimText(l, 120)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${disc.blocked_patterns && disc.blocked_patterns.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Blocked Patterns</div>
+              <ul class="brief-list">
+                ${disc.blocked_patterns.slice(0, 3).map(p => `<li>${trimText(p, 120)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${!disc.spawned_nodes_count && (!disc.useful_lemmas || disc.useful_lemmas.length === 0) && (!disc.blocked_patterns || disc.blocked_patterns.length === 0) ? '<p class="muted">No discovery data yet.</p>' : ''}
+          </div>
+
+          <div class="brief-section">
+            <h3>Self-Improvement</h3>
+            ${si.local_proposal && si.local_proposal !== 'None' ? `
+            <div class="brief-value">
+              <div class="brief-label">Local Proposal</div>
+              <div>${trimText(si.local_proposal, 200)}</div>
+            </div>
+            <div class="brief-value">
+              <div class="brief-label">Reason</div>
+              <div>${trimText(si.local_reason || '', 200)}</div>
+            </div>
+            ` : '<p class="muted">No local self-improvement proposal.</p>'}
+            ${si.global_status ? `
+            <div class="brief-value">
+              <div class="brief-label">Global Policy Update</div>
+              <div>Status: ${si.global_status}, Version: ${si.global_version || 'N/A'}</div>
+            </div>
+            ` : '<p class="muted">No global policy update surfaced.</p>'}
+          </div>
+
+          <div class="brief-section">
+            <h3>Next</h3>
+            ${next.recommended_operator_action ? `
+            <div class="brief-value">
+              <div class="brief-label">Recommended Action</div>
+              <div><strong>${next.recommended_operator_action}</strong></div>
+            </div>
+            ` : ''}
+            ${next.expected_information_gain ? `
+            <div class="brief-value">
+              <div class="brief-label">Expected Information Gain</div>
+              <div>${trimText(next.expected_information_gain, 200)}</div>
+            </div>
+            ` : ''}
+            ${next.why_this_next ? `
+            <div class="brief-value">
+              <div class="brief-label">Why This Next</div>
+              <div>${trimText(next.why_this_next, 200)}</div>
+            </div>
+            ` : ''}
+            ${next.if_proved || next.if_refuted || next.if_blocked || next.if_inconclusive ? `
+            <div class="brief-value">
+              <div class="brief-label">Update Rules</div>
+              <ul class="brief-list">
+                ${next.if_proved ? `<li><strong>If proved:</strong> ${trimText(next.if_proved, 100)}</li>` : ''}
+                ${next.if_refuted ? `<li><strong>If refuted:</strong> ${trimText(next.if_refuted, 100)}</li>` : ''}
+                ${next.if_blocked ? `<li><strong>If blocked:</strong> ${trimText(next.if_blocked, 100)}</li>` : ''}
+                ${next.if_inconclusive ? `<li><strong>If inconclusive:</strong> ${trimText(next.if_inconclusive, 100)}</li>` : ''}
+              </ul>
+            </div>
+            ` : ''}
+            ${!next.recommended_operator_action && !next.expected_information_gain ? '<p class="muted">No next action data yet.</p>' : ''}
+          </div>
+        `;
+
+        content.innerHTML = html;
       }
 
       async function stepCampaign() {
         if (!selectedCampaignId) return;
         const campaign = await api(`/api/campaigns/${selectedCampaignId}/step`, { method: 'POST' });
-        await renderCampaign(campaign);
+        const brief = await api(`/api/campaigns/${selectedCampaignId}/operator-brief`);
+        await renderCampaign(campaign, brief);
         await loadCampaigns();
       }
 
@@ -441,7 +728,8 @@ Avoid repeating the same world after a hard blocker</textarea>
           method: 'POST',
           body: JSON.stringify({ action: 'pause' }),
         });
-        await renderCampaign(campaign);
+        const brief = await api(`/api/campaigns/${selectedCampaignId}/operator-brief`);
+        await renderCampaign(campaign, brief);
         await loadCampaigns();
       }
 
@@ -451,7 +739,8 @@ Avoid repeating the same world after a hard blocker</textarea>
           method: 'POST',
           body: JSON.stringify({ action: 'resume' }),
         });
-        await renderCampaign(campaign);
+        const brief = await api(`/api/campaigns/${selectedCampaignId}/operator-brief`);
+        await renderCampaign(campaign, brief);
         await loadCampaigns();
       }
 

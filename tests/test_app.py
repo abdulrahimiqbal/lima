@@ -55,7 +55,7 @@ def test_campaign_lifecycle(tmp_path: Path) -> None:
 
     index_response = client.get("/")
     assert index_response.status_code == 200
-    assert "Current candidate answer" in index_response.text
+    assert "System Operator Brief" in index_response.text
 
 
 def test_operator_api_key_guards_write_routes(tmp_path: Path) -> None:

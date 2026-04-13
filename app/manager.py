@@ -19,6 +19,7 @@ from .schemas import (
     InterfaceDescription,
     ManagerContext,
     ManagerDecision,
+    ManagerReadReceipt,
     SelfImprovementNote,
     UpdateRules,
 )
@@ -117,6 +118,9 @@ class Manager:
 
         world_family = self._pick_world(context, target, policy)
         
+        # Build deterministic read receipt for rules mode
+        read_receipt = self._build_read_receipt_from_context(context, target)
+        
         # Simple deterministic fallback matching the updated schema
         return ManagerDecision(
             candidate_answer=CandidateAnswer(
@@ -141,6 +145,7 @@ class Manager:
                 proposal="None",
                 reason="Rule-based fallback used."
             ),
+            manager_read_receipt=read_receipt,
             manager_backend=manager_backend,
         )
 
@@ -167,6 +172,17 @@ class Manager:
                 "role": "user",
                 "content": (
                     "Return a JSON object matching the ManagerDecision schema.\n\n"
+                    "IMPORTANT: You MUST include a 'manager_read_receipt' field that proves you read and understood the context.\n"
+                    "The read receipt must include:\n"
+                    "- problem_summary: Brief summary of the problem statement\n"
+                    "- candidate_answer_seen: Current candidate answer if present\n"
+                    "- target_node_id_confirmed: The frontier node ID you selected\n"
+                    "- target_node_text_confirmed: The text of that node\n"
+                    "- operator_notes_seen: List of operator notes you considered\n"
+                    "- relevant_memory_seen: Dict with blocked_patterns, useful_lemmas, recent_failures\n"
+                    "- constraints_seen: Runtime constraints you're following\n"
+                    "- open_uncertainties: Any uncertainties you have\n"
+                    "- why_not_other_frontier_nodes: Why you chose this node over others\n\n"
                     f"Decision Schema:\n{json.dumps(get_decision_schema(), indent=2)}\n\n"
                     f"Runtime and channel guardrails:\n{guardrails}\n\n"
                     f"Context:\n{context.model_dump_json(indent=2)}"
@@ -238,6 +254,54 @@ class Manager:
         if not decision.formal_obligations:
             decision.formal_obligations = [f"Prove a local lemma for: {decision.bounded_claim[:100]}"]
         return decision
+
+    def _build_read_receipt_from_context(
+        self, context: ManagerContext, target: FrontierNode
+    ) -> ManagerReadReceipt:
+        """Build a read receipt from context and selected target for rules mode."""
+        problem = context.problem or {}
+        candidate_answer = problem.get("current_candidate_answer")
+        candidate_seen = None
+        if candidate_answer:
+            stance = candidate_answer.get("stance", "undecided")
+            summary = candidate_answer.get("summary", "")
+            candidate_seen = f"{stance}: {summary[:100]}"
+        
+        # Extract relevant memory
+        relevant_memory = {}
+        if context.memory.blocked_patterns:
+            relevant_memory["blocked_patterns"] = context.memory.blocked_patterns[:5]
+        if context.memory.useful_lemmas:
+            relevant_memory["useful_lemmas"] = context.memory.useful_lemmas[:5]
+        if context.memory.recent_failures:
+            relevant_memory["recent_failures"] = [
+                f"{f.get('pattern', 'unknown')}: {f.get('reason', '')[:60]}"
+                for f in context.memory.recent_failures[:3]
+            ]
+        
+        # Extract constraints
+        constraints = []
+        if context.operator_notes:
+            constraints.extend([f"Operator: {note[:80]}" for note in context.operator_notes[:3]])
+        constraints.append("Prefer bounded local work")
+        constraints.append("Avoid repeated blocked worlds")
+        constraints.append("Max 1 proof job per step")
+        
+        # Count other frontier nodes
+        other_nodes = [n for n in context.frontier if n.id != target.id and n.status == "open"]
+        why_not_others = f"Selected {target.id} over {len(other_nodes)} other open nodes based on priority and status."
+        
+        return ManagerReadReceipt(
+            problem_summary=problem.get("statement", "")[:200],
+            candidate_answer_seen=candidate_seen,
+            target_node_id_confirmed=target.id,
+            target_node_text_confirmed=target.text[:200],
+            operator_notes_seen=context.operator_notes[:5],
+            relevant_memory_seen=relevant_memory,
+            constraints_seen=constraints,
+            open_uncertainties=[],
+            why_not_other_frontier_nodes=why_not_others,
+        )
 
 
 def _extract_json(content: str) -> dict[str, Any]:

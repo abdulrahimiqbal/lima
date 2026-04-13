@@ -13,7 +13,8 @@
         "expected_information_gain",
         "why_this_next",
         "update_rules",
-        "self_improvement_note"
+        "self_improvement_note",
+        "manager_read_receipt"
     ],
     "properties": {
         "candidate_answer": {
@@ -172,6 +173,64 @@
                 },
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "manager_read_receipt": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "problem_summary",
+                "target_node_id_confirmed",
+                "target_node_text_confirmed",
+                "why_not_other_frontier_nodes"
+            ],
+            "properties": {
+                "problem_summary": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "candidate_answer_seen": {
+                    "type": ["string", "null"]
+                },
+                "target_node_id_confirmed": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "target_node_text_confirmed": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "operator_notes_seen": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relevant_memory_seen": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "constraints_seen": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "open_uncertainties": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "why_not_other_frontier_nodes": {
+                    "type": "string",
+                    "minLength": 1
                 }
             }
         },
