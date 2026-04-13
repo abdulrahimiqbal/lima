@@ -229,6 +229,122 @@ Avoid repeating the same world after a hard blocker</textarea>
         return JSON.stringify(value, null, 2);
       }
 
+      function trimText(value, max = 140) {
+        if (!value || typeof value !== 'string') return '';
+        const cleaned = value.replace(/\s+/g, ' ').trim();
+        if (cleaned.length <= max) return cleaned;
+        return `${cleaned.slice(0, Math.max(0, max - 1))}…`;
+      }
+
+      function formatDurationMs(ms) {
+        if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return null;
+        const totalSeconds = Math.round(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (minutes <= 0) return `${seconds}s`;
+        return `${minutes}m${String(seconds).padStart(2, '0')}s`;
+      }
+
+      function formatElapsedSince(isoTimestamp) {
+        if (!isoTimestamp) return null;
+        const thenMs = Date.parse(isoTimestamp);
+        if (!Number.isFinite(thenMs)) return null;
+        const deltaMs = Date.now() - thenMs;
+        if (deltaMs < 0) return 'just now';
+        return formatDurationMs(deltaMs);
+      }
+
+      function formatRelativeAge(isoTimestamp) {
+        const elapsed = formatElapsedSince(isoTimestamp);
+        if (!elapsed) return 'unknown time';
+        if (elapsed === 'just now') return elapsed;
+        return `${elapsed} ago`;
+      }
+
+      function summarizeEvent(event, campaignStatus, hasResultForTick) {
+        const payload = event.payload || {};
+        const tickLabel = `tick ${event.tick}`;
+        const age = formatRelativeAge(event.created_at);
+
+        if (event.kind === 'campaign_created') {
+          const title = trimText(payload.title, 80);
+          return `[${tickLabel} · ${age}] Campaign created: ${title || 'untitled'} • Ready to start bounded proof attempts.`;
+        }
+
+        if (event.kind === 'operator_notes_updated') {
+          const count = Array.isArray(payload.operator_notes) ? payload.operator_notes.length : 0;
+          return `[${tickLabel} · ${age}] Updated operator notes (${count}) • Guidance changed for upcoming decisions.`;
+        }
+
+        if (event.kind === 'campaign_paused') {
+          return `[${tickLabel} · ${age}] Campaign paused • Auto-steps stopped until resumed.`;
+        }
+
+        if (event.kind === 'campaign_resumed') {
+          return `[${tickLabel} · ${age}] Campaign resumed • Auto-steps are running again.`;
+        }
+
+        if (event.kind === 'obligation_analysis') {
+          const proofJobs = Array.isArray(payload.approved_proof_jobs) ? payload.approved_proof_jobs.length : 0;
+          const evidenceJobs = Array.isArray(payload.approved_evidence_jobs) ? payload.approved_evidence_jobs.length : 0;
+          const rejected = Array.isArray(payload.rejected_obligations) ? payload.rejected_obligations.length : 0;
+          const channel = payload.channel_used || 'none';
+          const planLine = `Plan ready: ${proofJobs} proof, ${evidenceJobs} evidence, ${rejected} rejected (channel: ${channel}).`;
+          if (!hasResultForTick && campaignStatus === 'running') {
+            const elapsed = formatElapsedSince(event.created_at);
+            const waitHint = elapsed ? `Running Aristotle job (${elapsed} elapsed)` : 'Running Aristotle job';
+            return `[${tickLabel} · ${age}] ${planLine} • ${waitHint}; typical Aristotle window is 3-6m.`;
+          }
+          return `[${tickLabel} · ${age}] ${planLine}`;
+        }
+
+        if (event.kind === 'manager_decision') {
+          const world = payload.world_family || 'unknown world';
+          const target = payload.target_frontier_node || 'unknown frontier';
+          const obligationCount = payload.obligation_count ?? (
+            Array.isArray(payload.obligations) ? payload.obligations.length : 0
+          );
+          const claim = trimText(payload.bounded_claim, 110);
+          const why = trimText(payload.why_this_next, 100);
+          const claimPart = claim ? `Claim: ${claim}. ` : '';
+          const whyPart = why ? `Next: ${why}` : 'Next: execute selected obligations.';
+          return `[${tickLabel} · ${age}] Decision picked ${world} on ${target} with ${obligationCount} obligation(s). ${claimPart}${whyPart}`;
+        }
+
+        if (event.kind === 'execution_result') {
+          const status = payload.status || 'unknown';
+          const backend = payload.executor_backend || 'unknown backend';
+          const channel = payload.channel_used || 'none';
+          const timing = formatDurationMs(payload.timing_ms);
+          const notes = trimText(payload.notes, 120);
+          const approved = payload.approved_jobs_count ?? 0;
+          const rejected = payload.rejected_jobs_count ?? 0;
+          const spawned = payload.spawned_nodes_count ?? 0;
+          const timingPart = timing ? ` in ${timing}` : '';
+          const scaleHint = channel === 'aristotle_proof' && payload.timing_ms >= 90000
+            ? ' Aristotle jobs can take a few minutes for hard obligations.'
+            : '';
+          const notePart = notes ? ` ${notes}` : '';
+          return `[${tickLabel} · ${age}] Result: ${status}${timingPart} via ${backend}/${channel}. Jobs: ${approved} approved, ${rejected} rejected, ${spawned} spawned.${notePart}${scaleHint}`;
+        }
+
+        return `[${tickLabel} · ${age}] ${event.kind} • ${trimText(pretty(payload), 160)}`;
+      }
+
+      function renderEvents(events, campaignStatus) {
+        if (!Array.isArray(events) || events.length === 0) {
+          return 'No events yet.';
+        }
+        const ticksWithResults = new Set(
+          events
+            .filter((event) => event.kind === 'execution_result')
+            .map((event) => event.tick)
+        );
+        return events
+          .map((event) => summarizeEvent(event, campaignStatus, ticksWithResults.has(event.tick)))
+          .join('\n\n');
+      }
+
       async function loadInterfaces() {
         const data = await api('/api/system/interfaces');
         document.getElementById('manager-interface').textContent = pretty(data);
@@ -309,7 +425,7 @@ Avoid repeating the same world after a hard blocker</textarea>
         });
 
         const events = await api(`/api/campaigns/${campaign.id}/events?limit=20`);
-        document.getElementById('events').textContent = pretty(events);
+        document.getElementById('events').textContent = renderEvents(events, campaign.status);
       }
 
       async function stepCampaign() {
