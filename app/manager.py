@@ -121,11 +121,36 @@ class Manager:
         # Build deterministic read receipt for rules mode
         read_receipt = self._build_read_receipt_from_context(context, target)
         
-        # Synthesize a default world program for rules mode
-        default_world = self._synthesize_default_world(target, world_family, context)
+        # Try to reuse existing world program for continuity
+        existing_world = self._load_existing_world_from_context(context)
+        existing_debt = self._load_existing_open_debt_from_context(context)
         
-        # Synthesize default proof debt
-        default_debt = self._synthesize_default_debt(default_world, target)
+        if existing_world and existing_debt:
+            # Reuse existing world and debt for continuity
+            primary_world = existing_world
+            proof_debt = existing_debt
+            
+            # Choose critical_next_debt_id from highest-priority open critical debt
+            critical_open = [d for d in proof_debt if d.critical and d.status == "open"]
+            if critical_open:
+                next_debt = max(critical_open, key=lambda d: d.priority)
+                critical_next_debt_id = next_debt.id
+                bounded_claim = next_debt.statement
+            else:
+                open_debt = [d for d in proof_debt if d.status == "open"]
+                if open_debt:
+                    next_debt = max(open_debt, key=lambda d: d.priority)
+                    critical_next_debt_id = next_debt.id
+                    bounded_claim = next_debt.statement
+                else:
+                    critical_next_debt_id = None
+                    bounded_claim = f"Continue work on: {target.text[:80]}"
+        else:
+            # Synthesize a default world program for rules mode
+            primary_world = self._synthesize_default_world(target, world_family, context)
+            proof_debt = self._synthesize_default_debt(primary_world, target)
+            critical_next_debt_id = proof_debt[0].id if proof_debt else None
+            bounded_claim = f"Local reduction check for node {target.id}: isolate one lemma that shrinks proof debt."
         
         # Simple deterministic fallback matching the updated schema
         return ManagerDecision(
@@ -137,7 +162,7 @@ class Manager:
             alternatives=[],
             target_frontier_node=target.id,
             world_family=world_family,
-            bounded_claim=f"Local reduction check for node {target.id}: isolate one lemma that shrinks proof debt.",
+            bounded_claim=bounded_claim,
             formal_obligations=[f"Prove one local lemma that reduces `{target.text[:80]}` to a narrower sub-claim."],
             expected_information_gain="Fast signal from one bounded lemma with low verification cost.",
             why_this_next=f"Deterministic low-cost selection of {world_family} for node {target.id}.",
@@ -154,10 +179,38 @@ class Manager:
             manager_read_receipt=read_receipt,
             manager_backend=manager_backend,
             global_thesis=f"Seek local reduction for {target.text[:60]}",
-            primary_world=default_world,
-            proof_debt=default_debt,
-            critical_next_debt_id=default_debt[0].id if default_debt else None,
+            primary_world=primary_world,
+            proof_debt=proof_debt,
+            critical_next_debt_id=critical_next_debt_id,
         )
+    
+    def _load_existing_world_from_context(self, context: ManagerContext) -> "WorldProgram | None":
+        """Load existing world program from context for continuity."""
+        world_dict = context.problem.get("current_world_program")
+        if not world_dict:
+            return None
+        
+        try:
+            from .schemas import WorldProgram
+            return WorldProgram.model_validate(world_dict)
+        except Exception:
+            return None
+    
+    def _load_existing_open_debt_from_context(self, context: ManagerContext) -> "list[ProofDebtItem]":
+        """Load existing open debt items from context for continuity."""
+        ledger = context.problem.get("proof_debt_ledger", [])
+        if not ledger:
+            return []
+        
+        try:
+            from .schemas import ProofDebtItem
+            debt_items = []
+            for debt_dict in ledger:
+                if debt_dict.get("status") in {"open", "active"}:
+                    debt_items.append(ProofDebtItem.model_validate(debt_dict))
+            return debt_items
+        except Exception:
+            return []
     
     def _synthesize_default_world(
         self, target: FrontierNode, world_family: str, context: ManagerContext
@@ -253,6 +306,9 @@ class Manager:
                     "4. Compile the world into explicit proof_debt items\n"
                     "5. Choose the critical_next_debt_id from that debt\n"
                     "6. Derive bounded_claim and formal_obligations from that debt item\n\n"
+                    "WORLD CONTINUITY:\n"
+                    "If current_world_program is present and not structurally broken, continue it rather than inventing a fresh world.\n"
+                    "Reuse the existing world ID, update proof debt based on progress, and choose the next critical debt item.\n\n"
                     "World modes:\n"
                     "- macro: new ontology/invariant/local-to-global view\n"
                     "- micro: small theorem perturbation near the target\n\n"
@@ -271,7 +327,7 @@ class Manager:
 
         try:
             decision = self._call_llm_and_parse(messages)
-            return self._normalize_decision(decision, policy)
+            return self._normalize_decision(decision, policy, context)
         except (ValidationError, json.JSONDecodeError) as e:
             logger.warning(f"Initial LLM response failed validation: {e}. Attempting repair pass.")
             repair_messages = messages + [
@@ -280,7 +336,7 @@ class Manager:
             ]
             try:
                 decision = self._call_llm_and_parse(repair_messages)
-                return self._normalize_decision(decision, policy)
+                return self._normalize_decision(decision, policy, context)
             except Exception as fatal_e:
                 logger.error(f"Repair pass failed: {fatal_e}")
                 raise
@@ -326,40 +382,71 @@ class Manager:
         )
 
     @staticmethod
-    def _normalize_decision(decision: ManagerDecision, policy: dict[str, Any]) -> ManagerDecision:
+    def _normalize_decision(decision: ManagerDecision, policy: dict[str, Any], context: ManagerContext | None = None) -> ManagerDecision:
         max_formal = int(policy.get("complexity_limits", {}).get("max_formal_obligations_per_cycle", 4))
         if len(decision.formal_obligations) > max_formal:
             decision.formal_obligations = decision.formal_obligations[:max_formal]
         if not decision.formal_obligations:
             decision.formal_obligations = [f"Prove a local lemma for: {decision.bounded_claim[:100]}"]
         
-        # Normalize world program
+        # Normalize world program - prefer existing world from context if available
         if decision.primary_world is None:
-            from .schemas import WorldProgram, BridgePlan, ReductionCertificate, CompressionPrinciple
-            decision.primary_world = WorldProgram(
-                label=f"Default world for {decision.target_frontier_node}",
-                family_tags=[decision.world_family],  # type: ignore[list-item]
-                mode="micro",
-                thesis=decision.bounded_claim,
-                ontology=[],
-                compression_principles=[
-                    CompressionPrinciple(
-                        name="local_reduction",
-                        description="Reduce target to smaller sub-claim"
-                    )
-                ],
-                bridge_to_target=BridgePlan(
-                    bridge_claim="If local obligations close, parent claim closes.",
-                    bridge_obligations=[],
-                    estimated_cost=0.3,
-                ),
-                reduction_certificate=ReductionCertificate(
-                    closure_items=[],
-                    bridge_items=[],
-                    support_items=[decision.bounded_claim],
-                    total_debt_count=1,
-                ),
-            )
+            existing_world_dict = context.problem.get("current_world_program") if context else None
+            if existing_world_dict:
+                # Reuse existing world for continuity
+                try:
+                    from .schemas import WorldProgram
+                    decision.primary_world = WorldProgram.model_validate(existing_world_dict)
+                except Exception:
+                    pass
+            
+            # If still no world, synthesize default
+            if decision.primary_world is None:
+                from .schemas import WorldProgram, BridgePlan, ReductionCertificate, CompressionPrinciple
+                decision.primary_world = WorldProgram(
+                    label=f"Default world for {decision.target_frontier_node}",
+                    family_tags=[decision.world_family],  # type: ignore[list-item]
+                    mode="micro",
+                    thesis=decision.bounded_claim,
+                    ontology=[],
+                    compression_principles=[
+                        CompressionPrinciple(
+                            name="local_reduction",
+                            description="Reduce target to smaller sub-claim"
+                        )
+                    ],
+                    bridge_to_target=BridgePlan(
+                        bridge_claim="If local obligations close, parent claim closes.",
+                        bridge_obligations=[],
+                        estimated_cost=0.3,
+                    ),
+                    reduction_certificate=ReductionCertificate(
+                        closure_items=[],
+                        bridge_items=[],
+                        support_items=[decision.bounded_claim],
+                        total_debt_count=1,
+                    ),
+                )
+        
+        # Apply theorem delta scoring if present
+        if decision.primary_world and decision.primary_world.theorem_deltas:
+            theorem_delta_priors = policy.get("theorem_delta_priors", {})
+            bridge_cost_penalty = policy.get("bridge_cost_penalty", 0.15)
+            proximity_bonus = policy.get("proximity_bonus", 0.20)
+            
+            scored_deltas = []
+            for delta in decision.primary_world.theorem_deltas:
+                score = (
+                    theorem_delta_priors.get(delta.delta_type, 0.5)
+                    + proximity_bonus * (1 - delta.distance_from_target)
+                    + delta.estimated_proof_gain
+                    - bridge_cost_penalty * delta.estimated_bridge_cost
+                )
+                scored_deltas.append((score, delta))
+            
+            # Sort by score descending
+            scored_deltas.sort(key=lambda x: x[0], reverse=True)
+            decision.primary_world.theorem_deltas = [delta for score, delta in scored_deltas]
         
         # Normalize proof debt
         if not decision.proof_debt and decision.primary_world:

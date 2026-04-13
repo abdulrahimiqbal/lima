@@ -43,8 +43,15 @@ def update_memory(
         
         diag = updated.memory.world_diagnostics[world_id]
         
-        # Update counters from proof debt
-        if decision.proof_debt:
+        # Prefer using final ledger if world ID matches
+        if updated.active_world_id == world_id and updated.proof_debt_ledger:
+            ledger = updated.proof_debt_ledger
+            diag["debt_total"] = len(ledger)
+            diag["debt_proved"] = len([d for d in ledger if d.get("status") == "proved"])
+            diag["critical_total"] = len([d for d in ledger if d.get("critical")])
+            diag["critical_proved"] = len([d for d in ledger if d.get("critical") and d.get("status") == "proved"])
+        elif decision.proof_debt:
+            # Fallback to decision proof debt
             diag["debt_total"] = len(decision.proof_debt)
             diag["debt_proved"] = len([d for d in decision.proof_debt if d.status == "proved"])
             diag["critical_total"] = len([d for d in decision.proof_debt if d.critical])

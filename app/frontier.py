@@ -199,24 +199,29 @@ def apply_execution_result(
             existing_ids.add(spawned.id)
 
     # World-aware solved check
-    if updated.current_world_program and updated.proof_debt_ledger:
-        # Check if all critical proof debt items are proved
-        critical_debt = [d for d in updated.proof_debt_ledger if d.get("critical")]
+    world = updated.current_world_program
+    if world:
+        # Use world-aware solved logic only
+        ledger = updated.proof_debt_ledger
+        has_bridge = world.get("bridge_to_target") is not None
+        critical_debt = [d for d in ledger if d.get("critical")]
+        
         if critical_debt:
+            # Check if all critical debt is proved and no live falsifiers
             all_critical_proved = all(d.get("status") == "proved" for d in critical_debt)
-            # Also check that no live critical falsifier remains unresolved
             critical_falsifiers = [d for d in critical_debt if d.get("role") == "falsifier"]
             no_live_falsifiers = all(
                 d.get("status") in {"proved", "refuted", "blocked"} 
                 for d in critical_falsifiers
             )
             
-            if all_critical_proved and no_live_falsifiers:
-                # Check if world has valid bridge
-                world = updated.current_world_program
-                has_bridge = world.get("bridge_to_target") is not None
-                if has_bridge:
-                    updated.status = "solved"
+            if has_bridge and all_critical_proved and no_live_falsifiers:
+                updated.status = "solved"
+        else:
+            # No critical debt - only allow solved if world explicitly has zero debt
+            rc = world.get("reduction_certificate") or {}
+            if has_bridge and int(rc.get("total_debt_count", 1)) == 0:
+                updated.status = "solved"
     else:
         # Fallback to old behavior when no world program exists
         if updated.frontier[0].status == "proved":

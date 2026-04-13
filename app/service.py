@@ -286,14 +286,19 @@ class CampaignService:
             executed_evidence_jobs=[],
         )
         
-        # Get context and policy
-        context = updated.last_manager_context or {}
+        # Get policy
         active_policy = self.memory.get_latest_policy() or get_policy()
+        
+        # Install world/debt state BEFORE memory and frontier updates
+        updated = self._apply_decision_world_state(updated, decision)
         
         # Apply memory and frontier updates
         updated = update_memory(updated, decision, result, policy=active_policy)
         updated = apply_execution_result(updated, decision, result)
         updated.last_execution_result = result.model_dump()
+        
+        # Recompute resolved debt IDs from final ledger
+        self._recompute_resolved_debt_ids(updated)
         
         # Clear pending job
         updated.pending_aristotle_job = None
@@ -326,6 +331,45 @@ class CampaignService:
         self._persist_campaign(updated)
         return updated
 
+    def _apply_decision_world_state(
+        self, campaign: CampaignRecord, decision: ManagerDecision
+    ) -> CampaignRecord:
+        """Apply world program and proof debt from decision to campaign state."""
+        # Install world program
+        if decision.primary_world:
+            campaign.current_world_program = decision.primary_world.model_dump()
+            campaign.active_world_id = decision.primary_world.id
+        
+        if decision.alternative_worlds:
+            campaign.alternative_world_programs = [w.model_dump() for w in decision.alternative_worlds]
+        
+        # Merge proof debt ledger, preserving statuses from matching IDs
+        if decision.proof_debt:
+            # Build map of existing debt statuses
+            existing_statuses = {}
+            for debt_dict in campaign.proof_debt_ledger:
+                debt_id = debt_dict.get("id")
+                if debt_id:
+                    existing_statuses[debt_id] = debt_dict.get("status", "open")
+            
+            # Replace ledger with new debt, preserving statuses where IDs match
+            new_ledger = []
+            for debt_item in decision.proof_debt:
+                debt_dict = debt_item.model_dump()
+                if debt_item.id in existing_statuses:
+                    debt_dict["status"] = existing_statuses[debt_item.id]
+                new_ledger.append(debt_dict)
+            campaign.proof_debt_ledger = new_ledger
+        
+        return campaign
+    
+    def _recompute_resolved_debt_ids(self, campaign: CampaignRecord) -> None:
+        """Recompute resolved_debt_ids from final ledger state."""
+        campaign.resolved_debt_ids = [
+            d["id"] for d in campaign.proof_debt_ledger
+            if d.get("id") and d.get("status") == "proved"
+        ]
+
     def _finalize_execution(
         self,
         campaign: CampaignRecord,
@@ -343,40 +387,17 @@ class CampaignService:
         updated.manager_backend = decision.manager_backend
         updated.executor_backend = result.executor_backend
         updated.current_candidate_answer = decision.candidate_answer
+        
+        # Install world/debt state BEFORE memory and frontier updates
+        updated = self._apply_decision_world_state(updated, decision)
+        
+        # Now apply memory and frontier updates with current world/debt state
         updated = update_memory(updated, decision, result, policy=active_policy)
         updated = apply_execution_result(updated, decision, result)
         updated.last_execution_result = result.model_dump()
         
-        # Persist world program and proof debt
-        if decision.primary_world:
-            updated.current_world_program = decision.primary_world.model_dump()
-            updated.active_world_id = decision.primary_world.id
-        
-        if decision.alternative_worlds:
-            updated.alternative_world_programs = [w.model_dump() for w in decision.alternative_worlds]
-        
-        # Update proof debt ledger - simple replacement with status preservation
-        if decision.proof_debt:
-            # Build a map of existing debt statuses
-            existing_statuses = {}
-            for debt_dict in updated.proof_debt_ledger:
-                debt_id = debt_dict.get("id")
-                if debt_id:
-                    existing_statuses[debt_id] = debt_dict.get("status", "open")
-            
-            # Replace ledger with new debt, preserving statuses where IDs match
-            new_ledger = []
-            for debt_item in decision.proof_debt:
-                debt_dict = debt_item.model_dump()
-                if debt_item.id in existing_statuses:
-                    debt_dict["status"] = existing_statuses[debt_item.id]
-                new_ledger.append(debt_dict)
-            updated.proof_debt_ledger = new_ledger
-            
-            # Update resolved debt IDs
-            for debt_dict in updated.proof_debt_ledger:
-                if debt_dict.get("status") == "proved" and debt_dict.get("id") not in updated.resolved_debt_ids:
-                    updated.resolved_debt_ids.append(debt_dict["id"])
+        # Recompute resolved debt IDs from final ledger
+        self._recompute_resolved_debt_ids(updated)
 
         raw_payload = result.raw if isinstance(result.raw, dict) else {}
         self.memory.record_execution_result(

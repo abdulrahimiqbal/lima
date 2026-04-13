@@ -229,19 +229,28 @@ def build_execution_plan(
         else:
             split_obligations.append(spec)
     
-    # Analyze all obligations with role-aware routing
-    analyzed = [_analyze_with_role_awareness(ob) for ob in split_obligations]
+    # Analyze all obligations with role-aware routing, keeping pairs
+    analyzed_pairs: list[tuple[FormalObligationSpec, AnalyzedObligation]] = [
+        (spec, _analyze_with_role_awareness(spec)) for spec in split_obligations
+    ]
+    
     approved_proof: list[str] = []
     approved_evidence: list[str] = []
     rejected: list[str] = []
     rejected_reasons: dict[str, str] = {}
 
     # Prioritize closure and bridge obligations for proof
-    closure_bridge_items = [m for m in analyzed if m.text and _is_closure_or_bridge_role(m)]
-    other_items = [m for m in analyzed if m not in closure_bridge_items]
+    closure_bridge_pairs = [
+        (spec, meta) for spec, meta in analyzed_pairs
+        if spec.metadata.get("debt_role") in {"closure", "bridge"}
+    ]
+    other_pairs = [
+        (spec, meta) for spec, meta in analyzed_pairs
+        if (spec, meta) not in closure_bridge_pairs
+    ]
     
     # Process closure/bridge first
-    for meta in closure_bridge_items:
+    for spec, meta in closure_bridge_pairs:
         if meta.submission_channel == "reject" or not meta.allowed_in_default_loop:
             if meta.rejection_reason == "excessive_scope":
                 rejected.append(meta.text)
@@ -259,7 +268,7 @@ def build_execution_plan(
                 rejected_reasons[meta.text] = "proof_budget_exceeded"
     
     # Then process other items
-    for meta in other_items:
+    for spec, meta in other_pairs:
         if meta.submission_channel == "reject" or not meta.allowed_in_default_loop:
             if meta.rejection_reason == "excessive_scope":
                 rejected.append(meta.text)
@@ -297,8 +306,8 @@ def build_execution_plan(
         channel_used = "computational_evidence"
 
     return ApprovedExecutionPlan(
-        original_obligations=[spec.source_text for spec in normalized_obligations],
-        analyzed_obligations=analyzed,
+        original_obligations=[spec.source_text for spec in split_obligations],
+        analyzed_obligations=[meta for spec, meta in analyzed_pairs],
         approved_proof_jobs=approved_proof,
         approved_evidence_jobs=approved_evidence,
         rejected_obligations=rejected,
@@ -338,13 +347,6 @@ def _analyze_with_role_awareness(obligation: FormalObligationSpec) -> AnalyzedOb
                 base_analysis.obligation_type = "finite_check"
     
     return base_analysis
-
-
-def _is_closure_or_bridge_role(meta: AnalyzedObligation) -> bool:
-    """Check if analyzed obligation has closure or bridge role."""
-    # This is a heuristic - in practice we'd check metadata
-    # For now, just return False to maintain existing behavior
-    return False
 
 
 def _compute_adaptive_budgets(
