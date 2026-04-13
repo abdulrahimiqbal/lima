@@ -25,6 +25,41 @@ def update_memory(
     conf_rules = policy.get("confidence_rules", {}) if policy else {}
 
     node_key = decision.target_frontier_node
+    
+    # Update world diagnostics
+    if decision.primary_world:
+        world_id = decision.primary_world.id
+        if world_id not in updated.memory.world_diagnostics:
+            updated.memory.world_diagnostics[world_id] = {
+                "debt_total": 0,
+                "debt_proved": 0,
+                "critical_total": 0,
+                "critical_proved": 0,
+                "bridge_failures": 0,
+                "closure_failures": 0,
+                "evidence_hits": 0,
+                "proof_hits": 0,
+            }
+        
+        diag = updated.memory.world_diagnostics[world_id]
+        
+        # Update counters from proof debt
+        if decision.proof_debt:
+            diag["debt_total"] = len(decision.proof_debt)
+            diag["debt_proved"] = len([d for d in decision.proof_debt if d.status == "proved"])
+            diag["critical_total"] = len([d for d in decision.proof_debt if d.critical])
+            diag["critical_proved"] = len([d for d in decision.proof_debt if d.critical and d.status == "proved"])
+        
+        # Update result counters
+        if result.status == "proved":
+            diag["proof_hits"] = diag.get("proof_hits", 0) + 1
+        elif result.status == "inconclusive" and result.channel_used == "computational_evidence":
+            diag["evidence_hits"] = diag.get("evidence_hits", 0) + 1
+        elif result.status == "blocked":
+            if result.failure_type == "bad_bridge" or result.failure_type == "false_bridge":
+                diag["bridge_failures"] = diag.get("bridge_failures", 0) + 1
+            elif result.failure_type == "bad_world":
+                diag["closure_failures"] = diag.get("closure_failures", 0) + 1
 
     # 1. Update World Scores
     if result.status == "proved":

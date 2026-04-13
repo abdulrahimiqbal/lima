@@ -237,6 +237,88 @@
         "obligation_hints": {
             "type": "object",
             "additionalProperties": true
+        },
+        "global_thesis": {
+            "type": ["string", "null"]
+        },
+        "primary_world": {
+            "type": ["object", "null"],
+            "properties": {
+                "id": {"type": "string"},
+                "label": {"type": "string"},
+                "family_tags": {"type": "array", "items": {"type": "string"}},
+                "mode": {"type": "string", "enum": ["macro", "micro"]},
+                "thesis": {"type": "string"},
+                "ontology": {"type": "array", "items": {"type": "string"}},
+                "compression_principles": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"}
+                        }
+                    }
+                },
+                "bridge_to_target": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "bridge_claim": {"type": "string"},
+                        "bridge_obligations": {"type": "array", "items": {"type": "string"}},
+                        "estimated_cost": {"type": "number"}
+                    }
+                },
+                "reduction_certificate": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "closure_items": {"type": "array", "items": {"type": "string"}},
+                        "bridge_items": {"type": "array", "items": {"type": "string"}},
+                        "support_items": {"type": "array", "items": {"type": "string"}},
+                        "total_debt_count": {"type": "number"}
+                    }
+                },
+                "theorem_deltas": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "delta_type": {"type": "string"},
+                            "source_claim": {"type": "string"},
+                            "transformed_claim": {"type": "string"},
+                            "distance_from_target": {"type": "number"},
+                            "bridge_back_claim": {"type": "string"},
+                            "estimated_proof_gain": {"type": "number"},
+                            "estimated_bridge_cost": {"type": "number"}
+                        }
+                    }
+                },
+                "falsifiers": {"type": "array", "items": {"type": "string"}}
+            }
+        },
+        "alternative_worlds": {
+            "type": "array",
+            "items": {"$ref": "#/properties/primary_world"}
+        },
+        "proof_debt": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "world_id": {"type": "string"},
+                    "role": {"type": "string", "enum": ["closure", "bridge", "support", "boundary", "falsifier"]},
+                    "statement": {"type": "string"},
+                    "depends_on": {"type": "array", "items": {"type": "string"}},
+                    "critical": {"type": "boolean"},
+                    "status": {"type": "string", "enum": ["open", "active", "proved", "refuted", "blocked"]},
+                    "priority": {"type": "number"},
+                    "notes": {"type": "array", "items": {"type": "string"}}
+                }
+            }
+        },
+        "critical_next_debt_id": {
+            "type": ["string", "null"]
         }
     }
 }

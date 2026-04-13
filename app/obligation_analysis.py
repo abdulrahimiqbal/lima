@@ -202,6 +202,22 @@ def build_execution_plan(
     # Normalize obligations to structured form
     normalized_obligations = decision.get_normalized_obligations()
     
+    # If decision has proof_debt, prioritize debt-driven obligations
+    if decision.proof_debt and decision.critical_next_debt_id:
+        # Find the critical next debt item
+        critical_debt = None
+        for debt in decision.proof_debt:
+            if debt.id == decision.critical_next_debt_id:
+                critical_debt = debt
+                break
+        
+        if critical_debt:
+            # Convert debt item to obligation spec
+            from .schemas import FormalObligationSpec
+            debt_spec = FormalObligationSpec.from_debt_item(critical_debt)
+            # Prepend to obligations list
+            normalized_obligations = [debt_spec] + normalized_obligations
+    
     # Split mixed obligations
     split_obligations: list[FormalObligationSpec] = []
     for spec in normalized_obligations:
@@ -213,16 +229,38 @@ def build_execution_plan(
         else:
             split_obligations.append(spec)
     
-    # Analyze all obligations
-    analyzed = [analyze_obligation(ob) for ob in split_obligations]
+    # Analyze all obligations with role-aware routing
+    analyzed = [_analyze_with_role_awareness(ob) for ob in split_obligations]
     approved_proof: list[str] = []
     approved_evidence: list[str] = []
     rejected: list[str] = []
     rejected_reasons: dict[str, str] = {}
 
-    for meta in analyzed:
+    # Prioritize closure and bridge obligations for proof
+    closure_bridge_items = [m for m in analyzed if m.text and _is_closure_or_bridge_role(m)]
+    other_items = [m for m in analyzed if m not in closure_bridge_items]
+    
+    # Process closure/bridge first
+    for meta in closure_bridge_items:
         if meta.submission_channel == "reject" or not meta.allowed_in_default_loop:
-            # For excessive_scope, try to create more informative follow-up
+            if meta.rejection_reason == "excessive_scope":
+                rejected.append(meta.text)
+                rejected_reasons[meta.text] = f"{meta.rejection_reason}:suggest_localized_lemma"
+            else:
+                rejected.append(meta.text)
+                rejected_reasons[meta.text] = meta.rejection_reason or "excessive_scope"
+            continue
+
+        if meta.submission_channel == "aristotle_proof":
+            if len(approved_proof) < max_proof:
+                approved_proof.append(meta.text)
+            else:
+                rejected.append(meta.text)
+                rejected_reasons[meta.text] = "proof_budget_exceeded"
+    
+    # Then process other items
+    for meta in other_items:
+        if meta.submission_channel == "reject" or not meta.allowed_in_default_loop:
             if meta.rejection_reason == "excessive_scope":
                 rejected.append(meta.text)
                 rejected_reasons[meta.text] = f"{meta.rejection_reason}:suggest_localized_lemma"
@@ -273,6 +311,40 @@ def build_execution_plan(
             "budget_notes": budget_notes,
         },
     )
+
+
+def _analyze_with_role_awareness(obligation: FormalObligationSpec) -> AnalyzedObligation:
+    """Analyze obligation with role awareness from metadata."""
+    base_analysis = analyze_obligation(obligation)
+    
+    # Check if this came from a debt item
+    debt_role = obligation.metadata.get("debt_role")
+    if debt_role:
+        # Override channel based on role
+        if debt_role in {"closure", "bridge"}:
+            base_analysis.submission_channel = "aristotle_proof"
+            base_analysis.obligation_type = "proof"
+        elif debt_role == "support":
+            # Support can be proof or evidence depending on text
+            if base_analysis.obligation_type in {"finite_check", "counterexample_search"}:
+                base_analysis.submission_channel = "computational_evidence"
+            else:
+                base_analysis.submission_channel = "aristotle_proof"
+        elif debt_role in {"boundary", "falsifier"}:
+            base_analysis.submission_channel = "computational_evidence"
+            if debt_role == "falsifier":
+                base_analysis.obligation_type = "counterexample_search"
+            else:
+                base_analysis.obligation_type = "finite_check"
+    
+    return base_analysis
+
+
+def _is_closure_or_bridge_role(meta: AnalyzedObligation) -> bool:
+    """Check if analyzed obligation has closure or bridge role."""
+    # This is a heuristic - in practice we'd check metadata
+    # For now, just return False to maintain existing behavior
+    return False
 
 
 def _compute_adaptive_budgets(

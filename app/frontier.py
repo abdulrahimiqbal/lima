@@ -48,10 +48,27 @@ def apply_execution_result(
     if result.status == "proved":
         target.status = "proved"
         target.priority = 0.0
+        
+        # Update proof debt ledger if this was a debt-driven obligation
+        if decision.proof_debt and decision.critical_next_debt_id:
+            for debt_dict in updated.proof_debt_ledger:
+                if debt_dict.get("id") == decision.critical_next_debt_id:
+                    debt_dict["status"] = "proved"
+                    if debt_dict["id"] not in updated.resolved_debt_ids:
+                        updated.resolved_debt_ids.append(debt_dict["id"])
+                    break
     elif result.status == "refuted":
         # Only true counterexample should reach here
         target.status = "refuted"
         target.priority = 0.0
+        
+        # Update proof debt ledger
+        if decision.proof_debt and decision.critical_next_debt_id:
+            for debt_dict in updated.proof_debt_ledger:
+                if debt_dict.get("id") == decision.critical_next_debt_id:
+                    debt_dict["status"] = "refuted"
+                    break
+        
         # Kill descendants
         def kill_descendants(parent_id: str):
             for n in updated.frontier:
@@ -65,13 +82,24 @@ def apply_execution_result(
         target.status = "blocked"
         target.failure_count += 1
         target.priority = max(0.1, target.priority - 0.05)
+        
+        # Update proof debt ledger
+        if decision.proof_debt and decision.critical_next_debt_id:
+            for debt_dict in updated.proof_debt_ledger:
+                if debt_dict.get("id") == decision.critical_next_debt_id:
+                    debt_dict["status"] = "blocked"
+                    break
     else:
         # Inconclusive
         target.status = "open"
         target.failure_count += 1
         target.priority = max(0.2, target.priority - 0.02)
 
-    # Spawn nodes based on failure type
+    # Spawn nodes from proof debt if available
+    if decision.proof_debt and not result.spawned_nodes:
+        _spawn_from_debt(updated, decision, result, target)
+    
+    # Spawn nodes based on failure type (existing logic)
     if result.failure_type == "evidence_only" and not result.spawned_nodes:
         # After evidence_only, spawn formalization-oriented child
         evidence_streak = updated.memory.evidence_streaks.get(target.id, 0)
@@ -170,13 +198,85 @@ def apply_execution_result(
             updated.frontier.append(spawned)
             existing_ids.add(spawned.id)
 
-    # Global solved check
-    if updated.frontier[0].status == "proved":
-        updated.status = "solved"
-    elif updated.frontier[0].status == "refuted":
-        updated.status = "failed"
+    # World-aware solved check
+    if updated.current_world_program and updated.proof_debt_ledger:
+        # Check if all critical proof debt items are proved
+        critical_debt = [d for d in updated.proof_debt_ledger if d.get("critical")]
+        if critical_debt:
+            all_critical_proved = all(d.get("status") == "proved" for d in critical_debt)
+            # Also check that no live critical falsifier remains unresolved
+            critical_falsifiers = [d for d in critical_debt if d.get("role") == "falsifier"]
+            no_live_falsifiers = all(
+                d.get("status") in {"proved", "refuted", "blocked"} 
+                for d in critical_falsifiers
+            )
+            
+            if all_critical_proved and no_live_falsifiers:
+                # Check if world has valid bridge
+                world = updated.current_world_program
+                has_bridge = world.get("bridge_to_target") is not None
+                if has_bridge:
+                    updated.status = "solved"
+    else:
+        # Fallback to old behavior when no world program exists
+        if updated.frontier[0].status == "proved":
+            updated.status = "solved"
+        elif updated.frontier[0].status == "refuted":
+            updated.status = "failed"
 
     return updated
+
+
+def _spawn_from_debt(
+    campaign: CampaignRecord,
+    decision: ManagerDecision,
+    result: ExecutionResult,
+    target: FrontierNode,
+) -> None:
+    """Spawn frontier nodes from open proof debt items."""
+    # Find open critical debt items not already represented
+    for debt_dict in campaign.proof_debt_ledger:
+        if debt_dict.get("status") != "open":
+            continue
+        if not debt_dict.get("critical"):
+            continue
+        
+        # Check if already represented in frontier
+        debt_text = debt_dict.get("statement", "")
+        if _has_similar_text_in_frontier(campaign.frontier, debt_text):
+            continue
+        
+        # Spawn based on role
+        role = debt_dict.get("role", "support")
+        if role in {"closure", "bridge", "support"}:
+            kind = "lemma"
+        elif role == "boundary":
+            kind = "finite_check"
+        elif role == "falsifier":
+            kind = "exploration"
+        else:
+            kind = "lemma"
+        
+        result.spawned_nodes.append(
+            FrontierNode(
+                text=debt_text,
+                status="open",
+                priority=debt_dict.get("priority", 0.5),
+                parent_id=target.id,
+                kind=kind,  # type: ignore[arg-type]
+            )
+        )
+
+
+def _has_similar_text_in_frontier(frontier: list[FrontierNode], text: str) -> bool:
+    """Check if similar text already exists in frontier."""
+    text_lower = text.lower()[:100]
+    for node in frontier:
+        if node.status not in {"open", "active", "blocked"}:
+            continue
+        if text_lower in node.text.lower() or node.text.lower()[:100] in text_lower:
+            return True
+    return False
 
 
 def _has_similar_open_child(

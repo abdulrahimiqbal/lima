@@ -74,6 +74,36 @@ class FormalObligationSpec(BaseModel):
             requires_proof=False,
             requires_evidence=False,
         )
+    
+    @classmethod
+    def from_debt_item(cls, debt: "ProofDebtItem") -> "FormalObligationSpec":
+        """Convert a ProofDebtItem to a FormalObligationSpec."""
+        # Map debt role to channel hint and goal kind
+        if debt.role in {"closure", "bridge", "support"}:
+            channel_hint = "proof"
+            goal_kind = "lemma" if debt.role == "support" else "theorem"
+        elif debt.role in {"boundary", "falsifier"}:
+            channel_hint = "evidence"
+            goal_kind = "finite_check" if debt.role == "boundary" else "counterexample_search"
+        else:
+            channel_hint = "auto"
+            goal_kind = _infer_goal_kind(debt.statement)
+        
+        return cls(
+            id=debt.id,
+            source_text=debt.statement,
+            channel_hint=channel_hint,
+            goal_kind=goal_kind,
+            requires_proof=(channel_hint == "proof"),
+            requires_evidence=(channel_hint == "evidence"),
+            metadata={
+                "debt_id": debt.id,
+                "debt_role": debt.role,
+                "debt_world_id": debt.world_id,
+                "debt_critical": debt.critical,
+                "debt_priority": debt.priority,
+            },
+        )
 
 
 def _infer_goal_kind(text: str) -> GoalKind:
@@ -159,6 +189,8 @@ class MemoryState(BaseModel):
     evidence_streaks: dict[str, int] = Field(default_factory=dict)
     formalization_streaks: dict[str, int] = Field(default_factory=dict)
     timeout_streaks: dict[str, int] = Field(default_factory=dict)
+    # World diagnostics
+    world_diagnostics: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class DecisionBounds(BaseModel):
@@ -175,6 +207,79 @@ class ManagerContext(BaseModel):
     tick: int
 
 
+class TheoremDelta(BaseModel):
+    """A small shift relative to the target theorem."""
+    id: str = Field(default_factory=lambda: f"TD-{uuid4().hex[:8]}")
+    delta_type: Literal[
+        "strengthen_hypothesis",
+        "weaken_conclusion",
+        "change_measure",
+        "introduce_normal_form",
+        "factor_through_intermediate",
+        "minimal_counterexample",
+        "residue_refinement",
+        "classify_then_transfer",
+        "bounded_to_schema",
+        "shortcut_dynamics",
+        "other",
+    ]
+    source_claim: str
+    transformed_claim: str
+    distance_from_target: float = Field(ge=0.0, le=1.0)
+    bridge_back_claim: str
+    estimated_proof_gain: float = Field(ge=0.0, le=1.0)
+    estimated_bridge_cost: float = Field(ge=0.0, le=1.0)
+
+
+class CompressionPrinciple(BaseModel):
+    """A compression principle like descent, partition, transfer, etc."""
+    name: str
+    description: str
+
+
+class BridgePlan(BaseModel):
+    """Structured bridge back to the original theorem."""
+    bridge_claim: str
+    bridge_obligations: list[str] = Field(default_factory=list)
+    estimated_cost: float = Field(ge=0.0, le=1.0, default=0.5)
+
+
+class ReductionCertificate(BaseModel):
+    """Finite closure summary for a world."""
+    closure_items: list[str] = Field(default_factory=list)
+    bridge_items: list[str] = Field(default_factory=list)
+    support_items: list[str] = Field(default_factory=list)
+    total_debt_count: int = 0
+
+
+class WorldProgram(BaseModel):
+    """A structured mathematical world that contains a thesis and reduction strategy."""
+    id: str = Field(default_factory=lambda: f"W-{uuid4().hex[:10]}")
+    label: str
+    family_tags: list[WorldFamily] = Field(default_factory=list)
+    mode: Literal["macro", "micro"] = "macro"
+    thesis: str
+    ontology: list[str] = Field(default_factory=list)
+    compression_principles: list[CompressionPrinciple] = Field(default_factory=list)
+    bridge_to_target: BridgePlan | None = None
+    reduction_certificate: ReductionCertificate | None = None
+    theorem_deltas: list[TheoremDelta] = Field(default_factory=list)
+    falsifiers: list[str] = Field(default_factory=list)
+
+
+class ProofDebtItem(BaseModel):
+    """Explicit proof debt item."""
+    id: str = Field(default_factory=lambda: f"D-{uuid4().hex[:8]}")
+    world_id: str
+    role: Literal["closure", "bridge", "support", "boundary", "falsifier"]
+    statement: str
+    depends_on: list[str] = Field(default_factory=list)
+    critical: bool = False
+    status: Literal["open", "active", "proved", "refuted", "blocked"] = "open"
+    priority: float = 1.0
+    notes: list[str] = Field(default_factory=list)
+
+
 class ManagerDecision(BaseModel):
     candidate_answer: CandidateAnswer
     alternatives: list[Alternative] = Field(default_factory=list)
@@ -189,6 +294,12 @@ class ManagerDecision(BaseModel):
     manager_read_receipt: ManagerReadReceipt | None = None
     obligation_hints: dict[str, Any] = Field(default_factory=dict)
     manager_backend: str = "rules"
+    # New world-oriented fields
+    global_thesis: str | None = None
+    primary_world: WorldProgram | None = None
+    alternative_worlds: list[WorldProgram] = Field(default_factory=list)
+    proof_debt: list[ProofDebtItem] = Field(default_factory=list)
+    critical_next_debt_id: str | None = None
 
     @field_validator("formal_obligations", mode="before")
     @classmethod
@@ -311,6 +422,12 @@ class CampaignRecord(BaseModel):
     manager_backend: str
     executor_backend: str
     pending_aristotle_job: PendingAristotleJob | None = None
+    # New world-oriented fields
+    current_world_program: dict[str, Any] | None = None
+    alternative_world_programs: list[dict[str, Any]] = Field(default_factory=list)
+    proof_debt_ledger: list[dict[str, Any]] = Field(default_factory=list)
+    resolved_debt_ids: list[str] = Field(default_factory=list)
+    active_world_id: str | None = None
 
 
 class CampaignEventRecord(BaseModel):

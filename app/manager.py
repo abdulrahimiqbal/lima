@@ -121,6 +121,12 @@ class Manager:
         # Build deterministic read receipt for rules mode
         read_receipt = self._build_read_receipt_from_context(context, target)
         
+        # Synthesize a default world program for rules mode
+        default_world = self._synthesize_default_world(target, world_family, context)
+        
+        # Synthesize default proof debt
+        default_debt = self._synthesize_default_debt(default_world, target)
+        
         # Simple deterministic fallback matching the updated schema
         return ManagerDecision(
             candidate_answer=CandidateAnswer(
@@ -147,7 +153,63 @@ class Manager:
             ),
             manager_read_receipt=read_receipt,
             manager_backend=manager_backend,
+            global_thesis=f"Seek local reduction for {target.text[:60]}",
+            primary_world=default_world,
+            proof_debt=default_debt,
+            critical_next_debt_id=default_debt[0].id if default_debt else None,
         )
+    
+    def _synthesize_default_world(
+        self, target: FrontierNode, world_family: str, context: ManagerContext
+    ) -> "WorldProgram":
+        """Synthesize a minimal default world program for rules mode."""
+        from .schemas import WorldProgram, BridgePlan, ReductionCertificate, CompressionPrinciple
+        
+        return WorldProgram(
+            label=f"Default {world_family} world for {target.id}",
+            family_tags=[world_family],  # type: ignore[list-item]
+            mode="micro",
+            thesis=f"Seek one local lemma that reduces proof debt for: {target.text[:100]}",
+            ontology=[],
+            compression_principles=[
+                CompressionPrinciple(
+                    name="local_reduction",
+                    description="Reduce the target to a smaller sub-claim"
+                )
+            ],
+            bridge_to_target=BridgePlan(
+                bridge_claim="If enough local reductions close, the parent claim closes.",
+                bridge_obligations=[],
+                estimated_cost=0.3,
+            ),
+            reduction_certificate=ReductionCertificate(
+                closure_items=[],
+                bridge_items=[],
+                support_items=[target.text],
+                total_debt_count=1,
+            ),
+            theorem_deltas=[],
+            falsifiers=[],
+        )
+    
+    def _synthesize_default_debt(
+        self, world: "WorldProgram", target: FrontierNode
+    ) -> list["ProofDebtItem"]:
+        """Synthesize default proof debt from target."""
+        from .schemas import ProofDebtItem
+        
+        return [
+            ProofDebtItem(
+                world_id=world.id,
+                role="support",
+                statement=f"Prove one local lemma for: {target.text[:100]}",
+                depends_on=[],
+                critical=True,
+                status="open",
+                priority=1.0,
+                notes=["Synthesized from target in rules mode"],
+            )
+        ]
 
     def _pick_world(self, context: ManagerContext, target: FrontierNode, policy: dict[str, Any]) -> str:
         ranked = []
@@ -183,6 +245,23 @@ class Manager:
                     "- constraints_seen: Runtime constraints you're following\n"
                     "- open_uncertainties: Any uncertainties you have\n"
                     "- why_not_other_frontier_nodes: Why you chose this node over others\n\n"
+                    "WORLD-ORIENTED DECISION REQUIREMENTS:\n"
+                    "You should think top-down and construct a world-oriented plan:\n"
+                    "1. Form a global_thesis about the problem\n"
+                    "2. Propose a primary_world (macro or micro) that makes the problem easier\n"
+                    "3. For the world, explain the bridge_to_target\n"
+                    "4. Compile the world into explicit proof_debt items\n"
+                    "5. Choose the critical_next_debt_id from that debt\n"
+                    "6. Derive bounded_claim and formal_obligations from that debt item\n\n"
+                    "World modes:\n"
+                    "- macro: new ontology/invariant/local-to-global view\n"
+                    "- micro: small theorem perturbation near the target\n\n"
+                    "Proof debt roles:\n"
+                    "- closure: items that close the world's reduction\n"
+                    "- bridge: items that connect world back to target\n"
+                    "- support: supporting lemmas\n"
+                    "- boundary: boundary checks\n"
+                    "- falsifier: ways the world could fail\n\n"
                     f"Decision Schema:\n{json.dumps(get_decision_schema(), indent=2)}\n\n"
                     f"Runtime and channel guardrails:\n{guardrails}\n\n"
                     f"Context:\n{context.model_dump_json(indent=2)}"
@@ -253,6 +332,66 @@ class Manager:
             decision.formal_obligations = decision.formal_obligations[:max_formal]
         if not decision.formal_obligations:
             decision.formal_obligations = [f"Prove a local lemma for: {decision.bounded_claim[:100]}"]
+        
+        # Normalize world program
+        if decision.primary_world is None:
+            from .schemas import WorldProgram, BridgePlan, ReductionCertificate, CompressionPrinciple
+            decision.primary_world = WorldProgram(
+                label=f"Default world for {decision.target_frontier_node}",
+                family_tags=[decision.world_family],  # type: ignore[list-item]
+                mode="micro",
+                thesis=decision.bounded_claim,
+                ontology=[],
+                compression_principles=[
+                    CompressionPrinciple(
+                        name="local_reduction",
+                        description="Reduce target to smaller sub-claim"
+                    )
+                ],
+                bridge_to_target=BridgePlan(
+                    bridge_claim="If local obligations close, parent claim closes.",
+                    bridge_obligations=[],
+                    estimated_cost=0.3,
+                ),
+                reduction_certificate=ReductionCertificate(
+                    closure_items=[],
+                    bridge_items=[],
+                    support_items=[decision.bounded_claim],
+                    total_debt_count=1,
+                ),
+            )
+        
+        # Normalize proof debt
+        if not decision.proof_debt and decision.primary_world:
+            from .schemas import ProofDebtItem
+            decision.proof_debt = [
+                ProofDebtItem(
+                    world_id=decision.primary_world.id,
+                    role="support",
+                    statement=decision.bounded_claim,
+                    depends_on=[],
+                    critical=True,
+                    status="open",
+                    priority=1.0,
+                    notes=["Synthesized from bounded_claim"],
+                )
+            ]
+        
+        # Cap proof debt length
+        if len(decision.proof_debt) > 8:
+            decision.proof_debt = decision.proof_debt[:8]
+        
+        # Normalize critical_next_debt_id
+        if decision.critical_next_debt_id is None and decision.proof_debt:
+            # Choose highest-priority open critical item, else highest-priority open item
+            critical_open = [d for d in decision.proof_debt if d.critical and d.status == "open"]
+            if critical_open:
+                decision.critical_next_debt_id = max(critical_open, key=lambda d: d.priority).id
+            else:
+                open_items = [d for d in decision.proof_debt if d.status == "open"]
+                if open_items:
+                    decision.critical_next_debt_id = max(open_items, key=lambda d: d.priority).id
+        
         return decision
 
     def _build_read_receipt_from_context(

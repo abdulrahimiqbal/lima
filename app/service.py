@@ -346,6 +346,37 @@ class CampaignService:
         updated = update_memory(updated, decision, result, policy=active_policy)
         updated = apply_execution_result(updated, decision, result)
         updated.last_execution_result = result.model_dump()
+        
+        # Persist world program and proof debt
+        if decision.primary_world:
+            updated.current_world_program = decision.primary_world.model_dump()
+            updated.active_world_id = decision.primary_world.id
+        
+        if decision.alternative_worlds:
+            updated.alternative_world_programs = [w.model_dump() for w in decision.alternative_worlds]
+        
+        # Update proof debt ledger - simple replacement with status preservation
+        if decision.proof_debt:
+            # Build a map of existing debt statuses
+            existing_statuses = {}
+            for debt_dict in updated.proof_debt_ledger:
+                debt_id = debt_dict.get("id")
+                if debt_id:
+                    existing_statuses[debt_id] = debt_dict.get("status", "open")
+            
+            # Replace ledger with new debt, preserving statuses where IDs match
+            new_ledger = []
+            for debt_item in decision.proof_debt:
+                debt_dict = debt_item.model_dump()
+                if debt_item.id in existing_statuses:
+                    debt_dict["status"] = existing_statuses[debt_item.id]
+                new_ledger.append(debt_dict)
+            updated.proof_debt_ledger = new_ledger
+            
+            # Update resolved debt IDs
+            for debt_dict in updated.proof_debt_ledger:
+                if debt_dict.get("status") == "proved" and debt_dict.get("id") not in updated.resolved_debt_ids:
+                    updated.resolved_debt_ids.append(debt_dict["id"])
 
         raw_payload = result.raw if isinstance(result.raw, dict) else {}
         self.memory.record_execution_result(
@@ -460,6 +491,11 @@ class CampaignService:
             "target_frontier_node_text": target_node_text,
             "world_family": campaign.last_manager_decision.get("world_family") if campaign.last_manager_decision else None,
             "bounded_claim": campaign.last_manager_decision.get("bounded_claim") if campaign.last_manager_decision else None,
+            "active_world_id": campaign.active_world_id,
+            "world_thesis": campaign.current_world_program.get("thesis") if campaign.current_world_program else None,
+            "critical_debt_count": len([d for d in campaign.proof_debt_ledger if d.get("critical")]) if campaign.proof_debt_ledger else 0,
+            "proved_critical_debt_count": len([d for d in campaign.proof_debt_ledger if d.get("critical") and d.get("status") == "proved"]) if campaign.proof_debt_ledger else 0,
+            "critical_next_debt_id": campaign.last_manager_decision.get("critical_next_debt_id") if campaign.last_manager_decision else None,
         }
         
         # Manager Understanding section
@@ -659,6 +695,14 @@ class CampaignService:
         }
         if packet.current_candidate_answer:
             problem_payload["current_candidate_answer"] = packet.current_candidate_answer
+        
+        # Include current world info if present
+        if campaign.current_world_program:
+            problem_payload["current_world_program"] = campaign.current_world_program
+        if campaign.proof_debt_ledger:
+            problem_payload["proof_debt_ledger"] = campaign.proof_debt_ledger
+        if campaign.active_world_id:
+            problem_payload["active_world_id"] = campaign.active_world_id
 
         return ManagerContext(
             problem=problem_payload,
@@ -743,6 +787,11 @@ class CampaignService:
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
             pending_aristotle_job=pending_job,
+            current_world_program=payload.get("current_world_program"),
+            alternative_world_programs=payload.get("alternative_world_programs", []),
+            proof_debt_ledger=payload.get("proof_debt_ledger", []),
+            resolved_debt_ids=payload.get("resolved_debt_ids", []),
+            active_world_id=payload.get("active_world_id"),
         )
 
     def _campaign_header_from_node(self, campaign_node: dict) -> CampaignRecord:
@@ -780,6 +829,11 @@ class CampaignService:
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
             pending_aristotle_job=pending_job,
+            current_world_program=payload.get("current_world_program"),
+            alternative_world_programs=payload.get("alternative_world_programs", []),
+            proof_debt_ledger=payload.get("proof_debt_ledger", []),
+            resolved_debt_ids=payload.get("resolved_debt_ids", []),
+            active_world_id=payload.get("active_world_id"),
         )
 
     def _load_frontier_nodes(self, campaign_id: str) -> list[FrontierNode]:
@@ -825,6 +879,11 @@ class CampaignService:
                 "pending_aristotle_job": campaign.pending_aristotle_job.model_dump(mode='json')
                 if campaign.pending_aristotle_job
                 else None,
+                "current_world_program": campaign.current_world_program,
+                "alternative_world_programs": campaign.alternative_world_programs,
+                "proof_debt_ledger": campaign.proof_debt_ledger,
+                "resolved_debt_ids": campaign.resolved_debt_ids,
+                "active_world_id": campaign.active_world_id,
             },
         )
         self.memory.upsert_frontier_nodes(
@@ -832,11 +891,12 @@ class CampaignService:
             nodes=[node.model_dump() for node in campaign.frontier],
         )
         logger.debug(
-            "Persisted campaign=%s frontier_nodes=%d tick=%d pending_job=%s",
+            "Persisted campaign=%s frontier_nodes=%d tick=%d pending_job=%s world_id=%s",
             campaign.id,
             len(campaign.frontier),
             campaign.tick_count,
             campaign.pending_aristotle_job.project_id if campaign.pending_aristotle_job else None,
+            campaign.active_world_id,
         )
 
     def _campaign_lock(self, campaign_id: str) -> threading.Lock:
