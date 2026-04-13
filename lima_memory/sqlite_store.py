@@ -114,6 +114,19 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 ),
             )
 
+    def list_campaign_nodes(self, *, limit: int = 100) -> list[NodeRecord]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM kb_nodes
+                WHERE node_type = 'Campaign' AND id = campaign_id
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_node(row) for row in rows]
+
     def add_edge(self, edge: EdgeRecord) -> None:
         with self.connect() as conn:
             conn.execute(

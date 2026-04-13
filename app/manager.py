@@ -55,6 +55,7 @@ def get_self_improvement_prompt() -> str:
 class Manager:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.policy_provider = None
         # Warm the cache and fail early if missing
         try:
             get_constitution()
@@ -87,10 +88,10 @@ class Manager:
         )
 
     def decide(self, context: ManagerContext) -> ManagerDecision:
-        # Fetch latest policy from DB
-        from .db import Database
-        db = Database(self.settings.database_path)
-        active_policy = db.get_latest_policy() or get_policy()
+        active_policy = None
+        if callable(self.policy_provider):
+            active_policy = self.policy_provider()
+        active_policy = active_policy or get_policy()
 
         if self.settings.manager_backend_resolved == "llm":
             try:

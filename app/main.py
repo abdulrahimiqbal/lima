@@ -9,7 +9,6 @@ from fastapi.templating import Jinja2Templates
 
 from .background import CampaignWorker
 from .config import Settings
-from .db import Database
 from .schemas import CampaignControl, CampaignCreate, CampaignUpdateNotes
 from .service import CampaignService
 
@@ -19,9 +18,7 @@ TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    db = Database(settings.database_path)
-    db.init()
-    service = CampaignService(db, settings)
+    service = CampaignService(settings)
     worker = CampaignWorker(service, poll_seconds=settings.worker_poll_seconds)
 
     @asynccontextmanager
@@ -34,7 +31,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.state.settings = settings
-    app.state.db = db
     app.state.service = service
     app.state.worker = worker
 
@@ -47,10 +43,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/readyz")
     def readyz() -> dict[str, str]:
-        # Check database
+        # Check canonical memory store
         try:
-            with db.connect() as conn:
-                conn.execute("SELECT 1").fetchone()
+            service.ping_store()
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Database not ready: {e}")
         

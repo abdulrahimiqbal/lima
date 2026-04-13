@@ -3,11 +3,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.db import Database
 from app.main import create_app
 from app.schemas import (
     ApprovedExecutionPlan,
     CampaignCreate,
+    CampaignUpdateNotes,
     CandidateAnswer,
     ExecutionResult,
     ManagerDecision,
@@ -17,14 +17,12 @@ from app.schemas import (
 from app.service import CampaignService
 
 
-def _settings(tmp_path: Path, *, use_memory_context: bool = False) -> Settings:
+def _settings(tmp_path: Path) -> Settings:
     return Settings(
-        database_path=str(tmp_path / "legacy.db"),
         memory_db_path=str(tmp_path / "memory.db"),
         worker_poll_seconds=999,
         manager_backend="rules",
         executor_backend="mock",
-        use_memory_context=use_memory_context,
     )
 
 
@@ -55,15 +53,11 @@ def _decision(target_frontier_node: str) -> ManagerDecision:
     )
 
 
-def test_memory_campaign_creation_mirror(tmp_path: Path) -> None:
-    settings = _settings(tmp_path)
-    db = Database(settings.database_path)
-    db.init()
-    service = CampaignService(db, settings)
-
+def test_memory_campaign_creation_is_canonical(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
     campaign = service.create_campaign(
         CampaignCreate(
-            title="Memory mirror campaign",
+            title="Memory canonical campaign",
             problem_statement="Prove a bounded lemma.",
             operator_notes=["Prefer tiny jobs"],
             auto_run=False,
@@ -73,15 +67,11 @@ def test_memory_campaign_creation_mirror(tmp_path: Path) -> None:
     packet = service.get_memory_packet(campaign.id)
     assert packet["campaign"]["id"] == campaign.id
     assert packet["problem"]["payload"]["statement"] == "Prove a bounded lemma."
-    assert packet["active_frontier"]
+    assert packet["active_frontier"][0]["id"] == campaign.frontier[0].id
 
 
 def test_manager_and_execution_are_mirrored_to_memory(tmp_path: Path, monkeypatch) -> None:
-    settings = _settings(tmp_path)
-    db = Database(settings.database_path)
-    db.init()
-    service = CampaignService(db, settings)
-
+    service = CampaignService(_settings(tmp_path))
     campaign = service.create_campaign(
         CampaignCreate(
             title="Mirror decision/result",
@@ -127,8 +117,7 @@ def test_manager_and_execution_are_mirrored_to_memory(tmp_path: Path, monkeypatc
 
 
 def test_memory_endpoints(tmp_path: Path) -> None:
-    settings = _settings(tmp_path)
-    app = create_app(settings)
+    app = create_app(_settings(tmp_path))
     client = TestClient(app)
 
     create_response = client.post(
@@ -151,11 +140,65 @@ def test_memory_endpoints(tmp_path: Path) -> None:
     assert packet_response.json()["campaign"]["id"] == campaign_id
 
 
-def test_feature_flag_uses_memory_backed_context(tmp_path: Path, monkeypatch) -> None:
-    settings = _settings(tmp_path, use_memory_context=True)
-    db = Database(settings.database_path)
-    db.init()
-    service = CampaignService(db, settings)
+def test_service_crud_events_notes_pause_resume_step(tmp_path: Path, monkeypatch) -> None:
+    service = CampaignService(_settings(tmp_path))
+    created = service.create_campaign(
+        CampaignCreate(
+            title="Full flow",
+            problem_statement="Check full memory flow",
+            operator_notes=["start note"],
+            auto_run=False,
+        )
+    )
+    fetched = service.get_campaign(created.id)
+    assert fetched.id == created.id
+
+    updated_notes = service.update_notes(
+        created.id, payload=CampaignUpdateNotes(operator_notes=["n1", "n2"])
+    )
+    assert updated_notes.operator_notes == ["n1", "n2"]
+
+    paused = service.pause_campaign(created.id)
+    assert paused.status == "paused"
+    resumed = service.resume_campaign(created.id)
+    assert resumed.status == "running"
+
+    decision = _decision(target_frontier_node=resumed.frontier[0].id)
+    monkeypatch.setattr(service.manager, "decide", lambda _context: decision)
+    monkeypatch.setattr(
+        "app.service.build_execution_plan",
+        lambda _decision, policy, memory: ApprovedExecutionPlan(
+            original_obligations=decision.formal_obligations,
+            approved_evidence_jobs=decision.formal_obligations[:1],
+            channel_used="computational_evidence",
+        ),
+    )
+    monkeypatch.setattr(
+        service.executor,
+        "run",
+        lambda _campaign, _decision, _plan: ExecutionResult(
+            status="inconclusive",
+            failure_type="evidence_only",
+            notes="Evidence only",
+            artifacts=["artifact"],
+            executor_backend="evidence",
+        ),
+    )
+    stepped = service.step_campaign(created.id)
+    assert stepped.tick_count == 1
+
+    events = service.list_events(created.id, limit=50)
+    kinds = {event.kind for event in events}
+    assert "campaign_created" in kinds
+    assert "operator_notes_updated" in kinds
+    assert "campaign_paused" in kinds
+    assert "campaign_resumed" in kinds
+    assert "manager_decision" in kinds
+    assert "execution_result" in kinds
+
+
+def test_context_is_memory_backed_only(tmp_path: Path, monkeypatch) -> None:
+    service = CampaignService(_settings(tmp_path))
     campaign = service.create_campaign(
         CampaignCreate(
             title="Memory context path",
@@ -166,10 +209,6 @@ def test_feature_flag_uses_memory_backed_context(tmp_path: Path, monkeypatch) ->
     )
     decision = _decision(target_frontier_node=campaign.frontier[0].id)
 
-    def fail_if_legacy_builder_used(_campaign):
-        raise AssertionError("Legacy context builder should not be used")
-
-    monkeypatch.setattr(service, "_build_context", fail_if_legacy_builder_used)
     monkeypatch.setattr(service.manager, "decide", lambda _context: decision)
     monkeypatch.setattr(
         "app.service.build_execution_plan",
@@ -193,4 +232,3 @@ def test_feature_flag_uses_memory_backed_context(tmp_path: Path, monkeypatch) ->
 
     stepped = service.step_campaign(campaign.id)
     assert stepped.tick_count == 1
-

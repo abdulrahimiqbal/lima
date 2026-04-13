@@ -61,6 +61,21 @@ class PostgresKnowledgeStore(KnowledgeStore):
                 )
             conn.commit()
 
+    def list_campaign_nodes(self, *, limit: int = 100) -> list[NodeRecord]:
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT * FROM kb_nodes
+                    WHERE node_type = 'Campaign' AND id = campaign_id
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+        return [self._row_to_node(row) for row in rows]
+
     def add_edge(self, edge: EdgeRecord) -> None:
         with self.connect() as conn:
             with conn.cursor() as cur:

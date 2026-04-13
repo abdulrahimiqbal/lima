@@ -4,10 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from lima_memory import MemoryService, SqliteKnowledgeStore
 
 from app.config import Settings
 from app.main import create_app
 from app.manager import Manager, load_root_file, get_constitution
+from app.self_improvement import SelfImprovementService
 from app.schemas import (
     ManagerContext,
     ManagerDecision,
@@ -27,10 +29,7 @@ def test_root_file_loaders():
 
 
 def test_manager_fallback(tmp_path: Path):
-    settings = Settings(database_path=str(tmp_path / "test.db"), manager_backend="rules")
-    from app.db import Database
-    db = Database(settings.database_path)
-    db.init()
+    settings = Settings(memory_db_path=str(tmp_path / "memory.db"), manager_backend="rules")
     manager = Manager(settings)
     
     context = ManagerContext(
@@ -56,7 +55,7 @@ def test_manager_fallback(tmp_path: Path):
 
 
 def test_health_ready_status(tmp_path: Path):
-    settings = Settings(database_path=str(tmp_path / "test.db"))
+    settings = Settings(memory_db_path=str(tmp_path / "memory.db"))
     app = create_app(settings)
     client = TestClient(app)
     
@@ -81,7 +80,7 @@ def test_health_ready_status(tmp_path: Path):
 def test_executor_http_path(tmp_path: Path):
     
     settings = Settings(
-        database_path=str(tmp_path / "test.db"),
+        memory_db_path=str(tmp_path / "memory.db"),
         executor_backend="http",
         aristotle_base_url="http://aristotle.local",
         aristotle_api_key="fake-key",
@@ -134,17 +133,19 @@ def test_executor_http_path(tmp_path: Path):
 
 
 def test_self_improvement_logic(tmp_path: Path):
-    from app.self_improvement import SelfImprovementService
-    from app.db import Database
-    
     settings = Settings(
-        database_path=str(tmp_path / "test.db"),
+        memory_db_path=str(tmp_path / "memory.db"),
         enable_self_improvement=True,
         llm_api_key="fake-key"
     )
-    db = Database(settings.database_path)
-    db.init()
-    service = SelfImprovementService(db, settings)
+    memory = MemoryService(SqliteKnowledgeStore(settings.memory_db_path))
+    memory.create_campaign(
+        campaign_id="C-test",
+        title="SI campaign",
+        problem_statement="Test policy snapshots",
+        operator_notes=[],
+    )
+    service = SelfImprovementService(memory, settings)
     
     with patch.object(SelfImprovementService, "_call_llm") as mock_call:
         mock_call.return_value = {
@@ -156,6 +157,6 @@ def test_self_improvement_logic(tmp_path: Path):
         
         result = service.run_cycle()
         assert result["status"] == "updated"
-        
-        latest_policy = db.get_latest_policy()
+
+        latest_policy = memory.get_latest_policy()
         assert latest_policy["world_family_priors"]["direct"] == 0.9

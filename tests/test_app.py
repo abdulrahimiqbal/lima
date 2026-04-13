@@ -8,7 +8,7 @@ from app.main import create_app
 
 def test_campaign_lifecycle(tmp_path: Path) -> None:
     settings = Settings(
-        database_path=str(tmp_path / "test.db"),
+        memory_db_path=str(tmp_path / "memory.db"),
         worker_poll_seconds=999,
         manager_backend="rules",
         executor_backend="mock",

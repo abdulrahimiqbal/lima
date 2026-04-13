@@ -7,15 +7,15 @@ from typing import Any
 import requests
 
 from .config import Settings
-from .db import Database
 from .manager import get_self_improvement_prompt, get_policy
+from lima_memory import MemoryService
 
 logger = logging.getLogger(__name__)
 
 
 class SelfImprovementService:
-    def __init__(self, db: Database, settings: Settings) -> None:
-        self.db = db
+    def __init__(self, memory: MemoryService, settings: Settings) -> None:
+        self.memory = memory
         self.settings = settings
 
     def run_cycle(self) -> dict[str, Any] | None:
@@ -26,18 +26,20 @@ class SelfImprovementService:
         
         # 1. Load history
         # For simplicity, we'll take recent events from all campaigns
-        all_campaigns = self.db.list_campaigns()
+        all_campaigns = self.memory.list_campaign_nodes(limit=50)
         history = []
-        for campaign in all_campaigns[:3]: # Look at top 3 recent campaigns
-            events = self.db.list_events(campaign.id, limit=20)
+        for campaign in all_campaigns[:3]:  # Look at top 3 recent campaigns
+            events = self.memory.list_events(campaign.id, limit=20)
+            problem_packet = self.memory.get_manager_packet(campaign_id=campaign.id, limit=1)
+            statement = (problem_packet.problem.get("payload") or {}).get("statement", "")
             history.append({
                 "campaign_id": campaign.id,
-                "problem": campaign.problem_statement,
-                "recent_events": [e.model_dump() for e in events]
+                "problem": statement,
+                "recent_events": [e.asdict() for e in events]
             })
 
-        # 2. Get current policy (from DB or root file)
-        current_policy = self.db.get_latest_policy() or get_policy()
+        # 2. Get current policy (from memory store or root file)
+        current_policy = self.memory.get_latest_policy() or get_policy()
 
         # 3. Call LLM for proposal
         try:
@@ -76,7 +78,7 @@ class SelfImprovementService:
                 version_parts[-1] = str(int(version_parts[-1]) + 1)
                 new_policy["version"] = ".".join(version_parts)
                 
-                self.db.save_policy_snapshot(new_policy, validated_patch, reason)
+                self.memory.save_policy_snapshot(new_policy, validated_patch, reason)
                 logger.info(f"Policy updated to version {new_policy['version']}")
                 return {"status": "updated", "version": new_policy["version"], "patch": validated_patch}
             
