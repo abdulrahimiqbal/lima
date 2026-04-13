@@ -48,19 +48,16 @@ def apply_execution_result(
     if result.status == "proved":
         target.status = "proved"
         target.priority = 0.0
-        # If this was a lemma, maybe it helps parents?
-        # For now, we keep it simple as requested.
     elif result.status == "refuted":
+        # Only true counterexample should reach here
         target.status = "refuted"
         target.priority = 0.0
-        # "Counterexample can kill a branch"
-        # In a tree, if a node is refuted, its descendants (and potentially parents) are affected.
-        # For this simple repo, we'll mark all descendants as blocked/refuted if appropriate.
+        # Kill descendants
         def kill_descendants(parent_id: str):
             for n in updated.frontier:
                 if n.parent_id == parent_id and n.status not in {"proved", "refuted"}:
                     n.status = "blocked"
-                    n.evidence.append(f"Parent {parent_id} refuted.")
+                    n.evidence.append(f"Parent {parent_id} refuted by counterexample.")
                     kill_descendants(n.id)
         kill_descendants(target.id)
 
@@ -74,8 +71,49 @@ def apply_execution_result(
         target.failure_count += 1
         target.priority = max(0.2, target.priority - 0.02)
 
-    # Spawn nodes from result
-    if result.failure_type == "missing_lemma" and not result.spawned_nodes:
+    # Spawn nodes based on failure type
+    if result.failure_type == "evidence_only" and not result.spawned_nodes:
+        # After evidence_only, spawn formalization-oriented child
+        evidence_streak = updated.memory.evidence_streaks.get(target.id, 0)
+        if evidence_streak >= 2:
+            formalize_text = f"Formalize the invariant suggested by bounded evidence for: {target.text}"
+            if not _has_similar_open_child(updated.frontier, target.id, "lemma", formalize_text):
+                result.spawned_nodes.append(
+                    FrontierNode(
+                        text=formalize_text,
+                        status="open",
+                        priority=max(0.3, target.priority),
+                        parent_id=target.id,
+                        kind="lemma",
+                    )
+                )
+    elif result.failure_type == "formalization_failed" and not result.spawned_nodes:
+        # Spawn "encode cleanly" child
+        encode_text = f"State a clean formal Lean-compatible claim for: {target.text}"
+        if not _has_similar_open_child(updated.frontier, target.id, "lemma", encode_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=encode_text,
+                    status="open",
+                    priority=max(0.3, target.priority),
+                    parent_id=target.id,
+                    kind="lemma",
+                )
+            )
+    elif result.failure_type == "proof_failed" and not result.spawned_nodes:
+        # Spawn "identify missing lemma" child
+        lemma_text = f"Identify and prove a missing lemma needed for: {target.text}"
+        if not _has_similar_open_child(updated.frontier, target.id, "lemma", lemma_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=lemma_text,
+                    status="open",
+                    priority=max(0.3, target.priority),
+                    parent_id=target.id,
+                    kind="lemma",
+                )
+            )
+    elif result.failure_type == "missing_lemma" and not result.spawned_nodes:
         new_text = f"Missing lemma discovered while attacking: {target.text}"
         if not _has_similar_open_child(updated.frontier, target.id, "lemma", new_text):
             result.spawned_nodes.append(
@@ -111,17 +149,20 @@ def apply_execution_result(
                 )
             )
     elif result.failure_type == "timeout" and not result.spawned_nodes:
-        retry_text = f"Retry with a smaller bounded reduction step for: {target.text}"
-        if not _has_similar_open_child(updated.frontier, target.id, "lemma", retry_text):
-            result.spawned_nodes.append(
-                FrontierNode(
-                    text=retry_text,
-                    status="open",
-                    priority=max(0.2, target.priority - 0.08),
-                    parent_id=target.id,
-                    kind="lemma",
+        timeout_streak = updated.memory.timeout_streaks.get(target.id, 0)
+        if timeout_streak >= 2:
+            # Spawn smaller bounded reduction
+            retry_text = f"Prove a smaller bounded reduction lemma for: {target.text}"
+            if not _has_similar_open_child(updated.frontier, target.id, "lemma", retry_text):
+                result.spawned_nodes.append(
+                    FrontierNode(
+                        text=retry_text,
+                        status="open",
+                        priority=max(0.2, target.priority - 0.08),
+                        parent_id=target.id,
+                        kind="lemma",
+                    )
                 )
-            )
 
     existing_ids = {node.id for node in updated.frontier}
     for spawned in result.spawned_nodes:
@@ -130,14 +171,10 @@ def apply_execution_result(
             existing_ids.add(spawned.id)
 
     # Global solved check
-    # If the root node is proved/refuted, the campaign is over.
     if updated.frontier[0].status == "proved":
         updated.status = "solved"
     elif updated.frontier[0].status == "refuted":
         updated.status = "failed"
-    elif all(node.status in {"proved", "refuted", "blocked"} for node in updated.frontier):
-        # If everything is blocked/proved/refuted but root is not conclusive, wait for manual unblock or mark failed
-        pass
 
     return updated
 

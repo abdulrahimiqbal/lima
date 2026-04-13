@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 CampaignStatus = Literal["running", "paused", "solved", "failed"]
@@ -33,6 +33,63 @@ QuantifierProfile = Literal["bounded", "unbounded", "mixed"]
 ComplexityClass = Literal["micro", "small", "medium", "large", "unsafe"]
 RuntimeClass = Literal["fast", "moderate", "slow", "unknown"]
 SubmissionChannel = Literal["aristotle_proof", "computational_evidence", "reject"]
+GoalKind = Literal[
+    "lemma",
+    "theorem",
+    "sanity_check",
+    "finite_check",
+    "counterexample_search",
+    "reduction_check",
+]
+
+
+class FormalObligationSpec(BaseModel):
+    """Structured formal obligation model for theorem-search work."""
+
+    id: str | None = None
+    source_text: str
+    channel_hint: Literal["proof", "evidence", "auto"] = "auto"
+    goal_kind: GoalKind = "theorem"
+    theorem_name: str | None = None
+    imports: list[str] = Field(default_factory=list)
+    variables: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    statement: str | None = None
+    lean_declaration: str | None = None
+    bounded_domain_description: str | None = None
+    evidence_plan: dict[str, Any] = Field(default_factory=dict)
+    tactic_hints: list[str] = Field(default_factory=list)
+    requires_proof: bool = False
+    requires_evidence: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_string(cls, text: str) -> "FormalObligationSpec":
+        """Coerce old string obligations into structured form."""
+        return cls(
+            source_text=text,
+            channel_hint="auto",
+            goal_kind=_infer_goal_kind(text),
+            statement=None,
+            requires_proof=False,
+            requires_evidence=False,
+        )
+
+
+def _infer_goal_kind(text: str) -> GoalKind:
+    """Infer goal kind from text for backward compatibility."""
+    lowered = text.lower()
+    if "counterexample" in lowered or "cycle" in lowered:
+        return "counterexample_search"
+    if "finite" in lowered and "check" in lowered:
+        return "finite_check"
+    if "reduction" in lowered or "reduces" in lowered:
+        return "reduction_check"
+    if "sanity" in lowered or "base case" in lowered:
+        return "sanity_check"
+    if "lemma" in lowered:
+        return "lemma"
+    return "theorem"
 
 
 class CandidateAnswer(BaseModel):
@@ -86,6 +143,10 @@ class MemoryState(BaseModel):
     recent_failures: list[dict[str, str]] = Field(default_factory=list)
     retry_penalties: dict[str, int] = Field(default_factory=dict)
     policy_notes: list[str] = Field(default_factory=list)
+    # Evidence-to-proof escalation tracking
+    evidence_streaks: dict[str, int] = Field(default_factory=dict)
+    formalization_streaks: dict[str, int] = Field(default_factory=dict)
+    timeout_streaks: dict[str, int] = Field(default_factory=dict)
 
 
 class DecisionBounds(BaseModel):
@@ -108,13 +169,39 @@ class ManagerDecision(BaseModel):
     target_frontier_node: str
     world_family: WorldFamily
     bounded_claim: str
-    formal_obligations: list[str] = Field(default_factory=list)
+    formal_obligations: list[str | FormalObligationSpec] = Field(default_factory=list)
     expected_information_gain: str
     why_this_next: str
     update_rules: UpdateRules
     self_improvement_note: SelfImprovementNote
     obligation_hints: dict[str, Any] = Field(default_factory=dict)
     manager_backend: str = "rules"
+
+    @field_validator("formal_obligations", mode="before")
+    @classmethod
+    def coerce_obligations(cls, v: Any) -> list[str | FormalObligationSpec]:
+        """Coerce old string obligations to structured form for backward compatibility."""
+        if not isinstance(v, list):
+            return v
+        result = []
+        for item in v:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict):
+                result.append(FormalObligationSpec.model_validate(item))
+            else:
+                result.append(item)
+        return result
+
+    def get_normalized_obligations(self) -> list[FormalObligationSpec]:
+        """Get all obligations as structured specs."""
+        result = []
+        for ob in self.formal_obligations:
+            if isinstance(ob, str):
+                result.append(FormalObligationSpec.from_string(ob))
+            else:
+                result.append(ob)
+        return result
 
 
 class AnalyzedObligation(BaseModel):
@@ -138,6 +225,7 @@ class ApprovedExecutionPlan(BaseModel):
     rejected_reasons: dict[str, str] = Field(default_factory=dict)
     channel_used: Literal["aristotle_proof", "computational_evidence", "none"] = "none"
     max_proof_jobs_per_step: int = 1
+    budget_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExecutionResult(BaseModel):

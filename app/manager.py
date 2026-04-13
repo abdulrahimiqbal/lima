@@ -224,7 +224,10 @@ class Manager:
             f"- Do not mix broad finite computation jobs with proof jobs in one obligation.\n"
             f"- Avoid global unbounded 'for all integers' obligations as default moves.\n"
             f"- Emit <= {max_formal} total obligations and assume only {max_proof} proof obligation can run this step.\n"
-            f"- After timeout/scope failures, shrink scope instead of rebundling."
+            f"- After timeout/scope failures, shrink scope instead of rebundling.\n"
+            f"- When repeated bounded evidence has not improved the frontier, convert evidence patterns into formal lemmas.\n"
+            f"- After formalization failures, state claims in clean Lean-compatible form.\n"
+            f"- After proof failures, identify missing lemmas or split theorems into smaller pieces."
         )
 
     @staticmethod

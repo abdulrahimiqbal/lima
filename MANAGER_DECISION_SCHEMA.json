@@ -93,8 +93,34 @@
             "minItems": 1,
             "maxItems": 4,
             "items": {
-                "type": "string",
-                "minLength": 1
+                "oneOf": [
+                    {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": ["string", "null"]},
+                            "source_text": {"type": "string", "minLength": 1},
+                            "channel_hint": {"type": "string", "enum": ["proof", "evidence", "auto"]},
+                            "goal_kind": {"type": "string", "enum": ["lemma", "theorem", "sanity_check", "finite_check", "counterexample_search", "reduction_check"]},
+                            "theorem_name": {"type": ["string", "null"]},
+                            "imports": {"type": "array", "items": {"type": "string"}},
+                            "variables": {"type": "array", "items": {"type": "string"}},
+                            "assumptions": {"type": "array", "items": {"type": "string"}},
+                            "statement": {"type": ["string", "null"]},
+                            "lean_declaration": {"type": ["string", "null"]},
+                            "bounded_domain_description": {"type": ["string", "null"]},
+                            "evidence_plan": {"type": "object"},
+                            "tactic_hints": {"type": "array", "items": {"type": "string"}},
+                            "requires_proof": {"type": "boolean"},
+                            "requires_evidence": {"type": "boolean"},
+                            "metadata": {"type": "object"}
+                        },
+                        "required": ["source_text"]
+                    }
+                ]
             }
         },
         "expected_information_gain": {

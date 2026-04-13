@@ -2,6 +2,18 @@
 
 Lima Learning is an experimental research-loop service for conjecture exploration. A manager proposes bounded next moves, a submission gate constrains scope/channel risk, and an executor records outcomes (formal or evidence-only) into the `lima_memory` store. It is deployable and actively tested, but it is not a guaranteed theorem prover and should be treated as an evolving system.
 
+## Recent Changes (v1.1.0)
+
+The system has been transformed from a bounded evidence collector into a more credible theorem-search loop:
+
+- **Honest Formalization**: Natural-language obligations are no longer converted into fake `theorem ... : True := by` stubs. Obligations without formal statements fail honestly with `formalization_failed`.
+- **Fixed Verdict Semantics**: Aristotle `FAILED` status now produces `blocked/proof_failed` instead of `refuted`. Only explicit counterexample evidence produces mathematical refutation.
+- **Mixed Obligation Splitting**: Mixed proof+compute obligations are automatically split into separate proof and evidence obligations instead of being rejected.
+- **Evidence-to-Proof Escalation**: After repeated `evidence_only` results (default: 3 in a row), the system spawns proof-oriented formalization work.
+- **Adaptive Budgeting**: Proof and evidence budgets adapt based on recent failure patterns (evidence streaks, formalization failures, timeouts).
+- **Improved Frontier Spawning**: Different failure modes (`evidence_only`, `formalization_failed`, `proof_failed`, `timeout`) trigger targeted child nodes.
+- **Structured Obligations**: New `FormalObligationSpec` model supports explicit statements, imports, variables, assumptions, and Lean declarations. Backward compatible with string obligations.
+
 ## Maturity
 
 - Stage: prototype with production-style deployment plumbing.
@@ -11,10 +23,36 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
 ## Architecture Overview
 
 1. Manager (`app/manager.py`): creates `ManagerDecision` from context and policy.
-2. Submission gate (`app/obligation_analysis.py`): classifies obligations and enforces channel/complexity limits.
-3. Executor (`app/executor.py`): runs proof jobs through a proof adapter and bounded evidence jobs locally.
-4. Learning (`app/learner.py`, `app/frontier.py`): updates memory/frontier state from verdicts.
+2. Submission gate (`app/obligation_analysis.py`): classifies obligations, splits mixed obligations, enforces channel/complexity limits with adaptive budgeting.
+3. Executor (`app/executor.py`): runs proof jobs through a proof adapter and bounded evidence jobs locally. Fails honestly when formalization is incomplete.
+4. Learning (`app/learner.py`, `app/frontier.py`): updates memory/frontier state from verdicts, tracks evidence/formalization/timeout streaks, spawns targeted follow-up work.
 5. Canonical storage (`lima_memory/*`): campaigns, frontier nodes, events, candidate answers, policy snapshots.
+
+## Key Behavioral Changes
+
+### Formalization
+- Obligations must contain structured formal statements or valid Lean code to be sent to Aristotle.
+- Unstructured natural-language obligations return `blocked/formalization_failed` instead of generating meaningless theorems.
+- After formalization failures, the system spawns "state clean formal claim" child nodes.
+
+### Verdict Semantics
+- `proved`: Aristotle completed successfully without `sorry`.
+- `refuted`: Only when explicit counterexample evidence is found.
+- `blocked/proof_failed`: Aristotle could not find a proof (does NOT mean the theorem is false).
+- `blocked/formalization_failed`: Obligation lacks formal statement.
+- `blocked/partial_proof`: Aristotle completed but output contains `sorry`.
+- `inconclusive/evidence_only`: Bounded evidence collected, not a formal proof.
+- `inconclusive/timeout`: Proof attempt timed out.
+
+### Evidence-to-Proof Escalation
+- System tracks `evidence_streaks` per frontier node.
+- After 3 consecutive `evidence_only` results, spawns "formalize the invariant" child node.
+- Evidence budget is reduced after evidence streaks to reserve capacity for proof work.
+
+### Adaptive Budgeting
+- Proof budget reduced after repeated timeouts.
+- Evidence budget reduced after repeated evidence-only results.
+- Budget decisions recorded in plan metadata for transparency.
 
 ## Runtime Modes
 
@@ -66,6 +104,9 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
   - Manager decision loop (rules or LLM)
   - Memory persistence in SQLite/Postgres through `lima_memory`
   - Aristotle SDK path when enabled/configured
+  - Honest formalization failure detection
+  - Evidence-to-proof escalation logic
+  - Adaptive budgeting
 - Mocked / non-formal:
   - Mock proof adapter outcomes
   - Local bounded evidence channel (records evidence, not formal proof)
@@ -82,7 +123,7 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
 - Campaign reconstruction loads all persisted frontier nodes with stable IDs.
 - Candidate conjecture state is persisted as `current_candidate_answer` on campaign payload and surfaced in:
   - API campaign responses
-  - UI “Current candidate answer” panel
+  - UI "Current candidate answer" panel
 
 ## Prerequisites for Live Aristotle Mode
 
@@ -118,6 +159,7 @@ Set these GitHub repository secrets so the workflow can deploy non-interactively
 - A successful Aristotle run can still be incomplete if generated Lean contains unresolved `sorry`; this is mapped to `blocked/partial_proof`.
 - Evidence-only and mock paths are intentionally conservative and often return `inconclusive`.
 - Strategy quality depends heavily on policy and prompting.
+- Natural-language-to-Lean translation is not attempted; obligations must provide structured formal statements.
 
 ## Troubleshooting
 
@@ -133,6 +175,7 @@ Set these GitHub repository secrets so the workflow can deploy non-interactively
   - timeout
   - excessive scope
   - evidence-only execution path
+  - formalization_failed (obligation lacks formal statement)
   - mock mode (non-formal by design)
 - Inspect `last_execution_result.failure_type`, `rejected_reasons`, and recent events.
 
@@ -142,3 +185,10 @@ Set these GitHub repository secrets so the workflow can deploy non-interactively
   - `EXECUTOR_BACKEND=aristotle`
   - valid `ARISTOTLE_API_KEY`
   - successful strict probe to Aristotle reachability/auth path
+
+### Why are my obligations being rejected as "formalization_failed"?
+
+- The system now requires structured formal statements or valid Lean code.
+- Natural-language obligations without formal statements fail honestly.
+- Provide obligations with `statement`, `lean_declaration`, or use `FormalObligationSpec` with explicit formal content.
+- After formalization failures, the system will spawn child nodes to help state claims cleanly.

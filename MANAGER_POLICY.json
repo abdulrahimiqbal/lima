@@ -1,7 +1,7 @@
 {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "policy_name": "lima-manager-live-policy",
-    "description": "Mutable strategy layer for the LIMA manager. This can evolve without changing the core constitution.",
+    "description": "Mutable strategy layer for the LIMA manager. Updated to reduce evidence-only loops and encourage proof-oriented escalation.",
     "decision_biases": {
         "prefer_small_formal_moves": true,
         "prefer_high_information_gain": true,
@@ -15,7 +15,9 @@
         "force_claim_shrinking_after_timeout": true,
         "penalize_rebundled_large_jobs": true,
         "penalize_repeated_inconclusive_large_claims": true,
-        "penalize_retry_after_hard_refutation": true
+        "penalize_retry_after_hard_refutation": true,
+        "escalate_evidence_to_proof_after_streak": true,
+        "prefer_formalization_over_repeated_evidence": true
     },
     "complexity_limits": {
         "max_primary_claims_per_cycle": 1,
@@ -25,13 +27,16 @@
         "max_new_frontier_nodes_per_cycle": 3,
         "max_alternative_candidate_answers": 2,
         "max_retry_count_same_pattern": 2,
-        "default_claim_size": "small"
+        "default_claim_size": "small",
+        "evidence_only_streak_threshold": 3,
+        "formalization_failure_streak_threshold": 2,
+        "timeout_streak_threshold": 2
     },
     "world_family_priors": {
         "direct": 0.35,
         "bridge": 0.85,
         "reformulate": 0.65,
-        "finite_check": 0.75,
+        "finite_check": 0.55,
         "counterexample": 0.55,
         "local_to_global": 0.60,
         "invariant_lift": 0.45,
@@ -47,7 +52,10 @@
         "rebundled_large_jobs": 0.24,
         "poor_formalization": 0.08,
         "counterexample_found": 0.60,
-        "inconclusive_probe": 0.12
+        "inconclusive_probe": 0.12,
+        "evidence_only": 0.05,
+        "formalization_failed": 0.15,
+        "proof_failed": 0.10
     },
     "success_rewards": {
         "verified_local_lemma": 0.20,
@@ -59,11 +67,13 @@
     "blocked_state_rules": {
         "after_two_inconclusive_moves": "shrink_claim",
         "after_hard_refutation": "switch_world_family",
-        "after_formalization_failure": "retry_same_math_cleaner_encoding_once",
+        "after_formalization_failure": "state_clean_formal_claim",
         "after_missing_lemma": "create_child_frontier_node",
         "after_timeout": "shrink_claim_and_reduce_obligation_count",
         "after_excessive_scope": "split_channels_and_localize_claim",
-        "after_counterexample_found": "mark_branch_dead"
+        "after_counterexample_found": "mark_branch_dead",
+        "after_two_evidence_only_moves": "synthesize_lemma",
+        "after_proof_failed": "split_into_missing_lemma"
     },
     "confidence_rules": {
         "base_confidence_floor": 0.15,
@@ -78,12 +88,16 @@
         "default_style": "Be decisive, compact, and formalization-aware.",
         "when_confidence_low": "Prefer a move that efficiently breaks the leading hypothesis.",
         "when_confidence_high": "Prefer a move that formalizes the narrowest critical dependency.",
-        "when_blocked": "Shrink scope or switch worlds explicitly. Do not narrate around the blockage."
+        "when_blocked": "Shrink scope or switch worlds explicitly. Do not narrate around the blockage.",
+        "after_evidence_streak": "When repeated bounded evidence has not improved the frontier, convert the best evidence pattern into a formal local lemma.",
+        "after_formalization_failure": "State the claim in clean Lean-compatible form with explicit types and assumptions.",
+        "after_proof_failure": "Identify the missing lemma or split the theorem into smaller provable pieces."
     },
     "learned_patterns": [],
     "notes": [
         "This file is allowed to evolve over time.",
         "Do not treat this file as constitutional truth.",
-        "The manager may propose changes to this file through the self-improvement loop."
+        "The manager may propose changes to this file through the self-improvement loop.",
+        "Version 1.1.0: Added escalation rules for evidence-only loops and formalization failures."
     ]
 }
