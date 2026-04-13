@@ -141,6 +141,31 @@ class MemoryService:
         failure_count: int = 0,
         evidence: list[str] | None = None,
     ) -> str:
+        return self.upsert_frontier_node(
+            campaign_id=campaign_id,
+            frontier_text=frontier_text,
+            kind=kind,
+            parent_id=parent_id,
+            frontier_id=frontier_id,
+            status=status,
+            priority=priority,
+            failure_count=failure_count,
+            evidence=evidence,
+        )
+
+    def upsert_frontier_node(
+        self,
+        *,
+        campaign_id: str,
+        frontier_text: str,
+        kind: str = "claim",
+        parent_id: str | None = None,
+        frontier_id: str | None = None,
+        status: str = "open",
+        priority: float = 1.0,
+        failure_count: int = 0,
+        evidence: list[str] | None = None,
+    ) -> str:
         frontier_id = frontier_id or make_id("F")
         node = NodeRecord(
             id=frontier_id,

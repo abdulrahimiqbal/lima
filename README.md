@@ -1,80 +1,120 @@
-# Lima Learning - Production Ready
+# Lima Learning
 
-A production-ready LIMA (Language Interface for Mathematical Analysis) service designed for deployment on Railway and integration with the Aristotle formal verifier.
+Lima Learning is an experimental research-loop service for conjecture exploration. A manager proposes bounded next moves, a submission gate constrains scope/channel risk, and an executor records outcomes (formal or evidence-only) into the `lima_memory` store. It is deployable and actively tested, but it is not a guaranteed theorem prover and should be treated as an evolving system.
 
-## Core Features
+## Maturity
 
-- **Speculative Strategist Manager**: The manager (LLM) aggressively proposes candidate answers, worlds, and claims, reducing them into formal obligations.
-- **Obligation Analysis + Submission Gate**: Every obligation is analyzed for scope, runtime risk, and channel before execution.
-- **Separated Execution Channels**: Small proof jobs go to Aristotle; bounded finite checks run through a computational evidence channel.
-- **Runtime-Aware Learning**: Timeout, excessive-scope, and mixed-channel failures are recorded and used to force claim shrinking.
-- **Self-Improvement Loop**: A separate loop reviews campaign history and proposes policy patches to optimize strategy.
-- **Persistent State**: Full campaign state persistence (frontier, memory, candidate answers, policy history) using SQLite.
-- **Deployment Ready**: Configured for Railway with health checks, readiness probes, and connectivity smoke tests.
+- Stage: prototype with production-style deployment plumbing.
+- Stable for iterative experimentation.
+- Not a safety-certified or proof-complete system.
 
-## System Architecture
+## Architecture Overview
 
-The LIMA system operates as a closed loop between strategic speculation and formal verification:
+1. Manager (`app/manager.py`): creates `ManagerDecision` from context and policy.
+2. Submission gate (`app/obligation_analysis.py`): classifies obligations and enforces channel/complexity limits.
+3. Executor (`app/executor.py`): runs proof jobs through a proof adapter and bounded evidence jobs locally.
+4. Learning (`app/learner.py`, `app/frontier.py`): updates memory/frontier state from verdicts.
+5. Canonical storage (`lima_memory/*`): campaigns, frontier nodes, events, candidate answers, policy snapshots.
 
-1.  **Manager**: Uses `MANAGER_CONSTITUTION.md` and `MANAGER_POLICY.json` to speculate on the problem frontier.
-2.  **Submission Gate**: Analyzes obligations, rejects excessive scope, splits proof from bounded evidence jobs, and caps proof jobs per step.
-3.  **Executor**: Runs approved proof jobs via Aristotle and approved bounded checks via a local computational evidence path.
-4.  **Learner**: Updates campaign memory, confidence, and world-family priors based on execution results.
-5.  **Self-Improvement**: Periodically reviews history to patch the local policy.
+## Runtime Modes
 
-## Root Configuration Files
+- `rules + mock`
+  - `MANAGER_BACKEND=rules`
+  - `EXECUTOR_BACKEND=mock`
+  - No live Aristotle calls.
+  - Mock mode never returns fake formal `proved`/`refuted` outcomes.
+- `llm + mock`
+  - `MANAGER_BACKEND=llm`, `LLM_API_KEY` set
+  - `EXECUTOR_BACKEND=mock`
+  - Real planning, non-formal execution outcomes.
+- `llm + live Aristotle`
+  - `MANAGER_BACKEND=llm`, `LLM_API_KEY` set
+  - `EXECUTOR_BACKEND=aristotle` (or legacy alias `http`)
+  - `ARISTOTLE_API_KEY` required
+  - `aristotlelib` required (installed via `requirements.txt`)
 
--   `MANAGER_CONSTITUTION.md`: Fixed core ethos and decision rules.
--   `MANAGER_POLICY.json`: Mutable strategy layer (biases, rewards, penalties).
--   `MANAGER_DECISION_SCHEMA.json`: The formal contract for manager outputs.
--   `SELF_IMPROVEMENT_PROMPT.md`: Guidelines for the self-improvement loop.
+## Aristotle Integration (Actual)
 
-## Aristotle Integration
+- Integration path: `aristotlelib` SDK (not a direct repository-level HTTP verify adapter).
+- Executor uses a small proof adapter boundary:
+  - `MockProofAdapter`
+  - `AristotleSdkProofAdapter`
+- Strict live probe (`STRICT_LIVE_ARISTOTLE=true`) performs:
+  - SDK import + key presence check
+  - lightweight authenticated reachability check to `${ARISTOTLE_BASE_URL}/healthz` when `ARISTOTLE_BASE_URL` is set
+- Limitation: strict probe validates reachability/auth path, not a full theorem run.
 
-The Aristotle adapter is configured via environment variables and communicates over a compact job-based protocol.
+## Health vs Readiness
 
-### Adapter Contract (Inferred)
--   **Endpoint**: `POST ${ARISTOTLE_BASE_URL}/verify`
--   **Auth**: `Authorization: Bearer ${ARISTOTLE_API_KEY}`
--   **Payload**: Includes `campaign_id`, `jobs` (obligations), and problem context.
--   **Response**: Expected to return status (`proved`, `refuted`, `blocked`, `inconclusive`), notes, and optionally `spawned_nodes`.
+- `GET /healthz`
+  - Process-level heartbeat.
+- `GET /readyz`
+  - Memory store must be reachable.
+  - If `STRICT_LIVE_ARISTOTLE=true`:
+    - executor backend must be live Aristotle mode
+    - strict Aristotle probe must pass
 
-## Production Readiness Checklist
+## What Is Real vs Mocked
 
-1.  **Environment Variables**:
-    -   `MANAGER_BACKEND`: Set to `llm` for real reasoning.
-    -   `LLM_API_KEY`: Required for `llm` backend.
-    -   `EXECUTOR_BACKEND`: Set to `http` for real Aristotle verification.
-    -   `ARISTOTLE_BASE_URL`: Required for `http` executor.
-    -   `STRICT_LIVE_ARISTOTLE`: Set to `true` to fail readiness if Aristotle is down.
-    -   `ENABLE_SELF_IMPROVEMENT`: Set to `true` to activate the policy-patching loop.
-2.  **Deployment**:
-    -   Deploy to Railway.
-    -   Verify `/healthz` (Process OK).
-    -   Verify `/readyz` (DB + Config + Aristotle connectivity).
-    -   Check `/api/system/status` for detailed component states.
-    -   Run `POST /api/system/smoke/aristotle` to confirm verification connectivity.
+- Real:
+  - Manager decision loop (rules or LLM)
+  - Memory persistence in SQLite/Postgres through `lima_memory`
+  - Aristotle SDK path when enabled/configured
+- Mocked / non-formal:
+  - Mock proof adapter outcomes
+  - Local bounded evidence channel (records evidence, not formal proof)
+
+## Frontier and Candidate Answers
+
+- Canonical frontier state is persisted as `FrontierNode` entries in `lima_memory`.
+- Campaign reconstruction loads all persisted frontier nodes with stable IDs.
+- Candidate conjecture state is persisted as `current_candidate_answer` on campaign payload and surfaced in:
+  - API campaign responses
+  - UI “Current candidate answer” panel
+
+## Prerequisites for Live Aristotle Mode
+
+- `ARISTOTLE_API_KEY`
+- `EXECUTOR_BACKEND=aristotle`
+- Optional but recommended for strict readiness: `ARISTOTLE_BASE_URL`
+- Network egress to Aristotle service
 
 ## Local Development
 
 ```bash
-# Set up environment
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run tests
-pytest tests/
-
-# Start the service
+PYTHONPATH=. pytest -q
 uvicorn app.main:app --reload
 ```
 
-## Health and Monitoring
--   `GET /healthz`: Basic process check.
--   `GET /readyz`: Readiness check (DB + strict Aristotle sanity).
--   `GET /api/system/status`: Detailed system configuration and connectivity report.
--   `POST /api/system/smoke/aristotle`: Manual Aristotle smoke test.
+## Known Limitations
 
-## Self-Improvement
-When `ENABLE_SELF_IMPROVEMENT=true`, the system can periodically review recent campaign history and generate a JSON policy patch. This patch modifies allowed areas like `world_family_priors`, `failure_penalties`, and `confidence_rules`. Snapshots of all policies are persisted in the database.
+- A successful Aristotle run can still be incomplete if generated Lean contains unresolved `sorry`; this is mapped to `blocked/partial_proof`.
+- Evidence-only and mock paths are intentionally conservative and often return `inconclusive`.
+- Strategy quality depends heavily on policy and prompting.
+
+## Troubleshooting
+
+### Why did my conjecture disappear?
+
+- Check `GET /api/campaigns/{id}` and `GET /api/campaigns/{id}/memory-packet`.
+- Frontier IDs are stable and persisted; if UI looks stale, refresh selected campaign.
+- Candidate answers are shown separately from frontier nodes in the UI.
+
+### Why is the executor inconclusive?
+
+- Common causes:
+  - timeout
+  - excessive scope
+  - evidence-only execution path
+  - mock mode (non-formal by design)
+- Inspect `last_execution_result.failure_type`, `rejected_reasons`, and recent events.
+
+### Why does `/readyz` fail in strict live mode?
+
+- `STRICT_LIVE_ARISTOTLE=true` requires:
+  - `EXECUTOR_BACKEND=aristotle`
+  - valid `ARISTOTLE_API_KEY`
+  - successful strict probe to Aristotle reachability/auth path

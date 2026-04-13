@@ -77,6 +77,55 @@ def test_health_ready_status(tmp_path: Path):
     assert data["manager"]["backend"] == "rules"
 
 
+def test_readyz_strict_live_mode_fails_on_probe_error(tmp_path: Path, monkeypatch):
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        strict_live_aristotle=True,
+        executor_backend="aristotle",
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+    monkeypatch.setattr(
+        app.state.service.executor,
+        "check_connectivity",
+        lambda strict_live_probe=False: {"status": "disconnected", "error": "probe_failed"},
+    )
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    assert "strict probe failed" in response.json()["detail"]
+
+
+def test_readyz_strict_live_mode_passes_on_connected_probe(tmp_path: Path, monkeypatch):
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        strict_live_aristotle=True,
+        executor_backend="aristotle",
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+    monkeypatch.setattr(
+        app.state.service.executor,
+        "check_connectivity",
+        lambda strict_live_probe=False: {"status": "connected", "probe": "http_healthz"},
+    )
+    response = client.get("/readyz")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+def test_readyz_strict_live_mode_requires_live_backend(tmp_path: Path):
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        strict_live_aristotle=True,
+        executor_backend="mock",
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    assert "requires executor_backend=aristotle" in response.json()["detail"]
+
+
 def test_executor_http_path(tmp_path: Path):
     
     settings = Settings(
@@ -117,8 +166,11 @@ def test_executor_http_path(tmp_path: Path):
         campaign = client.get(f"/api/campaigns/{campaign_id}").json()
         mock_decide.return_value.target_frontier_node = campaign["frontier"][0]["id"]
         
-        with patch("app.executor.Executor._run_aristotle") as mock_aristotle:
-            mock_aristotle.return_value = ExecutionResult(
+        with patch.object(
+            app.state.service.executor._proof_adapter,
+            "run_proof",
+        ) as mock_run_proof:
+            mock_run_proof.return_value = ExecutionResult(
                 status="proved",
                 notes="Verified by Aristotle",
                 artifacts=["artifact-1"],
@@ -129,7 +181,7 @@ def test_executor_http_path(tmp_path: Path):
             assert response.status_code == 200
             data = response.json()
             assert data["last_execution_result"]["status"] == "proved"
-            assert mock_aristotle.called
+            assert mock_run_proof.called
 
 
 def test_self_improvement_logic(tmp_path: Path):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
@@ -24,6 +25,8 @@ from .schemas import (
 )
 from .self_improvement import SelfImprovementService
 
+logger = logging.getLogger(__name__)
+
 
 def _parse_dt(value: str) -> datetime:
     if value.endswith("Z"):
@@ -41,6 +44,10 @@ class CampaignService:
         else:
             self.memory_store = SqliteKnowledgeStore(settings.memory_db_path)
         self.memory = MemoryService(self.memory_store)
+        logger.info(
+            "CampaignService initialized with memory backend=%s",
+            "postgres" if settings.memory_database_url else "sqlite",
+        )
         self.manager.policy_provider = self.memory.get_latest_policy
         self.self_improvement = SelfImprovementService(self.memory, settings)
 
@@ -245,7 +252,7 @@ class CampaignService:
             "executor": {
                 "backend": self.settings.executor_backend,
                 "aristotle_url": self.settings.aristotle_base_url,
-                "connectivity": self.executor.check_connectivity(),
+                "connectivity": self.executor.check_connectivity(strict_live_probe=False),
             },
             "submission_gate": {
                 "enabled": True,
@@ -257,8 +264,8 @@ class CampaignService:
             "database": "ok",
         }
 
-    def smoke_aristotle(self) -> dict:
-        return self.executor.check_connectivity()
+    def smoke_aristotle(self, *, strict_live_probe: bool = False) -> dict:
+        return self.executor.check_connectivity(strict_live_probe=strict_live_probe)
 
     def run_self_improvement(self) -> dict:
         return self.self_improvement.run_cycle()
@@ -338,6 +345,12 @@ class CampaignService:
                 )
             )
         frontier_nodes.sort(key=lambda item: (item.parent_id is not None, -item.priority, item.id))
+        logger.debug(
+            "Loaded campaign=%s frontier_nodes=%d status_raw=%s",
+            campaign_id,
+            len(frontier_nodes),
+            payload.get("status", campaign_node.get("status")),
+        )
 
         memory_state = MemoryState.model_validate(payload.get("memory") or MemoryState().model_dump())
         candidate_answer_payload = payload.get("current_candidate_answer")
@@ -347,11 +360,13 @@ class CampaignService:
             else None
         )
 
+        status_raw = payload.get("status", campaign_node.get("status", "running"))
+        status_normalized = "running" if status_raw == "active" else status_raw
         return CampaignRecord(
             id=campaign_node["id"],
             title=campaign_node.get("title", ""),
             problem_statement=problem_statement,
-            status=payload.get("status", campaign_node.get("status", "running")),
+            status=status_normalized,
             auto_run=bool(payload.get("auto_run", True)),
             operator_notes=payload.get("operator_notes", []),
             frontier=frontier_nodes,
@@ -390,7 +405,7 @@ class CampaignService:
             },
         )
         for node in campaign.frontier:
-            self.memory.seed_frontier(
+            self.memory.upsert_frontier_node(
                 campaign_id=campaign.id,
                 frontier_id=node.id,
                 frontier_text=node.text,
@@ -401,3 +416,9 @@ class CampaignService:
                 failure_count=node.failure_count,
                 evidence=node.evidence,
             )
+        logger.debug(
+            "Persisted campaign=%s frontier_nodes=%d tick=%d",
+            campaign.id,
+            len(campaign.frontier),
+            campaign.tick_count,
+        )

@@ -162,6 +162,8 @@ Avoid repeating the same world after a hard blocker</textarea>
         <div class="panel">
           <h2>Selected campaign</h2>
           <div id="campaign-detail" class="muted">Select a campaign.</div>
+          <h3>Current candidate answer</h3>
+          <pre id="candidate-answer">No candidate answer yet.</pre>
           <div class="actions">
             <button class="secondary" onclick="stepCampaign()">Step once</button>
             <button class="secondary" onclick="pauseCampaign()">Pause</button>
@@ -280,6 +282,9 @@ Avoid repeating the same world after a hard blocker</textarea>
           <span class="pill">status: ${campaign.status}</span>
           <span class="pill">tick: ${campaign.tick_count}</span>
         `;
+        document.getElementById('candidate-answer').textContent = pretty(
+          campaign.current_candidate_answer || { message: 'No candidate answer yet' }
+        );
         document.getElementById('memory').textContent = pretty(campaign.memory);
         document.getElementById('decision').textContent = pretty(campaign.last_manager_decision || { message: 'No decision yet' });
         document.getElementById('result').textContent = pretty(campaign.last_execution_result || { message: 'No result yet' });

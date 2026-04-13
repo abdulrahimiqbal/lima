@@ -232,3 +232,81 @@ def test_context_is_memory_backed_only(tmp_path: Path, monkeypatch) -> None:
 
     stepped = service.step_campaign(campaign.id)
     assert stepped.tick_count == 1
+
+
+def test_frontier_and_candidate_persist_across_reload(tmp_path: Path, monkeypatch) -> None:
+    settings = _settings(tmp_path)
+    service = CampaignService(settings)
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Persistence regression",
+            problem_statement="Keep frontier stable across reload",
+            operator_notes=[],
+            auto_run=False,
+        )
+    )
+    root_id = campaign.frontier[0].id
+    decision = _decision(target_frontier_node=root_id)
+
+    monkeypatch.setattr(service.manager, "decide", lambda _context: decision)
+    monkeypatch.setattr(
+        "app.service.build_execution_plan",
+        lambda _decision, policy, memory: ApprovedExecutionPlan(
+            original_obligations=decision.formal_obligations,
+            approved_evidence_jobs=decision.formal_obligations[:1],
+            channel_used="computational_evidence",
+        ),
+    )
+    monkeypatch.setattr(
+        service.executor,
+        "run",
+        lambda _campaign, _decision, _plan: ExecutionResult(
+            status="blocked",
+            failure_type="missing_lemma",
+            notes="Need child lemma",
+            artifacts=["trace"],
+            spawned_nodes=[
+                {
+                    "id": "F-child-fixed",
+                    "text": "Child lemma node",
+                    "status": "open",
+                    "priority": 0.7,
+                    "parent_id": root_id,
+                    "kind": "lemma",
+                    "failure_count": 0,
+                    "evidence": [],
+                }
+            ],
+            executor_backend="evidence",
+        ),
+    )
+    stepped = service.step_campaign(campaign.id)
+    assert stepped.current_candidate_answer is not None
+    assert {node.id for node in stepped.frontier} >= {root_id, "F-child-fixed"}
+
+    # Reconstruct from storage with a fresh service instance.
+    reloaded_service = CampaignService(settings)
+    reloaded = reloaded_service.get_campaign(campaign.id)
+    assert reloaded.current_candidate_answer is not None
+    by_id = {node.id: node for node in reloaded.frontier}
+    assert root_id in by_id
+    assert "F-child-fixed" in by_id
+    assert by_id["F-child-fixed"].parent_id == root_id
+    assert by_id["F-child-fixed"].status == "open"
+
+    # Additional step should keep prior nodes and candidate answer visible.
+    monkeypatch.setattr(reloaded_service.manager, "decide", lambda _context: decision)
+    monkeypatch.setattr(
+        reloaded_service.executor,
+        "run",
+        lambda _campaign, _decision, _plan: ExecutionResult(
+            status="inconclusive",
+            failure_type="evidence_only",
+            notes="Second pass",
+            artifacts=[],
+            executor_backend="evidence",
+        ),
+    )
+    stepped_again = reloaded_service.step_campaign(campaign.id)
+    assert stepped_again.current_candidate_answer is not None
+    assert {node.id for node in stepped_again.frontier} >= {root_id, "F-child-fixed"}

@@ -39,3 +39,7 @@ def test_campaign_lifecycle(tmp_path: Path) -> None:
     context_response = client.get(f"/api/campaigns/{campaign_id}/manager-context")
     assert context_response.status_code == 200
     assert context_response.json()["problem"]["id"] == campaign_id
+
+    index_response = client.get("/")
+    assert index_response.status_code == 200
+    assert "Current candidate answer" in index_response.text

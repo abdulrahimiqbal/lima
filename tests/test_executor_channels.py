@@ -62,10 +62,10 @@ def test_proof_channel_path(monkeypatch) -> None:
         channel_used="aristotle_proof",
     )
 
-    def fake_run_aristotle(c, d, p):
+    def fake_run_aristotle(c, d, p, timeout_seconds):
         return ExecutionResult(status="proved", notes="ok", executor_backend="aristotle")
 
-    monkeypatch.setattr(executor, "_run_aristotle", fake_run_aristotle)
+    monkeypatch.setattr(executor._proof_adapter, "run_proof", fake_run_aristotle)
     result = executor.run(campaign, decision, plan)
     assert result.executor_backend == "aristotle"
     assert result.approved_jobs_count == 1
@@ -99,3 +99,29 @@ def test_timeout_classification_path() -> None:
         analyzed_map,
     )
     assert failure_type == "excessive_scope"
+
+
+def test_mock_proof_never_returns_proved_or_refuted() -> None:
+    executor = Executor(Settings(executor_backend="mock"))
+    campaign = _campaign()
+    decision = _decision()
+    plan = ApprovedExecutionPlan(
+        original_obligations=["Prove local lemma"],
+        approved_proof_jobs=["Prove local lemma"],
+        channel_used="aristotle_proof",
+    )
+    result = executor.run(campaign, decision, plan)
+    assert result.executor_backend == "mock"
+    assert result.status in {"inconclusive", "blocked"}
+    assert result.status not in {"proved", "refuted"}
+
+
+def test_executor_backend_alias_http_uses_aristotle_adapter() -> None:
+    executor = Executor(
+        Settings(
+            executor_backend="http",
+            aristotle_api_key="k",
+            aristotle_base_url="https://example.com",
+        )
+    )
+    assert executor._proof_adapter.name == "aristotle_sdk"

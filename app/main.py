@@ -48,12 +48,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.ping_store()
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Database not ready: {e}")
-        
-        # If strict live Aristotle is enabled, check connectivity
+
+        # If strict live Aristotle is enabled, require a truthful live probe.
         if settings.strict_live_aristotle:
-            status = service.system_status()
-            if status.get("executor", {}).get("connectivity", {}).get("status") != "connected":
-                raise HTTPException(status_code=503, detail="Aristotle not connected in strict mode")
+            if settings.executor_backend not in {"aristotle", "http"}:
+                raise HTTPException(
+                    status_code=503,
+                    detail="STRICT_LIVE_ARISTOTLE requires executor_backend=aristotle",
+                )
+            connectivity = service.smoke_aristotle(strict_live_probe=True)
+            if connectivity.get("status") != "connected":
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Aristotle strict probe failed: {connectivity}",
+                )
 
         return {"status": "ready"}
 
