@@ -59,3 +59,15 @@ CREATE TABLE IF NOT EXISTS kb_artifacts (
 
 CREATE INDEX IF NOT EXISTS idx_kb_artifacts_campaign_type
     ON kb_artifacts (campaign_id, artifact_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kb_policy_snapshots (
+    id TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
+    policy_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    patch_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_policy_snapshots_created
+    ON kb_policy_snapshots (created_at DESC);

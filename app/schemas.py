@@ -194,13 +194,17 @@ class CampaignRecord(BaseModel):
     executor_backend: str
 
 
-class EventRecord(BaseModel):
+class CampaignEventRecord(BaseModel):
     id: int
     campaign_id: str
     tick: int
     kind: str
     payload: dict[str, Any]
     created_at: datetime
+
+
+# Backward compatibility alias; prefer CampaignEventRecord in app code.
+EventRecord = CampaignEventRecord
 
 
 class InterfaceDescription(BaseModel):

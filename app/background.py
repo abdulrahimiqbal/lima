@@ -15,6 +15,8 @@ class CampaignWorker:
         self.poll_seconds = poll_seconds
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._failure_streak = 0
+        self._max_backoff_seconds = max(5 * poll_seconds, poll_seconds)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -32,6 +34,12 @@ class CampaignWorker:
         while not self._stop_event.is_set():
             try:
                 self.service.auto_step_once()
+                if self.service.settings.enable_self_improvement:
+                    self.service.run_self_improvement()
+                self._failure_streak = 0
             except Exception:
+                self._failure_streak += 1
                 logger.exception("CampaignWorker auto_step_once failed")
-            self._stop_event.wait(self.poll_seconds)
+            backoff_multiplier = min(2 ** self._failure_streak, max(1, self._max_backoff_seconds // self.poll_seconds))
+            wait_seconds = self.poll_seconds * backoff_multiplier
+            self._stop_event.wait(wait_seconds)

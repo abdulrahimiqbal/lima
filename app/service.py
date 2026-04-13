@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import threading
 from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
@@ -14,10 +15,10 @@ from .manager import Manager, get_policy
 from .obligation_analysis import build_execution_plan
 from .schemas import (
     CampaignCreate,
+    CampaignEventRecord,
     CampaignRecord,
     CampaignUpdateNotes,
     CandidateAnswer,
-    EventRecord,
     ExecutionResult,
     FrontierNode,
     ManagerContext,
@@ -50,6 +51,8 @@ class CampaignService:
         )
         self.manager.policy_provider = self.memory.get_latest_policy
         self.self_improvement = SelfImprovementService(self.memory, settings)
+        self._campaign_locks: dict[str, threading.Lock] = {}
+        self._campaign_locks_guard = threading.Lock()
 
     def create_campaign(self, payload: CampaignCreate) -> CampaignRecord:
         campaign_id = f"C-{uuid4().hex[:12]}"
@@ -93,115 +96,119 @@ class CampaignService:
 
     def list_campaigns(self) -> list[CampaignRecord]:
         nodes = self.memory.list_campaign_nodes(limit=200)
-        return [self._campaign_from_memory(node.id) for node in nodes]
+        return [self._campaign_header_from_node(node.asdict()) for node in nodes]
 
     def get_campaign(self, campaign_id: str) -> CampaignRecord:
         return self._campaign_from_memory(campaign_id)
 
     def update_notes(self, campaign_id: str, payload: CampaignUpdateNotes) -> CampaignRecord:
-        campaign = self.get_campaign(campaign_id)
-        campaign.operator_notes = payload.operator_notes
-        self._persist_campaign(campaign)
-        self.memory.add_event(
-            campaign_id=campaign_id,
-            tick=campaign.tick_count,
-            event_type="operator_notes_updated",
-            payload={"operator_notes": payload.operator_notes},
-        )
-        return self.get_campaign(campaign_id)
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            campaign.operator_notes = payload.operator_notes
+            self._persist_campaign(campaign)
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="operator_notes_updated",
+                payload={"operator_notes": payload.operator_notes},
+            )
+            return campaign
 
     def pause_campaign(self, campaign_id: str) -> CampaignRecord:
-        campaign = self.get_campaign(campaign_id)
-        campaign.status = "paused"
-        campaign.auto_run = False
-        self._persist_campaign(campaign)
-        self.memory.add_event(
-            campaign_id=campaign_id, tick=campaign.tick_count, event_type="campaign_paused", payload={}
-        )
-        return self.get_campaign(campaign_id)
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            campaign.status = "paused"
+            campaign.auto_run = False
+            self._persist_campaign(campaign)
+            self.memory.add_event(
+                campaign_id=campaign_id, tick=campaign.tick_count, event_type="campaign_paused", payload={}
+            )
+            return campaign
 
     def resume_campaign(self, campaign_id: str) -> CampaignRecord:
-        campaign = self.get_campaign(campaign_id)
-        if campaign.status not in {"solved", "failed"}:
-            campaign.status = "running"
-            campaign.auto_run = True
-        self._persist_campaign(campaign)
-        self.memory.add_event(
-            campaign_id=campaign_id, tick=campaign.tick_count, event_type="campaign_resumed", payload={}
-        )
-        return self.get_campaign(campaign_id)
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            if campaign.status not in {"solved", "failed"}:
+                campaign.status = "running"
+                campaign.auto_run = True
+            self._persist_campaign(campaign)
+            self.memory.add_event(
+                campaign_id=campaign_id, tick=campaign.tick_count, event_type="campaign_resumed", payload={}
+            )
+            return campaign
 
     def build_manager_context(self, campaign_id: str) -> ManagerContext:
         _ = self.get_campaign(campaign_id)
         return self._build_context_from_memory(campaign_id)
 
     def step_campaign(self, campaign_id: str) -> CampaignRecord:
-        campaign = self.get_campaign(campaign_id)
-        if campaign.status in {"solved", "failed", "paused"}:
-            return campaign
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            if campaign.status in {"solved", "failed", "paused"}:
+                return campaign
 
-        context = self._build_context_from_memory(campaign_id)
-        decision = self.manager.decide(context)
-        tick = campaign.tick_count + 1
-        self.memory.record_manager_decision(
-            campaign_id=campaign.id,
-            tick=tick,
-            decision=decision.model_dump(),
-        )
+            context = self._build_context_from_memory(campaign_id, campaign=campaign)
+            decision = self.manager.decide(context)
+            tick = campaign.tick_count + 1
 
-        active_policy = self.memory.get_latest_policy() or get_policy()
-        plan = build_execution_plan(decision, policy=active_policy, memory=campaign.memory)
-        self.memory.add_event(
-            campaign_id=campaign_id,
-            tick=tick,
-            event_type="obligation_analysis",
-            payload=plan.model_dump(),
-        )
-
-        if not plan.approved_proof_jobs and not plan.approved_evidence_jobs:
-            failure = "excessive_scope"
-            if any(reason == "mixed_channels" for reason in plan.rejected_reasons.values()):
-                failure = "mixed_channels"
-            result = ExecutionResult(
-                status="blocked",
-                failure_type=failure,
-                notes="Submission gate rejected all obligations. Shrink claim or split channels.",
-                executor_backend="gate",
-                original_obligations=plan.original_obligations,
-                analyzed_obligations=[a.model_dump() for a in plan.analyzed_obligations],
-                approved_proof_jobs=[],
-                approved_evidence_jobs=[],
-                rejected_obligations=plan.rejected_obligations,
-                approved_jobs_count=0,
-                rejected_jobs_count=len(plan.rejected_obligations),
-                channel_used="none",
-                raw={"rejected_reasons": plan.rejected_reasons},
+            active_policy = self.memory.get_latest_policy() or get_policy()
+            plan = build_execution_plan(decision, policy=active_policy, memory=campaign.memory)
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=tick,
+                event_type="obligation_analysis",
+                payload=plan.model_dump(),
             )
-        else:
-            result = self.executor.run(campaign, decision, plan)
 
-        updated = campaign.model_copy(deep=True)
-        updated.tick_count = tick
-        updated.last_manager_context = context.model_dump()
-        updated.last_manager_decision = decision.model_dump()
-        updated.last_execution_result = result.model_dump()
-        updated.manager_backend = decision.manager_backend
-        updated.executor_backend = result.executor_backend
-        updated.current_candidate_answer = decision.candidate_answer
-        updated = update_memory(updated, decision, result, policy=active_policy)
-        updated = apply_execution_result(updated, decision, result)
+            if not plan.approved_proof_jobs and not plan.approved_evidence_jobs:
+                failure = "excessive_scope"
+                if any(reason == "mixed_channels" for reason in plan.rejected_reasons.values()):
+                    failure = "mixed_channels"
+                result = ExecutionResult(
+                    status="blocked",
+                    failure_type=failure,
+                    notes="Submission gate rejected all obligations. Shrink claim or split channels.",
+                    executor_backend="gate",
+                    original_obligations=plan.original_obligations,
+                    analyzed_obligations=[a.model_dump() for a in plan.analyzed_obligations],
+                    approved_proof_jobs=[],
+                    approved_evidence_jobs=[],
+                    rejected_obligations=plan.rejected_obligations,
+                    approved_jobs_count=0,
+                    rejected_jobs_count=len(plan.rejected_obligations),
+                    channel_used="none",
+                    raw={"rejected_reasons": plan.rejected_reasons},
+                )
+            else:
+                self.memory.record_manager_decision(
+                    campaign_id=campaign.id,
+                    tick=tick,
+                    decision=decision.model_dump(),
+                )
+                result = self.executor.run(campaign, decision, plan)
 
-        raw_payload = result.raw if isinstance(result.raw, dict) else {}
-        self.memory.record_execution_result(
-            campaign_id=campaign.id,
-            tick=tick,
-            decision=decision.model_dump(),
-            result=updated.last_execution_result or result.model_dump(),
-            raw_request=raw_payload.get("aristotle_request"),
-            raw_response=raw_payload.get("aristotle_response"),
-        )
-        self._persist_campaign(updated)
-        return self.get_campaign(campaign_id)
+            updated = campaign.model_copy(deep=True)
+            updated.tick_count = tick
+            updated.last_manager_context = context.model_dump()
+            updated.last_manager_decision = decision.model_dump()
+            updated.manager_backend = decision.manager_backend
+            updated.executor_backend = result.executor_backend
+            updated.current_candidate_answer = decision.candidate_answer
+            updated = update_memory(updated, decision, result, policy=active_policy)
+            updated = apply_execution_result(updated, decision, result)
+            updated.last_execution_result = result.model_dump()
+
+            raw_payload = result.raw if isinstance(result.raw, dict) else {}
+            self.memory.record_execution_result(
+                campaign_id=campaign.id,
+                tick=tick,
+                decision=decision.model_dump(),
+                result=updated.last_execution_result,
+                raw_request=raw_payload.get("aristotle_request"),
+                raw_response=raw_payload.get("aristotle_response"),
+            )
+            self._persist_campaign(updated)
+            return updated
 
     def auto_step_once(self) -> None:
         campaigns = self.list_campaigns()
@@ -213,13 +220,13 @@ class CampaignService:
                 self.step_campaign(campaign.id)
                 stepped += 1
 
-    def list_events(self, campaign_id: str, limit: int = 50) -> list[EventRecord]:
+    def list_events(self, campaign_id: str, limit: int = 50) -> list[CampaignEventRecord]:
         _ = self.get_campaign(campaign_id)
         events = self.memory.list_events(campaign_id, limit=limit)
-        results: list[EventRecord] = []
+        results: list[CampaignEventRecord] = []
         for idx, event in enumerate(events, start=1):
             results.append(
-                EventRecord(
+                CampaignEventRecord(
                     id=idx,
                     campaign_id=event.campaign_id,
                     tick=event.tick,
@@ -273,23 +280,24 @@ class CampaignService:
     def ping_store(self) -> None:
         _ = self.memory.list_campaign_nodes(limit=1)
 
-    def _build_context_from_memory(self, campaign_id: str) -> ManagerContext:
-        campaign = self.get_campaign(campaign_id)
+    def _build_context_from_memory(
+        self, campaign_id: str, *, campaign: CampaignRecord | None = None
+    ) -> ManagerContext:
+        campaign = campaign or self.get_campaign(campaign_id)
         packet = self.memory.get_manager_packet(campaign_id=campaign.id, limit=100)
 
         frontier_nodes = []
-        for item in packet.active_frontier:
-            payload = item.get("payload") or {}
+        for node in campaign.frontier:
             frontier_nodes.append(
                 {
-                    "id": item["id"],
-                    "text": item.get("summary") or item.get("title", ""),
-                    "status": item.get("status", "open"),
-                    "priority": payload.get("priority", 1.0),
-                    "parent_id": payload.get("parent_id"),
-                    "kind": payload.get("kind", "claim"),
-                    "failure_count": payload.get("failure_count", 0),
-                    "evidence": payload.get("evidence", []),
+                    "id": node.id,
+                    "text": node.text,
+                    "status": node.status,
+                    "priority": node.priority,
+                    "parent_id": node.parent_id,
+                    "kind": node.kind,
+                    "failure_count": node.failure_count,
+                    "evidence": node.evidence,
                 }
             )
 
@@ -323,28 +331,24 @@ class CampaignService:
         packet = self.memory.get_manager_packet(campaign_id=campaign_id, limit=500)
         if not packet.campaign:
             raise KeyError(f"Campaign not found: {campaign_id}")
-        campaign_node = packet.campaign
-        payload = campaign_node.get("payload") or {}
-        problem_payload = packet.problem.get("payload") if packet.problem else {}
-        problem_statement = payload.get("problem_statement") or problem_payload.get("statement") or ""
+        payload = packet.campaign.get("payload") or {}
+        if not payload.get("problem_statement") and packet.problem:
+            problem_payload = packet.problem.get("payload") or {}
+            payload["problem_statement"] = problem_payload.get("statement", "")
+        return self._campaign_from_node(campaign_id, payload, packet.campaign)
 
-        frontier_nodes: list[FrontierNode] = []
-        frontier = self.memory.list_frontier_nodes(campaign_id, limit=500)
-        for node in frontier:
-            fp = node.payload or {}
-            frontier_nodes.append(
-                FrontierNode(
-                    id=node.id,
-                    text=node.summary or node.title,
-                    status=node.status,
-                    priority=float(fp.get("priority", 1.0)),
-                    parent_id=fp.get("parent_id"),
-                    kind=fp.get("kind", "claim"),
-                    failure_count=int(fp.get("failure_count", 0)),
-                    evidence=list(fp.get("evidence", [])),
-                )
-            )
-        frontier_nodes.sort(key=lambda item: (item.parent_id is not None, -item.priority, item.id))
+    def _campaign_from_node(
+        self,
+        campaign_id: str,
+        payload: dict,
+        campaign_node: dict,
+    ) -> CampaignRecord:
+        if not campaign_node:
+            raise KeyError(f"Campaign not found: {campaign_id}")
+
+        problem_statement = payload.get("problem_statement") or ""
+
+        frontier_nodes = self._load_frontier_nodes(campaign_id)
         logger.debug(
             "Loaded campaign=%s frontier_nodes=%d status_raw=%s",
             campaign_id,
@@ -382,6 +386,54 @@ class CampaignService:
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
         )
 
+    def _campaign_header_from_node(self, campaign_node: dict) -> CampaignRecord:
+        payload = campaign_node.get("payload") or {}
+        status_raw = payload.get("status", campaign_node.get("status", "running"))
+        status_normalized = "running" if status_raw == "active" else status_raw
+        return CampaignRecord(
+            id=campaign_node["id"],
+            title=campaign_node.get("title", ""),
+            problem_statement=payload.get("problem_statement", ""),
+            status=status_normalized,
+            auto_run=bool(payload.get("auto_run", True)),
+            operator_notes=payload.get("operator_notes", []),
+            frontier=[],
+            memory=MemoryState.model_validate(payload.get("memory") or MemoryState().model_dump()),
+            current_candidate_answer=(
+                CandidateAnswer.model_validate(payload["current_candidate_answer"])
+                if payload.get("current_candidate_answer")
+                else None
+            ),
+            tick_count=int(payload.get("tick_count", 0)),
+            created_at=_parse_dt(campaign_node["created_at"]),
+            updated_at=_parse_dt(campaign_node["updated_at"]),
+            last_manager_context=payload.get("last_manager_context"),
+            last_manager_decision=payload.get("last_manager_decision"),
+            last_execution_result=payload.get("last_execution_result"),
+            manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
+            executor_backend=payload.get("executor_backend", self.settings.executor_backend),
+        )
+
+    def _load_frontier_nodes(self, campaign_id: str) -> list[FrontierNode]:
+        frontier_nodes: list[FrontierNode] = []
+        frontier = self.memory.list_frontier_nodes(campaign_id, limit=500)
+        for node in frontier:
+            fp = node.payload or {}
+            frontier_nodes.append(
+                FrontierNode(
+                    id=node.id,
+                    text=node.summary or node.title,
+                    status=node.status,
+                    priority=float(fp.get("priority", 1.0)),
+                    parent_id=fp.get("parent_id"),
+                    kind=fp.get("kind", "claim"),
+                    failure_count=int(fp.get("failure_count", 0)),
+                    evidence=list(fp.get("evidence", [])),
+                )
+            )
+        frontier_nodes.sort(key=lambda item: (item.parent_id is not None, -item.priority, item.id))
+        return frontier_nodes
+
     def _persist_campaign(self, campaign: CampaignRecord) -> None:
         self.memory.update_campaign_payload(
             campaign.id,
@@ -404,21 +456,21 @@ class CampaignService:
                 "status": campaign.status,
             },
         )
-        for node in campaign.frontier:
-            self.memory.upsert_frontier_node(
-                campaign_id=campaign.id,
-                frontier_id=node.id,
-                frontier_text=node.text,
-                kind=node.kind,
-                parent_id=node.parent_id,
-                status=node.status,
-                priority=node.priority,
-                failure_count=node.failure_count,
-                evidence=node.evidence,
-            )
+        self.memory.upsert_frontier_nodes(
+            campaign_id=campaign.id,
+            nodes=[node.model_dump() for node in campaign.frontier],
+        )
         logger.debug(
             "Persisted campaign=%s frontier_nodes=%d tick=%d",
             campaign.id,
             len(campaign.frontier),
             campaign.tick_count,
         )
+
+    def _campaign_lock(self, campaign_id: str) -> threading.Lock:
+        with self._campaign_locks_guard:
+            lock = self._campaign_locks.get(campaign_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._campaign_locks[campaign_id] = lock
+            return lock

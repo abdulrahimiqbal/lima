@@ -208,8 +208,15 @@ Avoid repeating the same world after a hard blocker</textarea>
       let selectedCampaignId = null;
 
       async function api(path, options = {}) {
+        const csrfToken = document.cookie
+          .split('; ')
+          .find((row) => row.startsWith('csrf_token='))
+          ?.split('=')[1];
         const response = await fetch(path, {
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrfToken ? { "X-CSRF-Token": decodeURIComponent(csrfToken) } : {}),
+          },
           ...options,
         });
         if (!response.ok) {

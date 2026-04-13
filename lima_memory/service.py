@@ -10,13 +10,11 @@ from .models import (
     EventRecord,
     ManagerPacket,
     NodeRecord,
+    PolicySnapshotRecord,
     make_id,
 )
 from .projection import project_campaign_summary
 from .store import KnowledgeStore
-
-POLICY_CAMPAIGN_ID = "__system_policy__"
-
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -167,42 +165,73 @@ class MemoryService:
         evidence: list[str] | None = None,
     ) -> str:
         frontier_id = frontier_id or make_id("F")
-        node = NodeRecord(
-            id=frontier_id,
+        self.upsert_frontier_nodes(
             campaign_id=campaign_id,
-            node_type="FrontierNode",
-            title=frontier_text[:80],
-            summary=frontier_text,
-            status=status,
-            payload={
-                "kind": kind,
-                "parent_id": parent_id,
-                "priority": priority,
-                "failure_count": failure_count,
-                "evidence": evidence or [],
-            },
+            nodes=[
+                {
+                    "id": frontier_id,
+                    "text": frontier_text,
+                    "kind": kind,
+                    "parent_id": parent_id,
+                    "status": status,
+                    "priority": priority,
+                    "failure_count": failure_count,
+                    "evidence": evidence or [],
+                }
+            ],
         )
-        self.store.upsert_node(node)
-        self.store.add_edge(
-            EdgeRecord(
-                id=make_id("E"),
-                campaign_id=campaign_id,
-                src_id=campaign_id,
-                edge_type="HAS_FRONTIER",
-                dst_id=frontier_id,
+        return frontier_id
+
+    def upsert_frontier_nodes(self, *, campaign_id: str, nodes: list[dict[str, Any]]) -> list[str]:
+        if not nodes:
+            return []
+        frontier_ids: list[str] = []
+        node_records: list[NodeRecord] = []
+        edge_records: list[EdgeRecord] = []
+        for item in nodes:
+            frontier_id = item.get("id") or make_id("F")
+            parent_id = item.get("parent_id")
+            frontier_text = item.get("text", "")
+            frontier_ids.append(frontier_id)
+            node_records.append(
+                NodeRecord(
+                    id=frontier_id,
+                    campaign_id=campaign_id,
+                    node_type="FrontierNode",
+                    title=frontier_text[:80],
+                    summary=frontier_text,
+                    status=item.get("status", "open"),
+                    payload={
+                        "kind": item.get("kind", "claim"),
+                        "parent_id": parent_id,
+                        "priority": item.get("priority", 1.0),
+                        "failure_count": item.get("failure_count", 0),
+                        "evidence": item.get("evidence", []),
+                    },
+                )
             )
-        )
-        if parent_id:
-            self.store.add_edge(
+            edge_records.append(
                 EdgeRecord(
                     id=make_id("E"),
                     campaign_id=campaign_id,
-                    src_id=parent_id,
-                    edge_type="SPAWNS",
+                    src_id=campaign_id,
+                    edge_type="HAS_FRONTIER",
                     dst_id=frontier_id,
                 )
             )
-        return frontier_id
+            if parent_id:
+                edge_records.append(
+                    EdgeRecord(
+                        id=make_id("E"),
+                        campaign_id=campaign_id,
+                        src_id=parent_id,
+                        edge_type="SPAWNS",
+                        dst_id=frontier_id,
+                    )
+                )
+        self.store.upsert_nodes(node_records)
+        self.store.add_edges(edge_records)
+        return frontier_ids
 
     def record_manager_decision(
         self, *, campaign_id: str, tick: int, decision: dict[str, Any]
@@ -491,47 +520,37 @@ class MemoryService:
         patch: dict[str, Any] | None = None,
         reason: str | None = None,
     ) -> None:
-        self.store.add_artifact(
-            ArtifactRecord(
-                id=make_id("AR"),
-                campaign_id=POLICY_CAMPAIGN_ID,
-                artifact_type="note",
-                title=f"policy-{policy.get('version', 'unknown')}",
-                content_text=json.dumps(policy),
-                metadata={
-                    "kind": "policy_snapshot",
-                    "version": policy.get("version", "unknown"),
-                    "patch": patch or {},
-                    "reason": reason,
-                    "created_at": _utc_now_iso(),
-                },
+        self.store.add_policy_snapshot(
+            PolicySnapshotRecord(
+                id=make_id("PS"),
+                version=policy.get("version", "unknown"),
+                policy_json=json.dumps(policy),
+                patch_json=json.dumps(patch or {}),
+                reason=reason,
+                created_at=_utc_now_iso(),
             )
         )
 
     def get_latest_policy(self) -> dict[str, Any] | None:
-        notes = self.store.list_artifacts(POLICY_CAMPAIGN_ID, artifact_type="note", limit=50)
-        for note in notes:
-            if note.metadata.get("kind") != "policy_snapshot":
-                continue
+        snapshots = self.store.list_policy_snapshots(limit=50)
+        for snapshot in snapshots:
             try:
-                return json.loads(note.content_text or "{}")
+                return json.loads(snapshot.policy_json or "{}")
             except json.JSONDecodeError:
                 continue
         return None
 
     def list_policy_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        notes = self.store.list_artifacts(POLICY_CAMPAIGN_ID, artifact_type="note", limit=max(limit * 2, 20))
+        notes = self.store.list_policy_snapshots(limit=max(limit * 2, 20))
         history: list[dict[str, Any]] = []
         for note in notes:
-            if note.metadata.get("kind") != "policy_snapshot":
-                continue
             history.append(
                 {
-                    "version": note.metadata.get("version"),
-                    "policy_json": note.content_text,
-                    "patch_json": json.dumps(note.metadata.get("patch", {})),
-                    "reason": note.metadata.get("reason"),
-                    "created_at": note.metadata.get("created_at"),
+                    "version": note.version,
+                    "policy_json": note.policy_json,
+                    "patch_json": note.patch_json,
+                    "reason": note.reason,
+                    "created_at": note.created_at,
                 }
             )
             if len(history) >= limit:
@@ -597,12 +616,12 @@ class MemoryService:
         )
         return {"paper_id": paper_id, "paper_unit_id": unit_id}
 
-    def get_manager_packet(self, *, campaign_id: str, limit: int = 5) -> ManagerPacket:
+    def get_manager_packet(self, *, campaign_id: str, limit: int = 100) -> ManagerPacket:
         campaign = self.store.list_nodes(campaign_id, node_type="Campaign", limit=1)
         problem = self.store.list_nodes(campaign_id, node_type="Problem", limit=1)
         answers = self.store.list_nodes(campaign_id, node_type="CandidateAnswer", limit=1)
         frontier_all = self.store.list_nodes(campaign_id, node_type="FrontierNode", limit=500)
-        frontier = [n for n in frontier_all if n.status in {"open", "active", "blocked"}][:limit]
+        frontier = frontier_all[:limit]
         worlds = self.store.list_nodes(campaign_id, node_type="WorldModel", limit=limit)
         claims = self.store.list_nodes(campaign_id, node_type="Claim", limit=limit)
         results = self.store.list_nodes(campaign_id, node_type="ExecutionResult", limit=limit)

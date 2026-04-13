@@ -96,6 +96,17 @@ PYTHONPATH=. pytest -q
 uvicorn app.main:app --reload
 ```
 
+## GitHub -> Railway Auto Deploy
+
+Pushes to `main` deploy automatically through `.github/workflows/deploy-railway.yml`.
+
+Set these GitHub repository secrets so the workflow can deploy non-interactively:
+
+- `RAILWAY_TOKEN`: project token from Railway
+- `RAILWAY_PROJECT_ID`: target Railway project ID
+- `RAILWAY_ENVIRONMENT_ID`: target Railway environment ID (for example, production)
+- `RAILWAY_SERVICE_ID`: target Railway service ID
+
 ## Known Limitations
 
 - A successful Aristotle run can still be incomplete if generated Lean contains unresolved `sorry`; this is mapped to `blocked/partial_proof`.

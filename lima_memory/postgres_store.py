@@ -2,24 +2,40 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from contextlib import contextmanager
+from typing import Iterator
 
-from .models import ArtifactRecord, EdgeRecord, EventRecord, NodeRecord
+from .models import ArtifactRecord, EdgeRecord, EventRecord, NodeRecord, PolicySnapshotRecord
 from .store import KnowledgeStore
 
 
 class PostgresKnowledgeStore(KnowledgeStore):
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
+        self._pool = None
 
-    def connect(self):
+    def _create_pool(self):
         try:
-            import psycopg
+            from psycopg_pool import ConnectionPool
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError(
+                "psycopg_pool is required for Postgres memory store; install psycopg-pool."
+            ) from exc
+        return ConnectionPool(conninfo=self.database_url, min_size=1, max_size=10, open=True)
+
+    @contextmanager
+    def connect(self) -> Iterator:
+        try:
             from psycopg.rows import dict_row
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "psycopg is required for Postgres memory store; install psycopg[binary]."
             ) from exc
-        return psycopg.connect(self.database_url, row_factory=dict_row)
+        if self._pool is None:
+            self._pool = self._create_pool()
+        with self._pool.connection() as conn:
+            conn.row_factory = dict_row
+            yield conn
 
     def init(self) -> None:
         schema_path = Path(__file__).with_name("postgres_schema.sql")
@@ -30,9 +46,14 @@ class PostgresKnowledgeStore(KnowledgeStore):
             conn.commit()
 
     def upsert_node(self, node: NodeRecord) -> None:
+        self.upsert_nodes([node])
+
+    def upsert_nodes(self, nodes: list[NodeRecord]) -> None:
+        if not nodes:
+            return
         with self.connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.executemany(
                     """
                     INSERT INTO kb_nodes (
                         id, campaign_id, node_type, title, summary, status,
@@ -46,18 +67,21 @@ class PostgresKnowledgeStore(KnowledgeStore):
                         payload_json = EXCLUDED.payload_json,
                         updated_at = EXCLUDED.updated_at
                     """,
-                    (
-                        node.id,
-                        node.campaign_id,
-                        node.node_type,
-                        node.title,
-                        node.summary,
-                        node.status,
-                        node.confidence,
-                        json.dumps(node.payload),
-                        node.created_at,
-                        node.updated_at,
-                    ),
+                    [
+                        (
+                            node.id,
+                            node.campaign_id,
+                            node.node_type,
+                            node.title,
+                            node.summary,
+                            node.status,
+                            node.confidence,
+                            json.dumps(node.payload),
+                            node.created_at,
+                            node.updated_at,
+                        )
+                        for node in nodes
+                    ],
                 )
             conn.commit()
 
@@ -77,9 +101,14 @@ class PostgresKnowledgeStore(KnowledgeStore):
         return [self._row_to_node(row) for row in rows]
 
     def add_edge(self, edge: EdgeRecord) -> None:
+        self.add_edges([edge])
+
+    def add_edges(self, edges: list[EdgeRecord]) -> None:
+        if not edges:
+            return
         with self.connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.executemany(
                     """
                     INSERT INTO kb_edges (
                         id, campaign_id, src_id, edge_type, dst_id, weight,
@@ -94,16 +123,19 @@ class PostgresKnowledgeStore(KnowledgeStore):
                         payload_json = EXCLUDED.payload_json,
                         created_at = EXCLUDED.created_at
                     """,
-                    (
-                        edge.id,
-                        edge.campaign_id,
-                        edge.src_id,
-                        edge.edge_type,
-                        edge.dst_id,
-                        edge.weight,
-                        json.dumps(edge.payload),
-                        edge.created_at,
-                    ),
+                    [
+                        (
+                            edge.id,
+                            edge.campaign_id,
+                            edge.src_id,
+                            edge.edge_type,
+                            edge.dst_id,
+                            edge.weight,
+                            json.dumps(edge.payload),
+                            edge.created_at,
+                        )
+                        for edge in edges
+                    ],
                 )
             conn.commit()
 
@@ -257,6 +289,46 @@ class PostgresKnowledgeStore(KnowledgeStore):
                 rows = cur.fetchall()
         return [self._row_to_artifact(row) for row in rows]
 
+    def add_policy_snapshot(self, snapshot: PolicySnapshotRecord) -> None:
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO kb_policy_snapshots (
+                        id, version, policy_json, patch_json, reason, created_at
+                    ) VALUES (%s, %s, %s::jsonb, %s::jsonb, %s, %s::timestamptz)
+                    ON CONFLICT(id) DO UPDATE SET
+                        version = EXCLUDED.version,
+                        policy_json = EXCLUDED.policy_json,
+                        patch_json = EXCLUDED.patch_json,
+                        reason = EXCLUDED.reason,
+                        created_at = EXCLUDED.created_at
+                    """,
+                    (
+                        snapshot.id,
+                        snapshot.version,
+                        snapshot.policy_json,
+                        snapshot.patch_json,
+                        snapshot.reason,
+                        snapshot.created_at,
+                    ),
+                )
+            conn.commit()
+
+    def list_policy_snapshots(self, *, limit: int = 20) -> list[PolicySnapshotRecord]:
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT * FROM kb_policy_snapshots
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+        return [self._row_to_policy_snapshot(row) for row in rows]
+
     @staticmethod
     def _row_to_node(row: dict) -> NodeRecord:
         return NodeRecord(
@@ -306,5 +378,16 @@ class PostgresKnowledgeStore(KnowledgeStore):
             uri=row["uri"],
             content_text=row["content_text"],
             metadata=row["metadata_json"] or {},
+            created_at=row["created_at"].isoformat(),
+        )
+
+    @staticmethod
+    def _row_to_policy_snapshot(row: dict) -> PolicySnapshotRecord:
+        return PolicySnapshotRecord(
+            id=row["id"],
+            version=row["version"],
+            policy_json=json.dumps(row["policy_json"] or {}),
+            patch_json=json.dumps(row["patch_json"] or {}),
+            reason=row["reason"],
             created_at=row["created_at"].isoformat(),
         )

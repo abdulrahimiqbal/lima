@@ -28,11 +28,15 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=4)
 def load_root_file(filename: str) -> str:
+    return _resolve_root_file(filename).read_text()
+
+
+def _resolve_root_file(filename: str) -> Path:
     # Try current directory first, then one level up
     search_paths = [Path(filename), Path("..") / filename]
     for path in search_paths:
         if path.exists():
-            return path.read_text()
+            return path
     raise FileNotFoundError(f"Required root file missing: {filename}")
 
 
@@ -41,7 +45,8 @@ def get_constitution() -> str:
 
 
 def get_policy() -> dict[str, Any]:
-    return json.loads(load_root_file("MANAGER_POLICY.json"))
+    # Read policy fresh each call so on-disk updates are visible without restart.
+    return json.loads(_resolve_root_file("MANAGER_POLICY.json").read_text())
 
 
 def get_decision_schema() -> dict[str, Any]:

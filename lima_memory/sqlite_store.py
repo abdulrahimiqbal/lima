@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from .models import ArtifactRecord, EdgeRecord, EventRecord, NodeRecord
+from .models import ArtifactRecord, EdgeRecord, EventRecord, NodeRecord, PolicySnapshotRecord
 from .store import KnowledgeStore
 
 class SqliteKnowledgeStore(KnowledgeStore):
@@ -81,12 +81,28 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 );
                 CREATE INDEX IF NOT EXISTS idx_kb_artifacts_campaign_type
                     ON kb_artifacts(campaign_id, artifact_type, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS kb_policy_snapshots (
+                    id TEXT PRIMARY KEY,
+                    version TEXT NOT NULL,
+                    policy_json TEXT NOT NULL,
+                    patch_json TEXT NOT NULL,
+                    reason TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_kb_policy_snapshots_created
+                    ON kb_policy_snapshots(created_at DESC);
                 """
             )
 
     def upsert_node(self, node: NodeRecord) -> None:
+        self.upsert_nodes([node])
+
+    def upsert_nodes(self, nodes: list[NodeRecord]) -> None:
+        if not nodes:
+            return
         with self.connect() as conn:
-            conn.execute(
+            conn.executemany(
                 """
                 INSERT INTO kb_nodes (
                     id, campaign_id, node_type, title, summary, status,
@@ -100,18 +116,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
                     payload_json=excluded.payload_json,
                     updated_at=excluded.updated_at
                 """,
-                (
-                    node.id,
-                    node.campaign_id,
-                    node.node_type,
-                    node.title,
-                    node.summary,
-                    node.status,
-                    node.confidence,
-                    json.dumps(node.payload),
-                    node.created_at,
-                    node.updated_at,
-                ),
+                [
+                    (
+                        node.id,
+                        node.campaign_id,
+                        node.node_type,
+                        node.title,
+                        node.summary,
+                        node.status,
+                        node.confidence,
+                        json.dumps(node.payload),
+                        node.created_at,
+                        node.updated_at,
+                    )
+                    for node in nodes
+                ],
             )
 
     def list_campaign_nodes(self, *, limit: int = 100) -> list[NodeRecord]:
@@ -128,24 +147,32 @@ class SqliteKnowledgeStore(KnowledgeStore):
         return [self._row_to_node(row) for row in rows]
 
     def add_edge(self, edge: EdgeRecord) -> None:
+        self.add_edges([edge])
+
+    def add_edges(self, edges: list[EdgeRecord]) -> None:
+        if not edges:
+            return
         with self.connect() as conn:
-            conn.execute(
+            conn.executemany(
                 """
                 INSERT OR REPLACE INTO kb_edges (
                     id, campaign_id, src_id, edge_type, dst_id, weight,
                     payload_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    edge.id,
-                    edge.campaign_id,
-                    edge.src_id,
-                    edge.edge_type,
-                    edge.dst_id,
-                    edge.weight,
-                    json.dumps(edge.payload),
-                    edge.created_at,
-                ),
+                [
+                    (
+                        edge.id,
+                        edge.campaign_id,
+                        edge.src_id,
+                        edge.edge_type,
+                        edge.dst_id,
+                        edge.weight,
+                        json.dumps(edge.payload),
+                        edge.created_at,
+                    )
+                    for edge in edges
+                ],
             )
 
     def add_event(self, event: EventRecord) -> None:
@@ -244,6 +271,36 @@ class SqliteKnowledgeStore(KnowledgeStore):
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_artifact(row) for row in rows]
 
+    def add_policy_snapshot(self, snapshot: PolicySnapshotRecord) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO kb_policy_snapshots (
+                    id, version, policy_json, patch_json, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.id,
+                    snapshot.version,
+                    snapshot.policy_json,
+                    snapshot.patch_json,
+                    snapshot.reason,
+                    snapshot.created_at,
+                ),
+            )
+
+    def list_policy_snapshots(self, *, limit: int = 20) -> list[PolicySnapshotRecord]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM kb_policy_snapshots
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_policy_snapshot(row) for row in rows]
+
     @staticmethod
     def _row_to_node(row: sqlite3.Row) -> NodeRecord:
         return NodeRecord(
@@ -293,5 +350,16 @@ class SqliteKnowledgeStore(KnowledgeStore):
             uri=row["uri"],
             content_text=row["content_text"],
             metadata=json.loads(row["metadata_json"]),
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _row_to_policy_snapshot(row: sqlite3.Row) -> PolicySnapshotRecord:
+        return PolicySnapshotRecord(
+            id=row["id"],
+            version=row["version"],
+            policy_json=row["policy_json"],
+            patch_json=row["patch_json"],
+            reason=row["reason"],
             created_at=row["created_at"],
         )

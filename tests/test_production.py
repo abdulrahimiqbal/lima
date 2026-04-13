@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
 from lima_memory import MemoryService, SqliteKnowledgeStore
 
@@ -212,3 +213,47 @@ def test_self_improvement_logic(tmp_path: Path):
 
         latest_policy = memory.get_latest_policy()
         assert latest_policy["world_family_priors"]["direct"] == 0.9
+
+
+def test_self_improvement_handles_malformed_llm_payload(tmp_path: Path):
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        enable_self_improvement=True,
+        llm_api_key="fake-key",
+    )
+    memory = MemoryService(SqliteKnowledgeStore(settings.memory_db_path))
+    memory.create_campaign(
+        campaign_id="C-test-malformed",
+        title="SI malformed",
+        problem_statement="Test malformed llm payload",
+        operator_notes=[],
+    )
+    service = SelfImprovementService(memory, settings)
+
+    with patch.object(SelfImprovementService, "_call_llm") as mock_call:
+        mock_call.side_effect = json.JSONDecodeError("bad", "x", 0)
+        result = service.run_cycle()
+
+    assert result["status"] == "failed"
+
+
+def test_self_improvement_handles_llm_rate_limit(tmp_path: Path):
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        enable_self_improvement=True,
+        llm_api_key="fake-key",
+    )
+    memory = MemoryService(SqliteKnowledgeStore(settings.memory_db_path))
+    memory.create_campaign(
+        campaign_id="C-test-rate-limit",
+        title="SI rate limit",
+        problem_statement="Test rate limit handling",
+        operator_notes=[],
+    )
+    service = SelfImprovementService(memory, settings)
+
+    with patch.object(SelfImprovementService, "_call_llm") as mock_call:
+        mock_call.side_effect = requests.HTTPError("429 Too Many Requests")
+        result = service.run_cycle()
+
+    assert result["status"] == "failed"

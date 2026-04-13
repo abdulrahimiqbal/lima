@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import secrets
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -34,6 +36,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.service = service
     app.state.worker = worker
 
+    @app.middleware("http")
+    async def ensure_csrf_cookie(request: Request, call_next):
+        response = await call_next(request)
+        if request.method in {"GET", "HEAD"} and not request.cookies.get("csrf_token"):
+            response.set_cookie(
+                key="csrf_token",
+                value=secrets.token_urlsafe(32),
+                httponly=False,
+                samesite="lax",
+                secure=settings.environment == "production",
+            )
+        return response
+
     def get_service(request: Request) -> CampaignService:
         return request.app.state.service
 
@@ -44,6 +59,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         if x_api_key != settings.operator_api_key:
             raise HTTPException(status_code=401, detail="Unauthorized")
+
+    def require_csrf(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> None:
+        if settings.operator_api_key:
+            return
+
+        expected_origin = f"{request.url.scheme}://{request.url.netloc}"
+        origin = request.headers.get("origin")
+        referer = request.headers.get("referer")
+
+        if origin and origin.rstrip("/") != expected_origin:
+            raise HTTPException(status_code=403, detail="Cross-site request blocked")
+        if referer:
+            parsed = urlparse(referer)
+            referer_origin = f"{parsed.scheme}://{parsed.netloc}"
+            if referer_origin != expected_origin:
+                raise HTTPException(status_code=403, detail="Cross-site request blocked")
+
+        # Enforce a token only for browser-originated requests.
+        if origin or referer:
+            csrf_cookie = request.cookies.get("csrf_token")
+            if not csrf_cookie or not x_csrf_token or csrf_cookie != x_csrf_token:
+                raise HTTPException(status_code=403, detail="Missing or invalid CSRF token")
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -98,8 +138,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def smoke_aristotle(
         service: CampaignService = Depends(get_service),
         _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
     ):
         return service.smoke_aristotle()
+
+    @app.post("/api/system/self-improvement/run")
+    def run_self_improvement(
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        return service.run_self_improvement()
 
     @app.get("/api/campaigns")
     def list_campaigns(service: CampaignService = Depends(get_service)):
@@ -110,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: CampaignCreate,
         service: CampaignService = Depends(get_service),
         _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
     ):
         return service.create_campaign(payload)
 
@@ -166,6 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         campaign_id: str,
         service: CampaignService = Depends(get_service),
         _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
     ):
         try:
             return service.step_campaign(campaign_id)
@@ -178,6 +229,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: CampaignUpdateNotes,
         service: CampaignService = Depends(get_service),
         _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
     ):
         try:
             return service.update_notes(campaign_id, payload)
@@ -190,6 +242,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: CampaignControl,
         service: CampaignService = Depends(get_service),
         _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
     ):
         try:
             if payload.action == "pause":

@@ -132,6 +132,19 @@ class ArtifactRecord:
     def asdict(self) -> dict[str, Any]:
         return asdict(self)
 
+
+@dataclass(slots=True)
+class PolicySnapshotRecord:
+    id: str
+    version: str
+    policy_json: str
+    patch_json: str
+    reason: str | None = None
+    created_at: str = field(default_factory=now_iso)
+
+    def asdict(self) -> dict[str, Any]:
+        return asdict(self)
+
 @dataclass(slots=True)
 class ManagerPacket:
     campaign: dict[str, Any]

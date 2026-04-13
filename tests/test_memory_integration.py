@@ -234,6 +234,40 @@ def test_context_is_memory_backed_only(tmp_path: Path, monkeypatch) -> None:
     assert stepped.tick_count == 1
 
 
+def test_blocked_gate_does_not_record_manager_graph_nodes(tmp_path: Path, monkeypatch) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Gate reject should not inflate graph",
+            problem_statement="Reject all obligations",
+            operator_notes=[],
+            auto_run=False,
+        )
+    )
+    decision = _decision(target_frontier_node=campaign.frontier[0].id)
+    monkeypatch.setattr(service.manager, "decide", lambda _context: decision)
+    monkeypatch.setattr(
+        "app.service.build_execution_plan",
+        lambda _decision, policy, memory: ApprovedExecutionPlan(
+            original_obligations=decision.formal_obligations,
+            rejected_obligations=decision.formal_obligations,
+            rejected_reasons={decision.formal_obligations[0]: "excessive_scope"},
+            channel_used="none",
+        ),
+    )
+
+    stepped = service.step_campaign(campaign.id)
+    assert stepped.last_execution_result is not None
+    assert stepped.last_execution_result["status"] == "blocked"
+
+    packet = service.get_memory_packet(campaign.id)
+    assert packet["recent_claims"] == []
+
+    events = service.list_events(campaign.id, limit=50)
+    kinds = {event.kind for event in events}
+    assert "manager_decision" not in kinds
+
+
 def test_frontier_and_candidate_persist_across_reload(tmp_path: Path, monkeypatch) -> None:
     settings = _settings(tmp_path)
     service = CampaignService(settings)
