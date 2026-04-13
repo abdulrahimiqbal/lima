@@ -280,6 +280,7 @@ class Manager:
     def _decide_with_llm(self, context: ManagerContext, policy: dict[str, Any]) -> ManagerDecision:
         system_prompt = f"{get_constitution()}\n\nCURRENT POLICY:\n{json.dumps(policy, indent=2)}"
         guardrails = self._runtime_guardrails(policy)
+        formalization_guide = self._formalization_requirements()
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -318,6 +319,7 @@ class Manager:
                     "- support: supporting lemmas\n"
                     "- boundary: boundary checks\n"
                     "- falsifier: ways the world could fail\n\n"
+                    f"{formalization_guide}\n\n"
                     f"Decision Schema:\n{json.dumps(get_decision_schema(), indent=2)}\n\n"
                     f"Runtime and channel guardrails:\n{guardrails}\n\n"
                     f"Context:\n{context.model_dump_json(indent=2)}"
@@ -379,6 +381,41 @@ class Manager:
             f"- When repeated bounded evidence has not improved the frontier, convert evidence patterns into formal lemmas.\n"
             f"- After formalization failures, state claims in clean Lean-compatible form.\n"
             f"- After proof failures, identify missing lemmas or split theorems into smaller pieces."
+        )
+    
+    @staticmethod
+    def _formalization_requirements() -> str:
+        """Return critical formalization requirements for the Manager."""
+        return (
+            "FORMALIZATION REQUIREMENTS (CRITICAL):\n"
+            "Aristotle requires structured formal obligations. Natural language alone will FAIL.\n\n"
+            "For PROOF obligations, you MUST provide:\n"
+            "- 'statement': Valid Lean syntax with explicit types and quantifiers\n"
+            "  Example: \"∀ n : ℕ, n > 2 → n^2 > 2*n\"\n"
+            "- OR 'lean_declaration': Complete Lean code\n\n"
+            "Highly recommended fields:\n"
+            "- 'goal_kind': \"theorem\", \"lemma\", \"sanity_check\", etc.\n"
+            "- 'theorem_name': Valid Lean identifier (e.g., \"n_squared_gt_2n\")\n"
+            "- 'channel_hint': \"proof\" for Aristotle, \"evidence\" for computation\n"
+            "- 'requires_proof': true for proof obligations\n\n"
+            "Valuable context fields:\n"
+            "- 'imports': Lean imports needed (e.g., [\"Mathlib.Data.Nat.Basic\"])\n"
+            "- 'variables': Variable declarations (e.g., [\"(n : ℕ)\"])\n"
+            "- 'assumptions': Hypotheses (e.g., [\"n > 2\"])\n"
+            "- 'tactic_hints': Specific tactics that might help\n"
+            "- 'bounded_domain_description': Domain constraints\n"
+            "- 'metadata': Link to proof debt, world program\n\n"
+            "Example well-formed obligation:\n"
+            "{\n"
+            "  \"source_text\": \"Prove n^2 > 2n for n > 2\",\n"
+            "  \"goal_kind\": \"theorem\",\n"
+            "  \"theorem_name\": \"n_squared_gt_2n\",\n"
+            "  \"statement\": \"∀ n : ℕ, n > 2 → n^2 > 2*n\",\n"
+            "  \"tactic_hints\": [\"Use induction on n\"],\n"
+            "  \"channel_hint\": \"proof\",\n"
+            "  \"requires_proof\": true\n"
+            "}\n\n"
+            "See MANAGER_FORMALIZATION_GUIDE.md for complete examples."
         )
 
     @staticmethod

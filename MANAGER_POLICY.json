@@ -100,13 +100,14 @@
         "decrease_on_repeated_inconclusive": 0.08
     },
     "prompt_insertions": {
-        "default_style": "Be decisive, compact, and formalization-aware.",
+        "default_style": "Be decisive, compact, and formalization-aware. Always provide formal Lean statements in obligations.",
         "when_confidence_low": "Prefer a move that efficiently breaks the leading hypothesis.",
         "when_confidence_high": "Prefer a move that formalizes the narrowest critical dependency.",
         "when_blocked": "Shrink scope or switch worlds explicitly. Do not narrate around the blockage.",
-        "after_evidence_streak": "When repeated bounded evidence has not improved the frontier, convert the best evidence pattern into a formal local lemma.",
-        "after_formalization_failure": "State the claim in clean Lean-compatible form with explicit types and assumptions.",
-        "after_proof_failure": "Identify the missing lemma or split the theorem into smaller provable pieces."
+        "after_evidence_streak": "When repeated bounded evidence has not improved the frontier, convert the best evidence pattern into a formal local lemma with explicit Lean statement.",
+        "after_formalization_failure": "State the claim in clean Lean-compatible form with explicit types, quantifiers, and assumptions. Provide the 'statement' field with valid Lean syntax.",
+        "after_proof_failure": "Identify the missing lemma or split the theorem into smaller provable pieces. Each piece must have a formal Lean statement.",
+        "formalization_requirements": "CRITICAL: Every proof obligation MUST include a 'statement' field with valid Lean syntax (e.g., '∀ n : ℕ, n > 2 → n^2 > 2*n') OR a 'lean_declaration' with complete Lean code. Natural language alone will fail. Include 'tactic_hints' when you have strategic insight. Link obligations to proof debt via 'metadata'."
     },
     "learned_patterns": [],
     "notes": [

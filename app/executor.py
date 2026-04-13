@@ -369,14 +369,63 @@ class AristotleSdkProofAdapter:
             input_path = project_dir / "Main.lean"
             input_path.write_text(lean_code)
             
-            prompt = "\n".join(
-                [
-                    "Fill in all Lean sorries in this project.",
-                    "Preserve theorem names where possible.",
-                    f"World family: {decision.world_family}",
-                    f"Bounded claim: {decision.bounded_claim}",
-                ]
-            )
+            # Build rich context prompt for Aristotle
+            prompt_parts = [
+                "Fill in all Lean sorries in this project.",
+                "Preserve theorem names where possible.",
+                "",
+                "=== PROBLEM CONTEXT ===",
+                f"Bounded claim: {decision.bounded_claim}",
+                f"World family: {decision.world_family}",
+            ]
+            
+            # Add global thesis if available
+            if hasattr(decision, 'global_thesis') and decision.global_thesis:
+                prompt_parts.extend([
+                    "",
+                    "=== OVERALL STRATEGY ===",
+                    decision.global_thesis,
+                ])
+            
+            # Add world program context if available
+            if hasattr(decision, 'primary_world') and decision.primary_world:
+                world = decision.primary_world
+                prompt_parts.extend([
+                    "",
+                    "=== WORLD PROGRAM ===",
+                    f"World ID: {world.world_id}",
+                    f"Mode: {world.mode}",
+                    f"Thesis: {world.thesis}",
+                ])
+                if world.bridge_to_target:
+                    prompt_parts.append(f"Bridge to target: {world.bridge_to_target}")
+            
+            # Add proof debt context if this obligation came from debt
+            normalized_obligations = decision.get_normalized_obligations()
+            for spec in normalized_obligations:
+                if spec.source_text == proof_obligation or proof_obligation in spec.source_text:
+                    if spec.metadata.get("debt_role"):
+                        prompt_parts.extend([
+                            "",
+                            "=== PROOF DEBT CONTEXT ===",
+                            f"Role: {spec.metadata.get('debt_role')}",
+                            f"Critical: {spec.metadata.get('debt_critical', False)}",
+                        ])
+                    # Add tactic hints if available
+                    if spec.tactic_hints:
+                        prompt_parts.extend([
+                            "",
+                            "=== TACTIC HINTS ===",
+                        ] + [f"- {hint}" for hint in spec.tactic_hints])
+                    # Add assumptions if available
+                    if spec.assumptions:
+                        prompt_parts.extend([
+                            "",
+                            "=== ASSUMPTIONS ===",
+                        ] + [f"- {assumption}" for assumption in spec.assumptions])
+                    break
+            
+            prompt = "\n".join(prompt_parts)
             
             project = await Project.create_from_directory(
                 prompt=prompt, project_dir=project_dir
@@ -594,6 +643,16 @@ class AristotleSdkProofAdapter:
                         lines.append(f"import {imp}")
                     lines.append("")
                 
+                # Add context header
+                lines.append("/-")
+                lines.append(f"Source: {spec.source_text[:200]}")
+                if spec.metadata.get("debt_role"):
+                    lines.append(f"Proof debt role: {spec.metadata.get('debt_role')}")
+                if spec.bounded_domain_description:
+                    lines.append(f"Bounded domain: {spec.bounded_domain_description}")
+                lines.append("-/")
+                lines.append("")
+                
                 # Add variables
                 if spec.variables:
                     for var in spec.variables:
@@ -608,6 +667,7 @@ class AristotleSdkProofAdapter:
                     lines.append(f"-- Assumptions:")
                     for assumption in spec.assumptions:
                         lines.append(f"-- {assumption}")
+                    lines.append("")
                 
                 # Build theorem declaration
                 goal_keyword = "lemma" if spec.goal_kind == "lemma" else "theorem"

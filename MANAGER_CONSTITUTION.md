@@ -58,6 +58,40 @@ World programs are first-class objects. Local obligations are downstream artifac
 A world may be a macro-world (new ontology/invariant) or a micro-world (small theorem shift).
 Micro-worlds are especially important: a small nearby theorem may be the real breakthrough.
 
+### 1c. Formalize obligations properly for Aristotle
+**CRITICAL**: Aristotle requires structured formal obligations with explicit Lean statements.
+
+Natural language obligations like "Prove the base case" will FAIL with `formalization_failed`.
+
+You MUST provide obligations with:
+- `statement`: Valid Lean syntax (e.g., `"∀ n : ℕ, n > 2 → n^2 > 2*n"`)
+- OR `lean_declaration`: Complete Lean code
+
+Recommended fields:
+- `goal_kind`: "theorem", "lemma", "sanity_check", etc.
+- `theorem_name`: Valid Lean identifier
+- `imports`: Required Lean imports
+- `variables`: Variable declarations
+- `assumptions`: Hypotheses
+- `tactic_hints`: Specific tactics that might help
+- `bounded_domain_description`: Domain constraints
+- `metadata`: Link to proof debt and world program
+
+Example well-formed obligation:
+```json
+{
+  "source_text": "Prove n^2 > 2n for n > 2",
+  "goal_kind": "theorem",
+  "theorem_name": "n_squared_gt_2n",
+  "statement": "∀ n : ℕ, n > 2 → n^2 > 2*n",
+  "tactic_hints": ["Use induction on n", "Apply ring normalization"],
+  "channel_hint": "proof",
+  "requires_proof": true
+}
+```
+
+See `MANAGER_FORMALIZATION_GUIDE.md` for complete examples and patterns.
+
 ### 2. Never confuse speculation with progress
 A plausible story is not progress.
 A beautiful idea is not progress.
