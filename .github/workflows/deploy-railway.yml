@@ -1,7 +1,9 @@
 name: Deploy to Railway
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -11,7 +13,11 @@ concurrency:
 
 jobs:
   deploy:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container: ghcr.io/railwayapp/cli:latest
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -22,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # For workflow_run events, deploy the exact commit that passed CI.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Validate Railway secrets
         run: |
@@ -29,6 +38,13 @@ jobs:
           test -n "$RAILWAY_PROJECT_ID"
           test -n "$RAILWAY_ENVIRONMENT_ID"
           test -n "$RAILWAY_SERVICE_ID"
+
+      - name: Validate Railway context
+        run: |
+          railway status --json >/tmp/railway-status.json
+          cat /tmp/railway-status.json | grep -q "$RAILWAY_PROJECT_ID"
+          cat /tmp/railway-status.json | grep -q "$RAILWAY_ENVIRONMENT_ID"
+          cat /tmp/railway-status.json | grep -q "$RAILWAY_SERVICE_ID"
 
       - name: Deploy
         run: |
