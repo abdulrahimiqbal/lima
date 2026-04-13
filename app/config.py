@@ -28,6 +28,7 @@ class Settings:
     enable_self_improvement: bool = False
     public_base_url: str | None = None
     log_level: str = "INFO"
+    operator_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -67,6 +68,7 @@ class Settings:
             enable_self_improvement=os.getenv("ENABLE_SELF_IMPROVEMENT", "").lower() == "true",
             public_base_url=os.getenv("PUBLIC_BASE_URL") or None,
             log_level=os.getenv("LOG_LEVEL", cls.log_level),
+            operator_api_key=os.getenv("OPERATOR_API_KEY") or None,
         )
 
     @property

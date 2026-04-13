@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -36,6 +36,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def get_service(request: Request) -> CampaignService:
         return request.app.state.service
+
+    def require_operator_auth(
+        x_api_key: str | None = Header(default=None),
+    ) -> None:
+        if not settings.operator_api_key:
+            return
+        if x_api_key != settings.operator_api_key:
+            raise HTTPException(status_code=401, detail="Unauthorized")
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -87,7 +95,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return service.system_status()
 
     @app.post("/api/system/smoke/aristotle")
-    def smoke_aristotle(service: CampaignService = Depends(get_service)):
+    def smoke_aristotle(
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+    ):
         return service.smoke_aristotle()
 
     @app.get("/api/campaigns")
@@ -98,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def create_campaign(
         payload: CampaignCreate,
         service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
     ):
         return service.create_campaign(payload)
 
@@ -150,7 +162,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/campaigns/{campaign_id}/step")
-    def step_campaign(campaign_id: str, service: CampaignService = Depends(get_service)):
+    def step_campaign(
+        campaign_id: str,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+    ):
         try:
             return service.step_campaign(campaign_id)
         except KeyError as exc:
@@ -161,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         campaign_id: str,
         payload: CampaignUpdateNotes,
         service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
     ):
         try:
             return service.update_notes(campaign_id, payload)
@@ -172,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         campaign_id: str,
         payload: CampaignControl,
         service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
     ):
         try:
             if payload.action == "pause":

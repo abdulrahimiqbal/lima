@@ -54,6 +54,12 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
     - executor backend must be live Aristotle mode
     - strict Aristotle probe must pass
 
+## API Protection
+
+- Write endpoints can be protected with `OPERATOR_API_KEY`.
+- When set, mutating API routes require header `X-API-Key: <OPERATOR_API_KEY>`.
+- Read-only endpoints (`/healthz`, `/readyz`, list/get routes) remain open unless guarded externally.
+
 ## What Is Real vs Mocked
 
 - Real:
@@ -77,6 +83,7 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
 - `ARISTOTLE_API_KEY`
 - `EXECUTOR_BACKEND=aristotle`
 - Optional but recommended for strict readiness: `ARISTOTLE_BASE_URL`
+- Optional but recommended in deployment: `STRICT_LIVE_ARISTOTLE=true`
 - Network egress to Aristotle service
 
 ## Local Development

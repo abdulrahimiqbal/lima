@@ -43,3 +43,44 @@ def test_campaign_lifecycle(tmp_path: Path) -> None:
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "Current candidate answer" in index_response.text
+
+
+def test_operator_api_key_guards_write_routes(tmp_path: Path) -> None:
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        worker_poll_seconds=999,
+        manager_backend="rules",
+        executor_backend="mock",
+        operator_api_key="secret",
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+
+    # Read route stays open.
+    health_response = client.get("/healthz")
+    assert health_response.status_code == 200
+
+    # Write route is blocked without API key.
+    create_response = client.post(
+        "/api/campaigns",
+        json={
+            "title": "Protected campaign",
+            "problem_statement": "Prove a simple bounded statement",
+            "operator_notes": [],
+            "auto_run": False,
+        },
+    )
+    assert create_response.status_code == 401
+
+    # Write route succeeds with matching API key.
+    create_response = client.post(
+        "/api/campaigns",
+        headers={"X-API-Key": "secret"},
+        json={
+            "title": "Protected campaign",
+            "problem_statement": "Prove a simple bounded statement",
+            "operator_notes": [],
+            "auto_run": False,
+        },
+    )
+    assert create_response.status_code == 200

@@ -64,8 +64,7 @@ class Manager:
             get_self_improvement_prompt()
         except FileNotFoundError as e:
             logger.error(f"Startup error: {e}")
-            # In some environments (like testing), we might want to continue, 
-            # but production requires these.
+            raise RuntimeError(f"Manager bootstrap failed: {e}") from e
 
     def describe_interfaces(self) -> InterfaceDescription:
         return InterfaceDescription(

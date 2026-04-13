@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import threading
 import time
+import logging
 
 from .service import CampaignService
+
+logger = logging.getLogger(__name__)
 
 
 class CampaignWorker:
@@ -30,5 +33,5 @@ class CampaignWorker:
             try:
                 self.service.auto_step_once()
             except Exception:
-                pass
+                logger.exception("CampaignWorker auto_step_once failed")
             self._stop_event.wait(self.poll_seconds)
