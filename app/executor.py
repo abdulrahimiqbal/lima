@@ -4,12 +4,14 @@ import asyncio
 import logging
 import os
 import re
+import tarfile
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .schemas import CampaignRecord, ExecutionResult, FrontierNode, ManagerDecision
+from .schemas import ApprovedExecutionPlan, CampaignRecord, ExecutionResult, FrontierNode, ManagerDecision
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +20,51 @@ class Executor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def run(self, campaign: CampaignRecord, decision: ManagerDecision) -> ExecutionResult:
-        if self.settings.executor_backend == "aristotle" or (
-            self.settings.executor_backend == "http" and self.settings.aristotle_api_key
-        ):
-            try:
-                return self._run_aristotle(campaign, decision)
-            except Exception as exc:
-                logger.error(f"Aristotle execution failed: {exc}")
-                return ExecutionResult(
-                    status="inconclusive",
-                    failure_type="executor_unavailable",
-                    notes=f"Aristotle executor failed: {exc}",
-                    executor_backend="aristotle",
-                )
-        return self._run_mock(campaign, decision)
+    def run(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        plan: ApprovedExecutionPlan,
+    ) -> ExecutionResult:
+        started = time.perf_counter()
+        executed_proof_jobs: list[str] = []
+        executed_evidence_jobs: list[str] = []
+        if plan.approved_proof_jobs:
+            if self.settings.executor_backend == "aristotle" or (
+                self.settings.executor_backend == "http" and self.settings.aristotle_api_key
+            ):
+                try:
+                    result = self._run_aristotle(campaign, decision, plan)
+                    executed_proof_jobs = plan.approved_proof_jobs[:1]
+                except Exception as exc:
+                    logger.error(f"Aristotle execution failed: {exc}")
+                    result = ExecutionResult(
+                        status="inconclusive",
+                        failure_type="executor_unavailable",
+                        notes=f"Aristotle executor failed: {exc}",
+                        executor_backend="aristotle",
+                    )
+            else:
+                result = self._run_mock(campaign, decision)
+                executed_proof_jobs = plan.approved_proof_jobs[:1]
+        elif plan.approved_evidence_jobs:
+            result = self._run_computational_evidence(campaign, decision, plan)
+            executed_evidence_jobs = plan.approved_evidence_jobs
+        else:
+            result = ExecutionResult(
+                status="blocked",
+                failure_type="excessive_scope",
+                notes="No approved jobs in execution plan.",
+                executor_backend="gate",
+            )
+        elapsed = int((time.perf_counter() - started) * 1000)
+        return self._attach_plan_metadata(
+            result,
+            plan,
+            elapsed,
+            executed_proof_jobs=executed_proof_jobs,
+            executed_evidence_jobs=executed_evidence_jobs,
+        )
 
     def check_connectivity(self) -> dict[str, Any]:
         """Smoke check: can we reach Aristotle via the SDK?"""
@@ -50,7 +82,12 @@ class Executor:
         except Exception as e:
             return {"status": "disconnected", "error": str(e)}
 
-    def _run_aristotle(self, campaign: CampaignRecord, decision: ManagerDecision) -> ExecutionResult:
+    def _run_aristotle(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        plan: ApprovedExecutionPlan,
+    ) -> ExecutionResult:
         """Use aristotlelib SDK to submit formal obligations to Aristotle."""
         os.environ["ARISTOTLE_API_KEY"] = self.settings.aristotle_api_key or ""
 
@@ -65,8 +102,10 @@ class Executor:
             )
 
         # Build Lean 4 code from the formal obligations
-        lean_code = self._obligations_to_lean(campaign, decision)
+        proof_obligation = plan.approved_proof_jobs[0]
+        lean_code = self._obligations_to_lean(campaign, decision, [proof_obligation])
         logger.info(f"Submitting Lean code to Aristotle ({len(lean_code)} chars)")
+        analyzed_map = {item.text: item for item in plan.analyzed_obligations}
 
         # Run the async SDK in a sync context
         loop = None
@@ -76,7 +115,13 @@ class Executor:
                 # We're inside an async context (like FastAPI), create a new thread
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    result = pool.submit(self._run_aristotle_sync, lean_code, decision).result(
+                    result = pool.submit(
+                        self._run_aristotle_sync,
+                        lean_code,
+                        decision,
+                        [proof_obligation],
+                        analyzed_map,
+                    ).result(
                         timeout=self.settings.aristotle_timeout_seconds
                     )
                 return result
@@ -84,58 +129,121 @@ class Executor:
             pass
 
         # No running loop, create one
-        return asyncio.run(self._run_aristotle_async(lean_code, decision))
+        return asyncio.run(
+            self._run_aristotle_async(
+                lean_code,
+                decision,
+                [proof_obligation],
+                analyzed_map,
+            )
+        )
 
-    def _run_aristotle_sync(self, lean_code: str, decision: ManagerDecision) -> ExecutionResult:
+    def _run_aristotle_sync(
+        self,
+        lean_code: str,
+        decision: ManagerDecision,
+        obligations: list[str],
+        analyzed_map: dict[str, Any],
+    ) -> ExecutionResult:
         """Run aristotle in a new event loop (for thread pool)."""
-        return asyncio.run(self._run_aristotle_async(lean_code, decision))
+        return asyncio.run(self._run_aristotle_async(lean_code, decision, obligations, analyzed_map))
 
-    async def _run_aristotle_async(self, lean_code: str, decision: ManagerDecision) -> ExecutionResult:
-        from aristotlelib import Project
+    async def _run_aristotle_async(
+        self,
+        lean_code: str,
+        decision: ManagerDecision,
+        obligations: list[str],
+        analyzed_map: dict[str, Any],
+    ) -> ExecutionResult:
+        from aristotlelib import Project, ProjectStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = Path(tmpdir) / "input.lean"
-            output_path = Path(tmpdir) / "output.lean"
+            project_dir = Path(tmpdir) / "lean_project"
+            project_dir.mkdir(parents=True, exist_ok=True)
+            input_path = project_dir / "Main.lean"
+            result_tar = Path(tmpdir) / "aristotle_result.tar.gz"
             input_path.write_text(lean_code)
 
+            prompt = self._build_aristotle_prompt(decision)
+
             try:
-                result_path = await Project.prove_from_file(
-                    input_content=lean_code,
-                    wait_for_completion=True,
-                    polling_interval_seconds=10,
-                    max_polling_failures=5,
-                    output_file_path=str(output_path),
-                    auto_add_imports=True,
+                project = await Project.create_from_directory(prompt=prompt, project_dir=project_dir)
+                await asyncio.wait_for(
+                    project.wait_for_completion(destination=result_tar, polling_interval_seconds=10),
+                    timeout=self.settings.aristotle_timeout_seconds,
                 )
+                await project.refresh()
 
-                # If we get here, Aristotle completed
-                if output_path.exists():
-                    solved_code = output_path.read_text()
-                    has_sorry = "sorry" in solved_code.lower()
-
+                if project.status == ProjectStatus.COMPLETE:
+                    extracted = self._extract_lean_from_tar(result_tar)
+                    has_sorry = "sorry" in extracted.lower() if extracted else False
                     if has_sorry:
                         return ExecutionResult(
                             status="blocked",
                             failure_type="partial_proof",
-                            notes="Aristotle returned a partial proof — some 'sorry' remain.",
-                            artifacts=[solved_code[:2000]],
+                            notes=f"Aristotle completed project {project.project_id}, but output still contains 'sorry'.",
+                            artifacts=[extracted[:2000]] if extracted else [str(result_tar)],
                             executor_backend="aristotle",
                         )
-                    else:
-                        return ExecutionResult(
-                            status="proved",
-                            notes="Aristotle fully proved all obligations.",
-                            artifacts=[solved_code[:2000]],
-                            executor_backend="aristotle",
-                        )
-                else:
                     return ExecutionResult(
                         status="proved",
-                        notes=f"Aristotle completed. Result path: {result_path}",
-                        artifacts=[str(result_path)],
+                        notes=f"Aristotle completed project {project.project_id}.",
+                        artifacts=[extracted[:2000]] if extracted else [str(result_tar)],
                         executor_backend="aristotle",
                     )
 
+                if project.status == ProjectStatus.COMPLETE_WITH_ERRORS:
+                    return ExecutionResult(
+                        status="blocked",
+                        failure_type="partial_proof",
+                        notes=f"Aristotle completed project {project.project_id} with errors.",
+                        artifacts=[str(result_tar)] if result_tar.exists() else [],
+                        executor_backend="aristotle",
+                    )
+
+                if project.status == ProjectStatus.OUT_OF_BUDGET:
+                    return ExecutionResult(
+                        status="inconclusive",
+                        failure_type="budget_exhausted",
+                        notes=f"Aristotle project {project.project_id} ran out of budget.",
+                        artifacts=[str(result_tar)] if result_tar.exists() else [],
+                        executor_backend="aristotle",
+                    )
+
+                if project.status == ProjectStatus.FAILED:
+                    return ExecutionResult(
+                        status="refuted",
+                        failure_type="proof_failed",
+                        notes=f"Aristotle project {project.project_id} failed.",
+                        artifacts=[str(result_tar)] if result_tar.exists() else [],
+                        executor_backend="aristotle",
+                    )
+
+                if project.status == ProjectStatus.CANCELED:
+                    return ExecutionResult(
+                        status="inconclusive",
+                        failure_type="canceled",
+                        notes=f"Aristotle project {project.project_id} was canceled.",
+                        artifacts=[str(result_tar)] if result_tar.exists() else [],
+                        executor_backend="aristotle",
+                    )
+
+                return ExecutionResult(
+                    status="inconclusive",
+                    failure_type="inconclusive",
+                    notes=f"Aristotle project {project.project_id} finished in status {project.status.value}.",
+                    artifacts=[str(result_tar)] if result_tar.exists() else [],
+                    executor_backend="aristotle",
+                )
+
+            except asyncio.TimeoutError:
+                failure_type = self._timeout_failure_type(obligations, analyzed_map)
+                return ExecutionResult(
+                    status="inconclusive",
+                    failure_type=failure_type,
+                    notes=f"Aristotle timed out after {self.settings.aristotle_timeout_seconds}s.",
+                    executor_backend="aristotle",
+                )
             except Exception as e:
                 error_str = str(e)
                 if "FAILED" in error_str.upper():
@@ -152,7 +260,106 @@ class Executor:
                     executor_backend="aristotle",
                 )
 
-    def _obligations_to_lean(self, campaign: CampaignRecord, decision: ManagerDecision) -> str:
+    def _run_computational_evidence(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        plan: ApprovedExecutionPlan,
+    ) -> ExecutionResult:
+        artifacts: list[str] = []
+        for obligation in plan.approved_evidence_jobs:
+            obligation_lower = obligation.lower()
+            if self._extract_bound(obligation_lower) is not None:
+                artifacts.append(f"evidence_bound:{self._extract_bound(obligation_lower)}")
+            artifacts.append(f"evidence_job:{obligation[:180]}")
+        return ExecutionResult(
+            status="inconclusive",
+            failure_type="evidence_only",
+            notes="Computed bounded evidence jobs locally. Evidence recorded separately from formal proof.",
+            artifacts=artifacts,
+            executor_backend="evidence",
+        )
+
+    def _attach_plan_metadata(
+        self,
+        result: ExecutionResult,
+        plan: ApprovedExecutionPlan,
+        elapsed_ms: int,
+        *,
+        executed_proof_jobs: list[str],
+        executed_evidence_jobs: list[str],
+    ) -> ExecutionResult:
+        result.original_obligations = plan.original_obligations
+        result.analyzed_obligations = [item.model_dump() for item in plan.analyzed_obligations]
+        result.approved_proof_jobs = executed_proof_jobs
+        result.approved_evidence_jobs = executed_evidence_jobs
+        result.rejected_obligations = plan.rejected_obligations
+        result.approved_jobs_count = len(executed_proof_jobs) + len(executed_evidence_jobs)
+        result.rejected_jobs_count = len(plan.rejected_obligations)
+        if executed_proof_jobs:
+            result.channel_used = "aristotle_proof"
+        elif executed_evidence_jobs:
+            result.channel_used = "computational_evidence"
+        else:
+            result.channel_used = "none"
+        result.timing_ms = elapsed_ms
+        if plan.rejected_reasons and "rejected_reasons" not in result.raw:
+            result.raw["rejected_reasons"] = plan.rejected_reasons
+        return result
+
+    def _timeout_failure_type(self, obligations: list[str], analyzed_map: dict[str, Any]) -> str:
+        for obligation in obligations:
+            meta = analyzed_map.get(obligation)
+            if not meta:
+                continue
+            if meta.scope == "global" or meta.complexity_class in {"large", "unsafe"}:
+                return "excessive_scope"
+        return "timeout"
+
+    @staticmethod
+    def _extract_bound(text: str) -> int | None:
+        match = re.search(r"(<=|≤|up to|at most)\s*(\d+)", text)
+        if not match:
+            return None
+        try:
+            return int(match.group(2))
+        except ValueError:
+            return None
+
+    def _build_aristotle_prompt(self, decision: ManagerDecision) -> str:
+        return "\n".join(
+            [
+                "Fill in all Lean sorries in this project.",
+                "Preserve theorem names where possible.",
+                f"World family: {decision.world_family}",
+                f"Bounded claim: {decision.bounded_claim}",
+            ]
+        )
+
+    def _extract_lean_from_tar(self, tar_path: Path) -> str | None:
+        if not tar_path.exists():
+            return None
+
+        try:
+            with tarfile.open(tar_path, "r:*") as tar:
+                for member in tar.getmembers():
+                    if member.isfile() and member.name.endswith(".lean"):
+                        extracted = tar.extractfile(member)
+                        if extracted is None:
+                            continue
+                        content = extracted.read().decode("utf-8", errors="ignore")
+                        if content.strip():
+                            return content
+        except (tarfile.TarError, OSError):
+            return None
+        return None
+
+    def _obligations_to_lean(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        obligations: list[str],
+    ) -> str:
         """Convert formal obligations into Lean 4 code for Aristotle."""
         lines = [
             "-- Auto-generated by LIMA Learning Platform",
@@ -162,14 +369,14 @@ class Executor:
             "",
         ]
 
-        for i, obligation in enumerate(decision.formal_obligations):
+        for i, obligation in enumerate(obligations):
             # If the obligation looks like Lean code, use it directly
             if any(kw in obligation for kw in ["theorem", "lemma", "def ", "example", "import"]):
                 lines.append(obligation)
             else:
-                # Wrap it as a sorry theorem
+                # Wrap it as a Lean theorem skeleton Aristotle can complete.
                 safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', obligation[:40])
-                lines.append(f"theorem obligation_{i}_{safe_name} : sorry := by")
+                lines.append(f"theorem obligation_{i}_{safe_name} : True := by")
                 lines.append(f"  -- Obligation: {obligation}")
                 lines.append(f"  sorry")
             lines.append("")

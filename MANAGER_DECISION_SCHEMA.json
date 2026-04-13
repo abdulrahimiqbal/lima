@@ -148,6 +148,10 @@
                     "type": "string"
                 }
             }
+        },
+        "obligation_hints": {
+            "type": "object",
+            "additionalProperties": true
         }
     }
 }

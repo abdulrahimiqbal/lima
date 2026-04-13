@@ -8,7 +8,15 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.manager import Manager, load_root_file, get_constitution
-from app.schemas import ManagerContext, ManagerDecision, CandidateAnswer, UpdateRules, SelfImprovementNote, MemoryState
+from app.schemas import (
+    ManagerContext,
+    ManagerDecision,
+    CandidateAnswer,
+    UpdateRules,
+    SelfImprovementNote,
+    MemoryState,
+    ExecutionResult,
+)
 
 
 def test_root_file_loaders():
@@ -70,22 +78,13 @@ def test_health_ready_status(tmp_path: Path):
     assert data["manager"]["backend"] == "rules"
 
 
-@patch("requests.Session.post")
-def test_executor_http_path(mock_post, tmp_path: Path):
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "status": "proved",
-        "notes": "Verified by Aristotle",
-        "artifacts": ["artifact-1"],
-        "spawned_nodes": []
-    }
-    mock_post.return_value = mock_response
+def test_executor_http_path(tmp_path: Path):
     
     settings = Settings(
         database_path=str(tmp_path / "test.db"),
         executor_backend="http",
-        aristotle_base_url="http://aristotle.local"
+        aristotle_base_url="http://aristotle.local",
+        aristotle_api_key="fake-key",
     )
     app = create_app(settings)
     client = TestClient(app)
@@ -119,11 +118,19 @@ def test_executor_http_path(mock_post, tmp_path: Path):
         campaign = client.get(f"/api/campaigns/{campaign_id}").json()
         mock_decide.return_value.target_frontier_node = campaign["frontier"][0]["id"]
         
-        response = client.post(f"/api/campaigns/{campaign_id}/step")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["last_execution_result"]["status"] == "proved"
-        assert mock_post.called
+        with patch("app.executor.Executor._run_aristotle") as mock_aristotle:
+            mock_aristotle.return_value = ExecutionResult(
+                status="proved",
+                notes="Verified by Aristotle",
+                artifacts=["artifact-1"],
+                spawned_nodes=[],
+                executor_backend="aristotle",
+            )
+            response = client.post(f"/api/campaigns/{campaign_id}/step")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["last_execution_result"]["status"] == "proved"
+            assert mock_aristotle.called
 
 
 def test_self_improvement_logic(tmp_path: Path):

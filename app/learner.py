@@ -37,6 +37,13 @@ def update_memory(
     else:
         scores[world] -= penalties.get("inconclusive_probe", 0.1)
 
+    if result.failure_type in {"timeout", "excessive_scope", "mixed_channels"}:
+        scores[world] -= penalties.get(result.failure_type, 0.2)
+        updated.memory.policy_notes.append(
+            f"shrink_required:{world}:{result.failure_type}:{decision.target_frontier_node}"
+        )
+        updated.memory.policy_notes = updated.memory.policy_notes[-30:]
+
     # 2. Update Confidence
     if updated.current_candidate_answer:
         ca = updated.current_candidate_answer
@@ -62,13 +69,20 @@ def update_memory(
         updated.memory.recent_failures = updated.memory.recent_failures[:20]
 
     penalty_key = f"{decision.target_frontier_node}:{world}"
-    updated.memory.retry_penalties[penalty_key] = (
-        updated.memory.retry_penalties.get(penalty_key, 0) + 1
-    )
+    penalty_bump = 1
+    if result.failure_type in {"timeout", "excessive_scope"}:
+        penalty_bump = 2
+    updated.memory.retry_penalties[penalty_key] = updated.memory.retry_penalties.get(penalty_key, 0) + penalty_bump
 
     if result.failure_type == "bad_world" or result.status == "blocked":
         updated.memory.blocked_patterns.append(
             f"Avoid {world} for node {decision.target_frontier_node} due to {result.failure_type or result.status}"
+        )
+        updated.memory.blocked_patterns = updated.memory.blocked_patterns[-20:]
+
+    if result.failure_type in {"timeout", "excessive_scope", "mixed_channels"}:
+        updated.memory.blocked_patterns.append(
+            f"Prefer smaller obligations after {result.failure_type} for node {decision.target_frontier_node}"
         )
         updated.memory.blocked_patterns = updated.memory.blocked_patterns[-20:]
 

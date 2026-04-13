@@ -5,16 +5,23 @@
     "decision_biases": {
         "prefer_small_formal_moves": true,
         "prefer_high_information_gain": true,
+        "prefer_information_gain_per_cost": true,
         "prefer_falsifiable_claims": true,
         "prefer_bridge_lemmas_when_direct_stalls": true,
         "prefer_counterexample_search_when_confidence_is_low": true,
         "force_local_sanity_checks_before_global_claims": true,
+        "forbid_global_universal_obligations_as_default": true,
+        "separate_proof_and_computation_channels": true,
+        "force_claim_shrinking_after_timeout": true,
+        "penalize_rebundled_large_jobs": true,
         "penalize_repeated_inconclusive_large_claims": true,
         "penalize_retry_after_hard_refutation": true
     },
     "complexity_limits": {
         "max_primary_claims_per_cycle": 1,
         "max_formal_obligations_per_cycle": 4,
+        "max_proof_obligations_per_step": 1,
+        "max_evidence_jobs_per_step": 2,
         "max_new_frontier_nodes_per_cycle": 3,
         "max_alternative_candidate_answers": 2,
         "max_retry_count_same_pattern": 2,
@@ -35,6 +42,9 @@
         "false_bridge": 0.45,
         "missing_lemma": 0.10,
         "excessive_scope": 0.25,
+        "mixed_channels": 0.22,
+        "timeout": 0.20,
+        "rebundled_large_jobs": 0.24,
         "poor_formalization": 0.08,
         "counterexample_found": 0.60,
         "inconclusive_probe": 0.12
@@ -51,6 +61,8 @@
         "after_hard_refutation": "switch_world_family",
         "after_formalization_failure": "retry_same_math_cleaner_encoding_once",
         "after_missing_lemma": "create_child_frontier_node",
+        "after_timeout": "shrink_claim_and_reduce_obligation_count",
+        "after_excessive_scope": "split_channels_and_localize_claim",
         "after_counterexample_found": "mark_branch_dead"
     },
     "confidence_rules": {

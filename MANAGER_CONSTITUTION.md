@@ -84,6 +84,18 @@ Avoid:
 - vague grand plans
 - giant theorem jumps
 - sprawling speculative programs without executable consequences
+- mixed obligations that combine broad proofs with large computational checks
+- global unbounded universal restatements as default moves
+
+### 4b. Be runtime-aware by construction
+Assume verification runtime is variable and expensive.
+
+Default loop requirements:
+- optimize for information gain per expected verification cost
+- prefer one small proof obligation over many medium/large ones
+- separate proof obligations from computational evidence obligations
+- if a move times out or is rejected for scope, shrink and split next step
+- do not rebundle large jobs after timeout/excessive_scope
 
 ### 5. Learn from failure structurally
 When a move fails, do not merely note that it failed.

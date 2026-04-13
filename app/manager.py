@@ -79,6 +79,9 @@ class Manager:
                     "notes": "string",
                     "artifacts": ["string"],
                     "spawned_nodes": ["FrontierNode"],
+                    "channel_used": "aristotle_proof|computational_evidence|none",
+                    "approved_jobs_count": "int",
+                    "rejected_jobs_count": "int",
                 },
             },
         )
@@ -119,10 +122,10 @@ class Manager:
             alternatives=[],
             target_frontier_node=target.id,
             world_family=world_family,
-            bounded_claim=f"Verification of {target.text[:50]}...",
-            formal_obligations=[f"Prove {target.text[:100]}"],
-            expected_information_gain="Reduced proof debt on the current branch.",
-            why_this_next=f"Deterministic selection of {world_family} for node {target.id}.",
+            bounded_claim=f"Local reduction check for node {target.id}: isolate one lemma that shrinks proof debt.",
+            formal_obligations=[f"Prove one local lemma that reduces `{target.text[:80]}` to a narrower sub-claim."],
+            expected_information_gain="Fast signal from one bounded lemma with low verification cost.",
+            why_this_next=f"Deterministic low-cost selection of {world_family} for node {target.id}.",
             update_rules=UpdateRules(
                 if_proved="Close node.",
                 if_refuted="Refute branch.",
@@ -151,6 +154,7 @@ class Manager:
 
     def _decide_with_llm(self, context: ManagerContext, policy: dict[str, Any]) -> ManagerDecision:
         system_prompt = f"{get_constitution()}\n\nCURRENT POLICY:\n{json.dumps(policy, indent=2)}"
+        guardrails = self._runtime_guardrails(policy)
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -159,13 +163,15 @@ class Manager:
                 "content": (
                     "Return a JSON object matching the ManagerDecision schema.\n\n"
                     f"Decision Schema:\n{json.dumps(get_decision_schema(), indent=2)}\n\n"
+                    f"Runtime and channel guardrails:\n{guardrails}\n\n"
                     f"Context:\n{context.model_dump_json(indent=2)}"
                 ),
             },
         ]
 
         try:
-            return self._call_llm_and_parse(messages)
+            decision = self._call_llm_and_parse(messages)
+            return self._normalize_decision(decision, policy)
         except (ValidationError, json.JSONDecodeError) as e:
             logger.warning(f"Initial LLM response failed validation: {e}. Attempting repair pass.")
             repair_messages = messages + [
@@ -173,7 +179,8 @@ class Manager:
                 {"role": "user", "content": f"The previous response failed validation with error: {e}. Please fix the JSON and return it strictly according to the schema."}
             ]
             try:
-                return self._call_llm_and_parse(repair_messages)
+                decision = self._call_llm_and_parse(repair_messages)
+                return self._normalize_decision(decision, policy)
             except Exception as fatal_e:
                 logger.error(f"Repair pass failed: {fatal_e}")
                 raise
@@ -199,6 +206,29 @@ class Manager:
         parsed = _extract_json(content)
         decision = ManagerDecision.model_validate(parsed)
         decision.manager_backend = "llm"
+        return decision
+
+    @staticmethod
+    def _runtime_guardrails(policy: dict[str, Any]) -> str:
+        limits = policy.get("complexity_limits", {})
+        max_formal = limits.get("max_formal_obligations_per_cycle", 4)
+        max_proof = limits.get("max_proof_obligations_per_step", 1)
+        return (
+            f"- Optimize for information gain per expected verification cost.\n"
+            f"- Prefer local lemmas, reduction checks, and bounded sanity checks.\n"
+            f"- Do not mix broad finite computation jobs with proof jobs in one obligation.\n"
+            f"- Avoid global unbounded 'for all integers' obligations as default moves.\n"
+            f"- Emit <= {max_formal} total obligations and assume only {max_proof} proof obligation can run this step.\n"
+            f"- After timeout/scope failures, shrink scope instead of rebundling."
+        )
+
+    @staticmethod
+    def _normalize_decision(decision: ManagerDecision, policy: dict[str, Any]) -> ManagerDecision:
+        max_formal = int(policy.get("complexity_limits", {}).get("max_formal_obligations_per_cycle", 4))
+        if len(decision.formal_obligations) > max_formal:
+            decision.formal_obligations = decision.formal_obligations[:max_formal]
+        if not decision.formal_obligations:
+            decision.formal_obligations = [f"Prove a local lemma for: {decision.bounded_claim[:100]}"]
         return decision
 
 

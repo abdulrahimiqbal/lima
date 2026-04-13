@@ -5,7 +5,9 @@ A production-ready LIMA (Language Interface for Mathematical Analysis) service d
 ## Core Features
 
 - **Speculative Strategist Manager**: The manager (LLM) aggressively proposes candidate answers, worlds, and claims, reducing them into formal obligations.
-- **Aristotle Verification**: A real HTTP adapter connects obligations to a formal theorem prover.
+- **Obligation Analysis + Submission Gate**: Every obligation is analyzed for scope, runtime risk, and channel before execution.
+- **Separated Execution Channels**: Small proof jobs go to Aristotle; bounded finite checks run through a computational evidence channel.
+- **Runtime-Aware Learning**: Timeout, excessive-scope, and mixed-channel failures are recorded and used to force claim shrinking.
 - **Self-Improvement Loop**: A separate loop reviews campaign history and proposes policy patches to optimize strategy.
 - **Persistent State**: Full campaign state persistence (frontier, memory, candidate answers, policy history) using SQLite.
 - **Deployment Ready**: Configured for Railway with health checks, readiness probes, and connectivity smoke tests.
@@ -15,9 +17,10 @@ A production-ready LIMA (Language Interface for Mathematical Analysis) service d
 The LIMA system operates as a closed loop between strategic speculation and formal verification:
 
 1.  **Manager**: Uses `MANAGER_CONSTITUTION.md` and `MANAGER_POLICY.json` to speculate on the problem frontier.
-2.  **Executor**: Maps formal obligations to Aristotle verification jobs via HTTP.
-3.  **Learner**: Updates campaign memory, confidence, and world-family priors based on execution results.
-4.  **Self-Improveer**: Periodically reviews history to patch the local policy.
+2.  **Submission Gate**: Analyzes obligations, rejects excessive scope, splits proof from bounded evidence jobs, and caps proof jobs per step.
+3.  **Executor**: Runs approved proof jobs via Aristotle and approved bounded checks via a local computational evidence path.
+4.  **Learner**: Updates campaign memory, confidence, and world-family priors based on execution results.
+5.  **Self-Improvement**: Periodically reviews history to patch the local policy.
 
 ## Root Configuration Files
 

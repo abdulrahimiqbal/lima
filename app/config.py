@@ -11,8 +11,11 @@ class Settings:
     environment: str = "development"
     port: int = 8080
     database_path: str = "./data/lima_learning.db"
+    memory_db_path: str = "./data/lima_memory.db"
+    memory_database_url: str | None = None
     worker_poll_seconds: int = 15
     auto_step_limit_per_tick: int = 1
+    use_memory_context: bool = False
     manager_backend: str = "rules"
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str | None = None
@@ -31,12 +34,16 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         database_path = os.getenv("DATABASE_PATH", cls.database_path)
+        memory_db_path = os.getenv("MEMORY_DB_PATH", cls.memory_db_path)
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(memory_db_path).parent.mkdir(parents=True, exist_ok=True)
         return cls(
             app_name=os.getenv("APP_NAME", cls.app_name),
             environment=os.getenv("ENVIRONMENT", cls.environment),
             port=int(os.getenv("PORT", str(cls.port))),
             database_path=database_path,
+            memory_db_path=memory_db_path,
+            memory_database_url=os.getenv("MEMORY_DATABASE_URL") or None,
             worker_poll_seconds=int(
                 os.getenv("WORKER_POLL_SECONDS", str(cls.worker_poll_seconds))
             ),
@@ -45,6 +52,7 @@ class Settings:
                     "AUTO_STEP_LIMIT_PER_TICK", str(cls.auto_step_limit_per_tick)
                 )
             ),
+            use_memory_context=os.getenv("USE_MEMORY_CONTEXT", "").lower() == "true",
             manager_backend=os.getenv("MANAGER_BACKEND", cls.manager_backend),
             llm_base_url=os.getenv("LLM_BASE_URL", cls.llm_base_url),
             llm_api_key=os.getenv("LLM_API_KEY") or None,

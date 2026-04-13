@@ -126,6 +126,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/campaigns/{campaign_id}/memory-summary")
+    def get_memory_summary(
+        campaign_id: str,
+        service: CampaignService = Depends(get_service),
+    ):
+        try:
+            return service.get_memory_summary(campaign_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/campaigns/{campaign_id}/memory-packet")
+    def get_memory_packet(
+        campaign_id: str,
+        service: CampaignService = Depends(get_service),
+    ):
+        try:
+            return service.get_memory_packet(campaign_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.post("/api/campaigns/{campaign_id}/step")
     def step_campaign(campaign_id: str, service: CampaignService = Depends(get_service)):
         try:

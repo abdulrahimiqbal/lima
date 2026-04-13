@@ -21,6 +21,18 @@ WorldFamily = Literal[
 ]
 DecisionMode = Literal["bootstrap", "explore", "unblock", "repair"]
 VerdictStatus = Literal["proved", "refuted", "blocked", "inconclusive"]
+ObligationType = Literal[
+    "proof",
+    "finite_check",
+    "reduction_check",
+    "counterexample_search",
+    "sanity_check",
+]
+ObligationScope = Literal["local", "semi_global", "global"]
+QuantifierProfile = Literal["bounded", "unbounded", "mixed"]
+ComplexityClass = Literal["micro", "small", "medium", "large", "unsafe"]
+RuntimeClass = Literal["fast", "moderate", "slow", "unknown"]
+SubmissionChannel = Literal["aristotle_proof", "computational_evidence", "reject"]
 
 
 class CandidateAnswer(BaseModel):
@@ -101,7 +113,31 @@ class ManagerDecision(BaseModel):
     why_this_next: str
     update_rules: UpdateRules
     self_improvement_note: SelfImprovementNote
+    obligation_hints: dict[str, Any] = Field(default_factory=dict)
     manager_backend: str = "rules"
+
+
+class AnalyzedObligation(BaseModel):
+    text: str
+    obligation_type: ObligationType
+    scope: ObligationScope
+    quantifier_profile: QuantifierProfile
+    complexity_class: ComplexityClass
+    expected_runtime_class: RuntimeClass
+    submission_channel: SubmissionChannel
+    allowed_in_default_loop: bool
+    rejection_reason: str | None = None
+
+
+class ApprovedExecutionPlan(BaseModel):
+    original_obligations: list[str] = Field(default_factory=list)
+    analyzed_obligations: list[AnalyzedObligation] = Field(default_factory=list)
+    approved_proof_jobs: list[str] = Field(default_factory=list)
+    approved_evidence_jobs: list[str] = Field(default_factory=list)
+    rejected_obligations: list[str] = Field(default_factory=list)
+    rejected_reasons: dict[str, str] = Field(default_factory=dict)
+    channel_used: Literal["aristotle_proof", "computational_evidence", "none"] = "none"
+    max_proof_jobs_per_step: int = 1
 
 
 class ExecutionResult(BaseModel):
@@ -111,6 +147,15 @@ class ExecutionResult(BaseModel):
     artifacts: list[str] = Field(default_factory=list)
     spawned_nodes: list[FrontierNode] = Field(default_factory=list)
     executor_backend: str
+    original_obligations: list[str] = Field(default_factory=list)
+    analyzed_obligations: list[dict[str, Any]] = Field(default_factory=list)
+    approved_proof_jobs: list[str] = Field(default_factory=list)
+    approved_evidence_jobs: list[str] = Field(default_factory=list)
+    rejected_obligations: list[str] = Field(default_factory=list)
+    approved_jobs_count: int = 0
+    rejected_jobs_count: int = 0
+    channel_used: str = "none"
+    timing_ms: int | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 
 

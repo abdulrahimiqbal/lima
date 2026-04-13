@@ -76,19 +76,56 @@ def apply_execution_result(
 
     # Spawn nodes from result
     if result.failure_type == "missing_lemma" and not result.spawned_nodes:
-        result.spawned_nodes.append(
-            FrontierNode(
-                text=f"Missing lemma discovered while attacking: {target.text}",
-                status="open",
-                priority=max(0.2, target.priority - 0.1),
-                parent_id=target.id,
-                kind="lemma",
+        new_text = f"Missing lemma discovered while attacking: {target.text}"
+        if not _has_similar_open_child(updated.frontier, target.id, "lemma", new_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=new_text,
+                    status="open",
+                    priority=max(0.2, target.priority - 0.1),
+                    parent_id=target.id,
+                    kind="lemma",
+                )
             )
-        )
+    elif result.failure_type in {"excessive_scope", "mixed_channels"} and not result.spawned_nodes:
+        lemma_text = f"Shrink the claim into one local lemma for: {target.text}"
+        finite_text = f"Isolate one bounded finite check supporting: {target.text}"
+        if not _has_similar_open_child(updated.frontier, target.id, "lemma", lemma_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=lemma_text,
+                    status="open",
+                    priority=max(0.2, target.priority - 0.05),
+                    parent_id=target.id,
+                    kind="lemma",
+                )
+            )
+        if not _has_similar_open_child(updated.frontier, target.id, "finite_check", finite_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=finite_text,
+                    status="open",
+                    priority=max(0.2, target.priority - 0.1),
+                    parent_id=target.id,
+                    kind="finite_check",
+                )
+            )
+    elif result.failure_type == "timeout" and not result.spawned_nodes:
+        retry_text = f"Retry with a smaller bounded reduction step for: {target.text}"
+        if not _has_similar_open_child(updated.frontier, target.id, "lemma", retry_text):
+            result.spawned_nodes.append(
+                FrontierNode(
+                    text=retry_text,
+                    status="open",
+                    priority=max(0.2, target.priority - 0.08),
+                    parent_id=target.id,
+                    kind="lemma",
+                )
+            )
 
     existing_ids = {node.id for node in updated.frontier}
     for spawned in result.spawned_nodes:
-        if spawned.id not in existing_ids:
+        if spawned.id not in existing_ids and not _has_exact_open_node(updated.frontier, spawned):
             updated.frontier.append(spawned)
             existing_ids.add(spawned.id)
 
@@ -103,3 +140,27 @@ def apply_execution_result(
         pass
 
     return updated
+
+
+def _has_similar_open_child(
+    frontier: list[FrontierNode],
+    parent_id: str,
+    kind: str,
+    text: str,
+) -> bool:
+    for node in frontier:
+        if node.parent_id != parent_id or node.kind != kind:
+            continue
+        if node.status not in {"open", "active", "blocked"}:
+            continue
+        if node.text == text:
+            return True
+    return False
+
+
+def _has_exact_open_node(frontier: list[FrontierNode], candidate: FrontierNode) -> bool:
+    for node in frontier:
+        if node.parent_id == candidate.parent_id and node.kind == candidate.kind and node.text == candidate.text:
+            if node.status in {"open", "active", "blocked"}:
+                return True
+    return False
