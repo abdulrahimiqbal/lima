@@ -70,6 +70,12 @@ Lima Learning is an experimental research-loop service for conjecture exploratio
   - Mock proof adapter outcomes
   - Local bounded evidence channel (records evidence, not formal proof)
 
+## Data Source of Truth
+
+- Production campaign state (including latest `tick_count`, such as long-running Collatz campaigns) is stored in **Railway Postgres**.
+- Local files like `data/lima_memory.db` and `data/lima_learning.db` are local/dev snapshots and can lag behind production.
+- If local UI/API output disagrees with Railway (for example, local tick is low but production tick is much higher), treat Railway Postgres as authoritative.
+
 ## Frontier and Candidate Answers
 
 - Canonical frontier state is persisted as `FrontierNode` entries in `lima_memory`.
