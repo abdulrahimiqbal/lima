@@ -361,6 +361,11 @@ class MemoryService:
                 "world_id": world_id,
                 "claim_id": claim_id,
                 "obligations": obligations,
+                "world_family": decision.get("world_family"),
+                "target_frontier_node": decision.get("target_frontier_node"),
+                "bounded_claim": decision.get("bounded_claim"),
+                "obligation_count": len(obligations),
+                "why_this_next": decision.get("why_this_next"),
             },
         )
         return {
@@ -489,6 +494,13 @@ class MemoryService:
                 "result_id": result_id,
                 "status": status,
                 "failure_type": failure_type,
+                "notes": result.get("notes", ""),
+                "executor_backend": result.get("executor_backend"),
+                "channel_used": result.get("channel_used", "none"),
+                "timing_ms": result.get("timing_ms"),
+                "approved_jobs_count": result.get("approved_jobs_count", 0),
+                "rejected_jobs_count": result.get("rejected_jobs_count", 0),
+                "spawned_nodes_count": len(result.get("spawned_nodes", [])),
             },
         )
         return result_id
