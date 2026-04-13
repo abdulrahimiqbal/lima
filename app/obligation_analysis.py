@@ -314,18 +314,22 @@ def _compute_adaptive_budgets(
 
 
 def _should_throttle_proof(decision: ManagerDecision, memory: Any | None) -> bool:
+    """Throttle proof submission if there have been repeated terminal failures."""
     if memory is None:
         return False
     penalty_key = f"{decision.target_frontier_node}:{decision.world_family}"
     retries = memory.retry_penalties.get(penalty_key, 0)
-    timeout_hits = 0
+    
+    # Count actual terminal failures (not timeouts from still-running jobs)
+    terminal_failure_hits = 0
     for failure in memory.recent_failures[:10]:
         if (
             failure.get("world") == decision.world_family
-            and failure.get("failure_type") == "timeout"
+            and failure.get("failure_type") in {"proof_failed", "budget_exhausted", "excessive_scope"}
         ):
-            timeout_hits += 1
-    return retries >= 4 or timeout_hits >= 2
+            terminal_failure_hits += 1
+    
+    return retries >= 4 or terminal_failure_hits >= 3
 
 
 def _has_bounded_cue(text: str) -> bool:

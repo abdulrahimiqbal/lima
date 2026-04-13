@@ -24,6 +24,7 @@ class Settings:
     aristotle_base_url: str | None = None
     aristotle_api_key: str | None = None
     aristotle_timeout_seconds: int = 120
+    aristotle_poll_interval_seconds: int = 10
     strict_live_aristotle: bool = False
     enable_self_improvement: bool = False
     public_base_url: str | None = None
@@ -63,6 +64,9 @@ class Settings:
             aristotle_api_key=os.getenv("ARISTOTLE_API_KEY") or None,
             aristotle_timeout_seconds=int(
                 os.getenv("ARISTOTLE_TIMEOUT_SECONDS", str(cls.aristotle_timeout_seconds))
+            ),
+            aristotle_poll_interval_seconds=int(
+                os.getenv("ARISTOTLE_POLL_INTERVAL_SECONDS", str(cls.aristotle_poll_interval_seconds))
             ),
             strict_live_aristotle=os.getenv("STRICT_LIVE_ARISTOTLE", "").lower() == "true",
             enable_self_improvement=os.getenv("ENABLE_SELF_IMPROVEMENT", "").lower() == "true",

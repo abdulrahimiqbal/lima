@@ -91,21 +91,49 @@ def test_manager_and_execution_are_mirrored_to_memory(tmp_path: Path, monkeypatc
             channel_used="aristotle_proof",
         ),
     )
-    monkeypatch.setattr(
-        service.executor,
-        "run",
-        lambda _campaign, _decision, _plan: ExecutionResult(
+    
+    # Mock submit_proof and poll_proof for new interface
+    from datetime import datetime, timezone
+    from app.schemas import PendingAristotleJob
+    
+    def mock_submit_proof(_campaign, _decision, _plan):
+        return PendingAristotleJob(
+            project_id="test-123",
+            target_frontier_node=_decision.target_frontier_node,
+            world_family=_decision.world_family,
+            bounded_claim=_decision.bounded_claim,
+            submitted_at=datetime.now(timezone.utc),
+            decision_snapshot=_decision.model_dump(),
+            plan_snapshot=_plan.model_dump(),
+            lean_code="-- test",
+            status="submitted",
+        )
+    
+    def mock_poll_proof(pending_job):
+        updated_job = pending_job.model_copy(deep=True)
+        updated_job.poll_count += 1
+        updated_job.status = "complete"
+        result = ExecutionResult(
             status="inconclusive",
             failure_type="timeout",
             notes="Timed out on first attempt.",
             artifacts=["timeout-log"],
             executor_backend="mock",
             raw={"aristotle_request": "REQ", "aristotle_response": "RESP"},
-        ),
-    )
+        )
+        return updated_job, result
+    
+    monkeypatch.setattr(service.executor, "submit_proof", mock_submit_proof)
+    monkeypatch.setattr(service.executor, "poll_proof", mock_poll_proof)
 
+    # First step submits the job
+    stepped = service.step_campaign(campaign.id)
+    assert stepped.pending_aristotle_job is not None
+    
+    # Second step polls and completes
     stepped = service.step_campaign(campaign.id)
     assert stepped.tick_count == 1
+    assert stepped.pending_aristotle_job is None
 
     packet = service.get_memory_packet(campaign.id)
     assert packet["recent_claims"]
@@ -175,7 +203,7 @@ def test_service_crud_events_notes_pause_resume_step(tmp_path: Path, monkeypatch
     )
     monkeypatch.setattr(
         service.executor,
-        "run",
+        "run_evidence",
         lambda _campaign, _decision, _plan: ExecutionResult(
             status="inconclusive",
             failure_type="evidence_only",
@@ -220,7 +248,7 @@ def test_context_is_memory_backed_only(tmp_path: Path, monkeypatch) -> None:
     )
     monkeypatch.setattr(
         service.executor,
-        "run",
+        "run_evidence",
         lambda _campaign, _decision, _plan: ExecutionResult(
             status="inconclusive",
             failure_type="evidence_only",
@@ -293,7 +321,7 @@ def test_frontier_and_candidate_persist_across_reload(tmp_path: Path, monkeypatc
     )
     monkeypatch.setattr(
         service.executor,
-        "run",
+        "run_evidence",
         lambda _campaign, _decision, _plan: ExecutionResult(
             status="blocked",
             failure_type="missing_lemma",
@@ -332,7 +360,7 @@ def test_frontier_and_candidate_persist_across_reload(tmp_path: Path, monkeypatc
     monkeypatch.setattr(reloaded_service.manager, "decide", lambda _context: decision)
     monkeypatch.setattr(
         reloaded_service.executor,
-        "run",
+        "run_evidence",
         lambda _campaign, _decision, _plan: ExecutionResult(
             status="inconclusive",
             failure_type="evidence_only",

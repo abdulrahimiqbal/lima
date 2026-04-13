@@ -169,20 +169,56 @@ def test_executor_http_path(tmp_path: Path):
         
         with patch.object(
             app.state.service.executor._proof_adapter,
-            "run_proof",
-        ) as mock_run_proof:
-            mock_run_proof.return_value = ExecutionResult(
-                status="proved",
-                notes="Verified by Aristotle",
-                artifacts=["artifact-1"],
-                spawned_nodes=[],
-                executor_backend="aristotle",
-            )
+            "submit_proof",
+        ) as mock_submit_proof, patch.object(
+            app.state.service.executor._proof_adapter,
+            "poll_proof",
+        ) as mock_poll_proof:
+            from datetime import datetime, timezone
+            from app.schemas import PendingAristotleJob
+            
+            def make_pending_job(_campaign, _decision, _plan):
+                return PendingAristotleJob(
+                    project_id="test-123",
+                    target_frontier_node=_decision.target_frontier_node,
+                    world_family=_decision.world_family,
+                    bounded_claim=_decision.bounded_claim,
+                    submitted_at=datetime.now(timezone.utc),
+                    decision_snapshot=_decision.model_dump(),
+                    plan_snapshot=_plan.model_dump(),
+                    lean_code="-- test",
+                    status="submitted",
+                )
+            
+            def complete_job(pending_job):
+                updated_job = pending_job.model_copy(deep=True)
+                updated_job.poll_count += 1
+                updated_job.status = "complete"
+                result = ExecutionResult(
+                    status="proved",
+                    notes="Verified by Aristotle",
+                    artifacts=["artifact-1"],
+                    spawned_nodes=[],
+                    executor_backend="aristotle",
+                )
+                return updated_job, result
+            
+            mock_submit_proof.side_effect = make_pending_job
+            mock_poll_proof.side_effect = complete_job
+            
+            # First step submits
+            response = client.post(f"/api/campaigns/{campaign_id}/step")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["pending_aristotle_job"] is not None
+            
+            # Second step polls and completes
             response = client.post(f"/api/campaigns/{campaign_id}/step")
             assert response.status_code == 200
             data = response.json()
             assert data["last_execution_result"]["status"] == "proved"
-            assert mock_run_proof.called
+            assert mock_submit_proof.called
+            assert mock_poll_proof.called
 
 
 def test_self_improvement_logic(tmp_path: Path):

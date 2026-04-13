@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import logging
 import threading
+import time
 from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
@@ -23,6 +24,7 @@ from .schemas import (
     FrontierNode,
     ManagerContext,
     MemoryState,
+    PendingAristotleJob,
 )
 from .self_improvement import SelfImprovementService
 
@@ -147,6 +149,11 @@ class CampaignService:
             if campaign.status in {"solved", "failed", "paused"}:
                 return campaign
 
+            # Check if there's a pending Aristotle job
+            if campaign.pending_aristotle_job:
+                return self._poll_pending_job(campaign)
+
+            # No pending job - proceed with normal decision flow
             context = self._build_context_from_memory(campaign_id, campaign=campaign)
             decision = self.manager.decide(context)
             tick = campaign.tick_count + 1
@@ -179,36 +186,178 @@ class CampaignService:
                     channel_used="none",
                     raw={"rejected_reasons": plan.rejected_reasons},
                 )
-            else:
-                self.memory.record_manager_decision(
-                    campaign_id=campaign.id,
-                    tick=tick,
-                    decision=decision.model_dump(),
-                )
-                result = self.executor.run(campaign, decision, plan)
+                updated = self._finalize_execution(campaign, decision, result, context, tick, active_policy)
+                return updated
 
-            updated = campaign.model_copy(deep=True)
-            updated.tick_count = tick
-            updated.last_manager_context = context.model_dump()
-            updated.last_manager_decision = decision.model_dump()
-            updated.manager_backend = decision.manager_backend
-            updated.executor_backend = result.executor_backend
-            updated.current_candidate_answer = decision.candidate_answer
-            updated = update_memory(updated, decision, result, policy=active_policy)
-            updated = apply_execution_result(updated, decision, result)
-            updated.last_execution_result = result.model_dump()
-
-            raw_payload = result.raw if isinstance(result.raw, dict) else {}
-            self.memory.record_execution_result(
+            # Record decision before execution
+            self.memory.record_manager_decision(
                 campaign_id=campaign.id,
                 tick=tick,
                 decision=decision.model_dump(),
-                result=updated.last_execution_result,
-                raw_request=raw_payload.get("aristotle_request"),
-                raw_response=raw_payload.get("aristotle_response"),
+            )
+
+            # Handle proof jobs vs evidence jobs differently
+            if plan.approved_proof_jobs:
+                # Submit proof job and store pending state
+                pending_job = self.executor.submit_proof(campaign, decision, plan)
+                
+                updated = campaign.model_copy(deep=True)
+                updated.tick_count = tick
+                updated.last_manager_context = context.model_dump()
+                updated.last_manager_decision = decision.model_dump()
+                updated.manager_backend = decision.manager_backend
+                updated.current_candidate_answer = decision.candidate_answer
+                updated.pending_aristotle_job = pending_job
+                
+                self.memory.add_event(
+                    campaign_id=campaign_id,
+                    tick=tick,
+                    event_type="aristotle_job_submitted",
+                    payload={
+                        "project_id": pending_job.project_id,
+                        "target_frontier_node": pending_job.target_frontier_node,
+                        "world_family": pending_job.world_family,
+                        "status": pending_job.status,
+                    },
+                )
+                
+                self._persist_campaign(updated)
+                return updated
+            
+            elif plan.approved_evidence_jobs:
+                # Evidence jobs run synchronously as before
+                result = self.executor.run_evidence(campaign, decision, plan)
+                updated = self._finalize_execution(campaign, decision, result, context, tick, active_policy)
+                return updated
+            
+            else:
+                # No jobs approved
+                result = ExecutionResult(
+                    status="blocked",
+                    failure_type="excessive_scope",
+                    notes="No approved jobs in execution plan.",
+                    executor_backend="gate",
+                )
+                updated = self._finalize_execution(campaign, decision, result, context, tick, active_policy)
+                return updated
+
+    def _poll_pending_job(self, campaign: CampaignRecord) -> CampaignRecord:
+        """Poll an existing pending Aristotle job."""
+        pending_job = campaign.pending_aristotle_job
+        if not pending_job:
+            return campaign
+        
+        # Poll the job
+        updated_job, result = self.executor.poll_proof(pending_job)
+        
+        # Update campaign with new job state
+        updated = campaign.model_copy(deep=True)
+        updated.pending_aristotle_job = updated_job
+        
+        if result is None:
+            # Still pending - record poll event and return
+            self.memory.add_event(
+                campaign_id=campaign.id,
+                tick=campaign.tick_count,
+                event_type="aristotle_job_polled",
+                payload={
+                    "project_id": updated_job.project_id,
+                    "poll_count": updated_job.poll_count,
+                    "status": updated_job.status,
+                },
             )
             self._persist_campaign(updated)
             return updated
+        
+        # Job completed - finalize execution
+        # Reconstruct decision and plan from snapshots
+        from .schemas import ManagerDecision, ApprovedExecutionPlan
+        decision = ManagerDecision.model_validate(pending_job.decision_snapshot)
+        plan = ApprovedExecutionPlan.model_validate(pending_job.plan_snapshot)
+        
+        # Attach plan metadata to result
+        started = time.perf_counter()
+        elapsed = int((time.perf_counter() - started) * 1000)
+        result = self.executor._attach_plan_metadata(
+            result,
+            plan,
+            elapsed,
+            executed_proof_jobs=plan.approved_proof_jobs[:1],
+            executed_evidence_jobs=[],
+        )
+        
+        # Get context and policy
+        context = updated.last_manager_context or {}
+        active_policy = self.memory.get_latest_policy() or get_policy()
+        
+        # Apply memory and frontier updates
+        updated = update_memory(updated, decision, result, policy=active_policy)
+        updated = apply_execution_result(updated, decision, result)
+        updated.last_execution_result = result.model_dump()
+        
+        # Clear pending job
+        updated.pending_aristotle_job = None
+        
+        # Record completion event
+        self.memory.add_event(
+            campaign_id=campaign.id,
+            tick=campaign.tick_count,
+            event_type="aristotle_job_completed",
+            payload={
+                "project_id": updated_job.project_id,
+                "poll_count": updated_job.poll_count,
+                "status": updated_job.status,
+                "result_status": result.status,
+                "failure_type": result.failure_type,
+            },
+        )
+        
+        # Record execution result
+        raw_payload = result.raw if isinstance(result.raw, dict) else {}
+        self.memory.record_execution_result(
+            campaign_id=campaign.id,
+            tick=campaign.tick_count,
+            decision=decision.model_dump(),
+            result=updated.last_execution_result,
+            raw_request=raw_payload.get("aristotle_request"),
+            raw_response=raw_payload.get("aristotle_response"),
+        )
+        
+        self._persist_campaign(updated)
+        return updated
+
+    def _finalize_execution(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        result: ExecutionResult,
+        context: ManagerContext,
+        tick: int,
+        active_policy: dict,
+    ) -> CampaignRecord:
+        """Finalize execution by applying memory and frontier updates."""
+        updated = campaign.model_copy(deep=True)
+        updated.tick_count = tick
+        updated.last_manager_context = context.model_dump()
+        updated.last_manager_decision = decision.model_dump()
+        updated.manager_backend = decision.manager_backend
+        updated.executor_backend = result.executor_backend
+        updated.current_candidate_answer = decision.candidate_answer
+        updated = update_memory(updated, decision, result, policy=active_policy)
+        updated = apply_execution_result(updated, decision, result)
+        updated.last_execution_result = result.model_dump()
+
+        raw_payload = result.raw if isinstance(result.raw, dict) else {}
+        self.memory.record_execution_result(
+            campaign_id=campaign.id,
+            tick=tick,
+            decision=decision.model_dump(),
+            result=updated.last_execution_result,
+            raw_request=raw_payload.get("aristotle_request"),
+            raw_response=raw_payload.get("aristotle_response"),
+        )
+        self._persist_campaign(updated)
+        return updated
 
     def auto_step_once(self) -> None:
         campaigns = self.list_campaigns()
@@ -363,6 +512,13 @@ class CampaignService:
             if candidate_answer_payload
             else None
         )
+        
+        pending_job_payload = payload.get("pending_aristotle_job")
+        pending_job = (
+            PendingAristotleJob.model_validate(pending_job_payload)
+            if pending_job_payload
+            else None
+        )
 
         status_raw = payload.get("status", campaign_node.get("status", "running"))
         status_normalized = "running" if status_raw == "active" else status_raw
@@ -384,12 +540,21 @@ class CampaignService:
             last_execution_result=payload.get("last_execution_result"),
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
+            pending_aristotle_job=pending_job,
         )
 
     def _campaign_header_from_node(self, campaign_node: dict) -> CampaignRecord:
         payload = campaign_node.get("payload") or {}
         status_raw = payload.get("status", campaign_node.get("status", "running"))
         status_normalized = "running" if status_raw == "active" else status_raw
+        
+        pending_job_payload = payload.get("pending_aristotle_job")
+        pending_job = (
+            PendingAristotleJob.model_validate(pending_job_payload)
+            if pending_job_payload
+            else None
+        )
+        
         return CampaignRecord(
             id=campaign_node["id"],
             title=campaign_node.get("title", ""),
@@ -412,6 +577,7 @@ class CampaignService:
             last_execution_result=payload.get("last_execution_result"),
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
+            pending_aristotle_job=pending_job,
         )
 
     def _load_frontier_nodes(self, campaign_id: str) -> list[FrontierNode]:
@@ -454,6 +620,9 @@ class CampaignService:
                 "manager_backend": campaign.manager_backend,
                 "executor_backend": campaign.executor_backend,
                 "status": campaign.status,
+                "pending_aristotle_job": campaign.pending_aristotle_job.model_dump(mode='json')
+                if campaign.pending_aristotle_job
+                else None,
             },
         )
         self.memory.upsert_frontier_nodes(
@@ -461,10 +630,11 @@ class CampaignService:
             nodes=[node.model_dump() for node in campaign.frontier],
         )
         logger.debug(
-            "Persisted campaign=%s frontier_nodes=%d tick=%d",
+            "Persisted campaign=%s frontier_nodes=%d tick=%d pending_job=%s",
             campaign.id,
             len(campaign.frontier),
             campaign.tick_count,
+            campaign.pending_aristotle_job.project_id if campaign.pending_aristotle_job else None,
         )
 
     def _campaign_lock(self, campaign_id: str) -> threading.Lock:

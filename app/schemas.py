@@ -262,6 +262,23 @@ class CampaignControl(BaseModel):
     action: Literal["pause", "resume"]
 
 
+class PendingAristotleJob(BaseModel):
+    """Represents a long-running Aristotle proof job that survives restarts."""
+    project_id: str
+    target_frontier_node: str
+    world_family: WorldFamily
+    bounded_claim: str
+    submitted_at: datetime
+    last_polled_at: datetime | None = None
+    poll_count: int = 0
+    status: Literal["submitted", "running", "complete", "complete_with_errors", "out_of_budget", "failed", "canceled"] = "submitted"
+    decision_snapshot: dict[str, Any]
+    plan_snapshot: dict[str, Any]
+    lean_code: str
+    result_tar_path: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class CampaignRecord(BaseModel):
     id: str
     title: str
@@ -280,6 +297,7 @@ class CampaignRecord(BaseModel):
     last_execution_result: dict[str, Any] | None = None
     manager_backend: str
     executor_backend: str
+    pending_aristotle_job: PendingAristotleJob | None = None
 
 
 class CampaignEventRecord(BaseModel):

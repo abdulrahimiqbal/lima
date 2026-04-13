@@ -62,14 +62,43 @@ def test_proof_channel_path(monkeypatch) -> None:
         channel_used="aristotle_proof",
     )
 
-    def fake_run_aristotle(c, d, p, timeout_seconds):
-        return ExecutionResult(status="proved", notes="ok", executor_backend="aristotle")
+    from datetime import datetime, timezone
+    from app.schemas import PendingAristotleJob
+    
+    def fake_submit_proof(c, d, p):
+        return PendingAristotleJob(
+            project_id="test-project-123",
+            target_frontier_node=d.target_frontier_node,
+            world_family=d.world_family,
+            bounded_claim=d.bounded_claim,
+            submitted_at=datetime.now(timezone.utc),
+            decision_snapshot=d.model_dump(),
+            plan_snapshot=p.model_dump(),
+            lean_code="-- test lean",
+            status="submitted",
+        )
+    
+    def fake_poll_proof(pending_job):
+        updated_job = pending_job.model_copy(deep=True)
+        updated_job.poll_count += 1
+        updated_job.status = "complete"
+        result = ExecutionResult(status="proved", notes="ok", executor_backend="aristotle")
+        return updated_job, result
 
-    monkeypatch.setattr(executor._proof_adapter, "run_proof", fake_run_aristotle)
-    result = executor.run(campaign, decision, plan)
-    assert result.executor_backend == "aristotle"
-    assert result.approved_jobs_count == 1
-    assert result.channel_used == "aristotle_proof"
+    monkeypatch.setattr(executor._proof_adapter, "submit_proof", fake_submit_proof)
+    monkeypatch.setattr(executor._proof_adapter, "poll_proof", fake_poll_proof)
+    
+    # Test submit
+    pending_job = executor.submit_proof(campaign, decision, plan)
+    assert pending_job.project_id == "test-project-123"
+    assert pending_job.status == "submitted"
+    
+    # Test poll
+    updated_job, result = executor.poll_proof(pending_job)
+    assert updated_job.poll_count == 1
+    assert updated_job.status == "complete"
+    assert result is not None
+    assert result.status == "proved"
 
 
 def test_evidence_channel_path() -> None:
@@ -81,24 +110,10 @@ def test_evidence_channel_path() -> None:
         approved_evidence_jobs=["Verify computationally for n <= 100"],
         channel_used="computational_evidence",
     )
-    result = executor.run(campaign, decision, plan)
+    result = executor.run_evidence(campaign, decision, plan)
     assert result.executor_backend == "evidence"
     assert result.failure_type == "evidence_only"
     assert result.channel_used == "computational_evidence"
-
-
-def test_timeout_classification_path() -> None:
-    executor = Executor(Settings(executor_backend="mock"))
-    analyzed_map = {
-        "For all integers n, prove convergence.": type(
-            "Meta", (), {"scope": "global", "complexity_class": "unsafe"}
-        )()
-    }
-    failure_type = executor._timeout_failure_type(
-        ["For all integers n, prove convergence."],
-        analyzed_map,
-    )
-    assert failure_type == "excessive_scope"
 
 
 def test_mock_proof_never_returns_proved_or_refuted() -> None:
@@ -110,7 +125,11 @@ def test_mock_proof_never_returns_proved_or_refuted() -> None:
         approved_proof_jobs=["Prove local lemma"],
         channel_used="aristotle_proof",
     )
-    result = executor.run(campaign, decision, plan)
+    # Submit and poll
+    pending_job = executor.submit_proof(campaign, decision, plan)
+    updated_job, result = executor.poll_proof(pending_job)
+    
+    assert result is not None
     assert result.executor_backend == "mock"
     assert result.status in {"inconclusive", "blocked"}
     assert result.status not in {"proved", "refuted"}

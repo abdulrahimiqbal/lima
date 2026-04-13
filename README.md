@@ -42,7 +42,9 @@ The system has been transformed from a bounded evidence collector into a more cr
 - `blocked/formalization_failed`: Obligation lacks formal statement.
 - `blocked/partial_proof`: Aristotle completed but output contains `sorry`.
 - `inconclusive/evidence_only`: Bounded evidence collected, not a formal proof.
-- `inconclusive/timeout`: Proof attempt timed out.
+- `inconclusive/timeout`: Proof attempt timed out (rare with new polling system).
+- `inconclusive/budget_exhausted`: Aristotle ran out of budget.
+- `inconclusive/canceled`: Aristotle job was canceled.
 
 ### Evidence-to-Proof Escalation
 - System tracks `evidence_streaks` per frontier node.
@@ -77,6 +79,14 @@ The system has been transformed from a bounded evidence collector into a more cr
 - Executor uses a small proof adapter boundary:
   - `MockProofAdapter`
   - `AristotleSdkProofAdapter`
+- **Durable Submit-and-Poll Workflow**: Aristotle proof jobs are now long-running external jobs that survive process restarts:
+  - Proof jobs are submitted once and return immediately without blocking
+  - Job state is persisted in campaign payload as `pending_aristotle_job`
+  - Future `step_campaign()` calls poll the existing job until completion
+  - While a proof job is in-flight, no new manager decision is created for that campaign
+  - Only terminal results (complete, failed, out_of_budget, etc.) finalize memory/frontier updates
+  - `ARISTOTLE_TIMEOUT_SECONDS` is now used only for individual network requests, not proof completion deadlines
+  - `ARISTOTLE_POLL_INTERVAL_SECONDS` controls polling cadence (default: 10s)
 - Strict live probe (`STRICT_LIVE_ARISTOTLE=true`) performs:
   - SDK import + key presence check
   - lightweight authenticated reachability check to `${ARISTOTLE_BASE_URL}/healthz` when `ARISTOTLE_BASE_URL` is set
@@ -172,12 +182,23 @@ Set these GitHub repository secrets so the workflow can deploy non-interactively
 ### Why is the executor inconclusive?
 
 - Common causes:
-  - timeout
+  - timeout (rare with new polling system - only for terminal timeouts)
   - excessive scope
   - evidence-only execution path
   - formalization_failed (obligation lacks formal statement)
+  - budget_exhausted (Aristotle ran out of budget)
   - mock mode (non-formal by design)
 - Inspect `last_execution_result.failure_type`, `rejected_reasons`, and recent events.
+- Check for `pending_aristotle_job` in campaign state - if present, the job is still running.
+
+### Why is my campaign stuck with a pending Aristotle job?
+
+- Check `GET /api/campaigns/{id}` for `pending_aristotle_job` field.
+- If present, the campaign is waiting for Aristotle to complete the proof.
+- The worker polls the job automatically on each tick.
+- Check `poll_count` and `last_polled_at` to see polling activity.
+- Check `status` field: `submitted`, `running`, `complete`, `failed`, etc.
+- If the job appears stuck, check Aristotle service status and logs.
 
 ### Why does `/readyz` fail in strict live mode?
 

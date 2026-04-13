@@ -34,7 +34,20 @@ def test_campaign_lifecycle(tmp_path: Path) -> None:
     stepped = step_response.json()
     assert stepped["tick_count"] == 1
     assert stepped["last_manager_decision"] is not None
-    assert stepped["last_execution_result"] is not None
+    
+    # With new polling behavior, first step may submit a pending job
+    # If there's a pending job, step again to poll it
+    if stepped.get("pending_aristotle_job"):
+        # Poll the pending job
+        step2_response = client.post(f"/api/campaigns/{campaign_id}/step")
+        assert step2_response.status_code == 200
+        stepped = step2_response.json()
+        # After polling, should have execution result
+        assert stepped["last_execution_result"] is not None
+        assert stepped["pending_aristotle_job"] is None
+    else:
+        # Evidence jobs complete immediately
+        assert stepped["last_execution_result"] is not None
 
     context_response = client.get(f"/api/campaigns/{campaign_id}/manager-context")
     assert context_response.status_code == 200

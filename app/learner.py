@@ -74,11 +74,16 @@ def update_memory(
             updated.memory.formalization_streaks[node_key] = 0
             updated.memory.timeout_streaks[node_key] = 0
         elif result.failure_type == "timeout":
+            # Only penalize actual terminal timeouts, not still-running jobs
+            # With the new polling system, this should be rare
             updated.memory.timeout_streaks[node_key] = (
                 updated.memory.timeout_streaks.get(node_key, 0) + 1
             )
             updated.memory.evidence_streaks[node_key] = 0
             updated.memory.formalization_streaks[node_key] = 0
+            updated.memory.policy_notes.append(
+                f"terminal_timeout:{node_key}:{world}"
+            )
         else:
             # Other inconclusive - don't reset streaks necessarily
             pass
