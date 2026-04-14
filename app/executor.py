@@ -484,9 +484,12 @@ class AristotleSdkProofAdapter:
         
         status_str = project.status.value if hasattr(project.status, 'value') else str(project.status)
         
+        # Log the actual status for debugging
+        logger.info(f"Aristotle project {project_id} status: {status_str} (type: {type(project.status)}, raw: {project.status})")
+        
         # If terminal, try to download results
         result_tar_path = None
-        if project.status in {ProjectStatus.COMPLETE, ProjectStatus.COMPLETE_WITH_ERRORS, ProjectStatus.OUT_OF_BUDGET}:
+        if project.status in {ProjectStatus.COMPLETE, ProjectStatus.COMPLETE_WITH_ERRORS, ProjectStatus.OUT_OF_BUDGET, ProjectStatus.FAILED, ProjectStatus.CANCELED}:
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_tar = Path(tmpdir) / f"aristotle_result_{project_id}.tar.gz"
                 try:
