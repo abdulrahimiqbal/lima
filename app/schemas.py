@@ -746,6 +746,28 @@ class WorldEvolutionRun(BaseModel):
         return self.run_id
 
 
+class FormalProbeBakeRequest(BaseModel):
+    world_id: str | None = None
+    run_id: str | None = None
+    max_probes: int = Field(default=36, ge=1, le=200)
+    submit_all_at_once: bool = True
+
+
+class FormalProbeBakeRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"PB-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    requested_probe_count: int
+    submitted_probe_count: int = 0
+    skipped_probe_count: int = 0
+    pending_job_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list)
+    status: Literal["submitted", "partial", "blocked"] = "submitted"
+    notes: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

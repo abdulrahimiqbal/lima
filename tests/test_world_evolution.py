@@ -248,3 +248,50 @@ def test_llm_invention_batch_tops_up_underproduced_worlds(tmp_path: Path, monkey
     assert batch.metrics["source"] == "mixed"
     assert any(world.source_model == "llm-test" for world in raw_worlds)
     assert any(world.source_model == "deterministic" for world in raw_worlds)
+
+
+def test_bake_formal_probes_submits_compiled_probe_jobs(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 8,
+            "survivors_per_generation": 3,
+            "mutations_per_survivor": 1,
+            "wildness": "high",
+            "max_formal_probes_per_generation": 6,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    bake_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/bake-probes",
+        json={
+            "max_probes": 6,
+            "submit_all_at_once": True,
+        },
+    )
+
+    assert bake_response.status_code == 200
+    bake = bake_response.json()
+    assert bake["submitted_probe_count"] == 6
+    assert bake["pending_job_count"] == 6
+    assert len(bake["probe_ids"]) == 6
+
+    campaign = client.get(f"/api/campaigns/{campaign_id}").json()
+    assert len(campaign["pending_aristotle_jobs"]) == 6
+    assert all(job["debt_id"].startswith("FP-") for job in campaign["pending_aristotle_jobs"])
+
+    service = app.state.service
+    submitted_probes = service.memory.list_research_nodes(
+        campaign_id,
+        node_type="FormalProbe",
+        limit=20,
+    )
+    assert len([node for node in submitted_probes if node.status == "submitted"]) == 6

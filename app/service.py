@@ -23,6 +23,9 @@ from .schemas import (
     CampaignUpdateNotes,
     CandidateAnswer,
     ExecutionResult,
+    FormalProbe,
+    FormalProbeBakeRequest,
+    FormalProbeBakeRun,
     FrontierNode,
     InventionBatch,
     InventionBatchCreate,
@@ -32,6 +35,9 @@ from .schemas import (
     PendingAristotleJob,
     DistilledWorld,
     ProofDebtItem,
+    SelfImprovementNote,
+    UpdateRules,
+    WorldProgram,
     WorldEvolutionRun,
     WorldEvolutionRunRequest,
 )
@@ -285,6 +291,14 @@ class CampaignService:
                     },
                 )
                 continue
+
+            if pending_job.debt_id and pending_job.debt_id.startswith("FP-"):
+                self._update_formal_probe_result(
+                    campaign.id,
+                    pending_job.debt_id,
+                    updated_job,
+                    result,
+                )
 
             from .schemas import ApprovedExecutionPlan, ManagerDecision
 
@@ -980,9 +994,236 @@ class CampaignService:
 
             return run
 
+    def bake_formal_probes(
+        self,
+        campaign_id: str,
+        payload: FormalProbeBakeRequest,
+    ) -> FormalProbeBakeRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            probes = self._compiled_formal_probes(campaign_id, payload)
+            if not probes:
+                bake_run = FormalProbeBakeRun(
+                    campaign_id=campaign_id,
+                    world_id=payload.world_id or campaign.active_world_id,
+                    requested_probe_count=payload.max_probes,
+                    status="blocked",
+                    notes=["No compiled formal probes were available to submit."],
+                )
+                self._record_probe_bake_run(bake_run)
+                return bake_run
+
+            updated = campaign.model_copy(deep=True)
+            existing_jobs = self._pending_jobs(updated)
+            submitted_jobs: list[PendingAristotleJob] = []
+            skipped = 0
+            world = None
+            if campaign.current_world_program:
+                try:
+                    world = WorldProgram.model_validate(campaign.current_world_program)
+                except Exception:
+                    world = None
+
+            for probe in probes:
+                if any(job.debt_id == probe.id for job in existing_jobs + submitted_jobs):
+                    skipped += 1
+                    continue
+                decision = self._decision_for_formal_probe(campaign, probe, world)
+                plan = ApprovedExecutionPlan(
+                    original_obligations=[probe.source_text],
+                    approved_proof_jobs=[probe.source_text],
+                    approved_evidence_jobs=[],
+                    rejected_obligations=[],
+                    channel_used="aristotle_proof",
+                    max_proof_jobs_per_step=payload.max_probes,
+                    budget_metadata={
+                        "formal_probe_id": probe.id,
+                        "formal_probe_type": probe.probe_type,
+                        "world_id": probe.world_id,
+                        "bake_all_at_once": payload.submit_all_at_once,
+                    },
+                )
+                job = self.executor.submit_proof(campaign, decision, plan)
+                job.debt_id = probe.id
+                submitted_jobs.append(job)
+                self._mark_formal_probe_submitted(campaign_id, probe, job)
+
+            all_jobs = [*existing_jobs, *submitted_jobs]
+            self._set_pending_jobs(updated, all_jobs)
+            self._persist_campaign(updated)
+
+            bake_run = FormalProbeBakeRun(
+                campaign_id=campaign_id,
+                world_id=payload.world_id or campaign.active_world_id,
+                requested_probe_count=payload.max_probes,
+                submitted_probe_count=len(submitted_jobs),
+                skipped_probe_count=skipped,
+                pending_job_count=len(all_jobs),
+                probe_ids=[job.debt_id for job in submitted_jobs if job.debt_id],
+                project_ids=[job.project_id for job in submitted_jobs],
+                status="submitted" if submitted_jobs else "blocked",
+                notes=[
+                    "Submitted compiled formal probes to Aristotle.",
+                    "Use /api/campaigns/{campaign_id}/step to poll pending probe jobs.",
+                ],
+            )
+            self._record_probe_bake_run(bake_run)
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="formal_probe_bake_submitted",
+                payload=bake_run.model_dump(mode="json"),
+            )
+            return bake_run
+
     def get_invention_lab(self, campaign_id: str) -> dict:
         _ = self.get_campaign(campaign_id)
         return self.invention.get_lab(campaign_id)
+
+    def _compiled_formal_probes(
+        self,
+        campaign_id: str,
+        payload: FormalProbeBakeRequest,
+    ) -> list[FormalProbe]:
+        nodes = self.memory.list_research_nodes(
+            campaign_id,
+            node_type="FormalProbe",
+            limit=max(200, payload.max_probes * 2),
+        )
+        probes: list[FormalProbe] = []
+        for node in nodes:
+            try:
+                probe = FormalProbe.model_validate(node.payload)
+            except Exception:
+                logger.warning("Skipping invalid FormalProbe node=%s", node.id)
+                continue
+            if probe.status != "compiled":
+                continue
+            if payload.world_id and probe.world_id != payload.world_id:
+                continue
+            probes.append(probe)
+            if len(probes) >= payload.max_probes:
+                break
+        return probes
+
+    def _decision_for_formal_probe(
+        self,
+        campaign: CampaignRecord,
+        probe: FormalProbe,
+        world: WorldProgram | None,
+    ) -> ManagerDecision:
+        return ManagerDecision(
+            candidate_answer=CandidateAnswer(
+                stance="undecided",
+                summary="Baking compiled formal probes; not solving from narrative confidence.",
+                confidence=0.1,
+            ),
+            alternatives=[],
+            target_frontier_node=f"probe:{probe.id}",
+            world_family="bridge",
+            bounded_claim=probe.source_text,
+            formal_obligations=[probe.formal_obligation],
+            expected_information_gain=(
+                "Determine whether the promoted world has Lean-clean formal contact."
+            ),
+            why_this_next=(
+                "World evolution compiled this as a tiny probe; bake probes before grand proof debt."
+            ),
+            update_rules=UpdateRules(
+                if_proved="Increase world formal-probe success and keep the survivor.",
+                if_refuted="Treat this probe shape as invalid and mutate the world.",
+                if_blocked="Record the missing formalization/proof gap and mutate the probe.",
+                if_inconclusive="Retry only after reducing the probe or budget shape.",
+            ),
+            self_improvement_note=SelfImprovementNote(
+                proposal="None",
+                reason="Probe baking is an execution step, not a policy update.",
+            ),
+            obligation_hints={"formal_probe_id": probe.id, "probe_type": probe.probe_type},
+            manager_backend="probe_baker",
+            global_thesis=(
+                "A promoted invented world must survive tiny formal probes before closure debt."
+            ),
+            primary_world=world,
+            proof_debt=[],
+            critical_next_debt_id=probe.id,
+        )
+
+    def _mark_formal_probe_submitted(
+        self,
+        campaign_id: str,
+        probe: FormalProbe,
+        job: PendingAristotleJob,
+    ) -> None:
+        updated = probe.model_copy(
+            update={
+                "status": "submitted",
+                "result_status": job.status,
+                "notes": f"{probe.notes} Submitted to Aristotle project {job.project_id}.",
+            }
+        )
+        self.memory.upsert_research_node(
+            campaign_id=campaign_id,
+            node_id=probe.id,
+            node_type="FormalProbe",
+            title=f"{probe.probe_type}:{probe.world_id}",
+            summary=probe.source_text,
+            status=updated.status,
+            payload=updated.model_dump(mode="json"),
+        )
+
+    def _update_formal_probe_result(
+        self,
+        campaign_id: str,
+        probe_id: str,
+        job: PendingAristotleJob,
+        result: ExecutionResult,
+    ) -> None:
+        node = self.memory.get_research_node(campaign_id, probe_id)
+        if not node:
+            return
+        try:
+            probe = FormalProbe.model_validate(node.payload)
+        except Exception:
+            logger.warning("Could not update invalid FormalProbe node=%s", probe_id)
+            return
+        if result.status == "proved":
+            status = "proved"
+        elif result.status == "blocked":
+            status = "blocked"
+        else:
+            status = "inconclusive"
+        updated = probe.model_copy(
+            update={
+                "status": status,
+                "result_status": result.status,
+                "failure_type": result.failure_type,
+                "notes": (
+                    f"{probe.notes} Aristotle project {job.project_id} finished with "
+                    f"{result.status}/{result.failure_type or 'ok'}."
+                ),
+            }
+        )
+        self.memory.upsert_research_node(
+            campaign_id=campaign_id,
+            node_id=probe_id,
+            node_type="FormalProbe",
+            title=f"{probe.probe_type}:{probe.world_id}",
+            summary=probe.source_text,
+            status=updated.status,
+            payload=updated.model_dump(mode="json"),
+        )
+
+    def _record_probe_bake_run(self, bake_run: FormalProbeBakeRun) -> None:
+        self.memory.upsert_research_node(
+            campaign_id=bake_run.campaign_id,
+            node_id=bake_run.id,
+            node_type="FormalProbeBakeRun",
+            title=f"formal-probe-bake:{bake_run.submitted_probe_count}",
+            summary=", ".join(bake_run.notes),
+            status=bake_run.status,
+            payload=bake_run.model_dump(mode="json"),
+        )
 
     def smoke_aristotle(self, *, strict_live_probe: bool = False) -> dict:
         return self.executor.check_connectivity(strict_live_probe=strict_live_probe)
