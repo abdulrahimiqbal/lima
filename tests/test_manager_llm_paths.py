@@ -81,3 +81,37 @@ def test_llm_failure_falls_back_to_rules(tmp_path: Path, monkeypatch) -> None:
     result = manager.decide(_context())
     assert result.manager_backend == "rules_fallback"
 
+
+def test_llm_partial_payload_is_coerced_without_fallback(tmp_path: Path) -> None:
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        manager_backend="llm",
+        llm_api_key="test-key",
+    )
+    manager = Manager(settings)
+
+    partial_payload = {
+        "target_frontier_node": "F-1",
+        "world_family": "bridge",
+        "bounded_claim": "Isolate a reduction lemma for odd inputs.",
+        "formal_obligations": [
+            {
+                "source_text": "Formalize the odd-input reduction lemma",
+                "statement": "∀ n : ℕ, n % 2 = 1 → True",
+                "theorem_name": "odd_input_reduction_stub",
+                "goal_kind": "lemma",
+                "requires_proof": True,
+            }
+        ],
+        "expected_information_gain": "Tests whether the bridge world can be made formal.",
+        "why_this_next": "Odd-input behavior is the key obstruction.",
+    }
+
+    result = manager._coerce_llm_payload(partial_payload, _context(), get_policy())
+
+    assert result.manager_backend == "llm"
+    assert result.target_frontier_node == "F-1"
+    assert result.manager_read_receipt is not None
+    assert result.manager_read_receipt.target_node_id_confirmed == "F-1"
+    assert result.candidate_answer.summary
+    assert result.self_improvement_note.reason

@@ -62,6 +62,8 @@ class Manager:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.policy_provider = None
+        self._active_llm_context: ManagerContext | None = None
+        self._active_llm_policy: dict[str, Any] | None = None
         # Warm the cache and fail early if missing
         try:
             get_constitution()
@@ -328,6 +330,8 @@ class Manager:
         ]
 
         try:
+            self._active_llm_context = context
+            self._active_llm_policy = policy
             decision = self._call_llm_and_parse(messages)
             return self._normalize_decision(decision, policy, context)
         except (ValidationError, json.JSONDecodeError) as e:
@@ -342,6 +346,9 @@ class Manager:
             except Exception as fatal_e:
                 logger.error(f"Repair pass failed: {fatal_e}")
                 raise
+        finally:
+            self._active_llm_context = None
+            self._active_llm_policy = None
 
     def _call_llm_and_parse(self, messages: list[dict[str, str]]) -> ManagerDecision:
         payload = {
@@ -362,9 +369,103 @@ class Manager:
         data = response.json()
         content = data["choices"][0]["message"]["content"]
         parsed = _extract_json(content)
-        decision = ManagerDecision.model_validate(parsed)
+        if self._active_llm_context is None or self._active_llm_policy is None:
+            raise RuntimeError("LLM parsing called without active context")
+        decision = self._coerce_llm_payload(parsed, self._active_llm_context, self._active_llm_policy)
         decision.manager_backend = "llm"
         return decision
+
+    def _coerce_llm_payload(
+        self,
+        payload: dict[str, Any],
+        context: ManagerContext,
+        policy: dict[str, Any],
+    ) -> ManagerDecision:
+        if not isinstance(payload, dict):
+            raise ValidationError.from_exception_data(
+                "ManagerDecision",
+                [{"type": "model_type", "loc": (), "msg": "LLM payload must be an object", "input": payload}],
+            )
+
+        target = choose_frontier_node(context.frontier)
+        if target is None:
+            raise ValueError("No frontier node available")
+
+        target_id = payload.get("target_frontier_node") or target.id
+        target_node = next((node for node in context.frontier if node.id == target_id), target)
+        world_family = payload.get("world_family")
+        if world_family not in context.allowed_world_families:
+            world_family = self._pick_world(context, target_node, policy)
+
+        candidate_answer = payload.get("candidate_answer")
+        if not isinstance(candidate_answer, dict):
+            candidate_answer = {
+                "stance": "undecided",
+                "summary": payload.get("global_thesis") or "Heuristically proceeding with formal exploration.",
+                "confidence": 0.1,
+            }
+
+        update_rules = payload.get("update_rules")
+        if not isinstance(update_rules, dict):
+            update_rules = {
+                "if_proved": "Close node.",
+                "if_refuted": "Refute branch.",
+                "if_blocked": "Split or clarify.",
+                "if_inconclusive": "Try different world family or broaden search.",
+            }
+
+        self_improvement_note = payload.get("self_improvement_note")
+        if not isinstance(self_improvement_note, dict):
+            self_improvement_note = {
+                "proposal": "None",
+                "reason": "LLM response omitted a self-improvement note.",
+            }
+
+        read_receipt_payload = payload.get("manager_read_receipt")
+        if isinstance(read_receipt_payload, dict):
+            read_receipt_payload = {
+                **self._build_read_receipt_from_context(context, target_node).model_dump(),
+                **read_receipt_payload,
+                "target_node_id_confirmed": read_receipt_payload.get("target_node_id_confirmed") or target_node.id,
+                "target_node_text_confirmed": read_receipt_payload.get("target_node_text_confirmed") or target_node.text,
+            }
+        else:
+            read_receipt_payload = self._build_read_receipt_from_context(context, target_node).model_dump()
+
+        bounded_claim = payload.get("bounded_claim")
+        if not isinstance(bounded_claim, str) or not bounded_claim.strip():
+            bounded_claim = (
+                f"Local reduction check for node {target_node.id}: "
+                "isolate one lemma that shrinks proof debt."
+            )
+
+        formal_obligations = payload.get("formal_obligations")
+        if not isinstance(formal_obligations, list) or not formal_obligations:
+            formal_obligations = [f"Prove a local lemma for: {bounded_claim[:100]}"]
+
+        normalized_payload = {
+            "candidate_answer": candidate_answer,
+            "alternatives": payload.get("alternatives", []),
+            "target_frontier_node": target_node.id,
+            "world_family": world_family,
+            "bounded_claim": bounded_claim,
+            "formal_obligations": formal_obligations,
+            "expected_information_gain": payload.get("expected_information_gain")
+            or "Fast signal from one bounded lemma with low verification cost.",
+            "why_this_next": payload.get("why_this_next")
+            or f"Selected {world_family} for node {target_node.id}.",
+            "update_rules": update_rules,
+            "self_improvement_note": self_improvement_note,
+            "manager_read_receipt": read_receipt_payload,
+            "obligation_hints": payload.get("obligation_hints", {}),
+            "manager_backend": "llm",
+            "global_thesis": payload.get("global_thesis"),
+            "primary_world": payload.get("primary_world"),
+            "alternative_worlds": payload.get("alternative_worlds", []),
+            "proof_debt": payload.get("proof_debt", []),
+            "critical_next_debt_id": payload.get("critical_next_debt_id"),
+        }
+        return ManagerDecision.model_validate(normalized_payload)
 
     @staticmethod
     def _runtime_guardrails(policy: dict[str, Any]) -> str:
