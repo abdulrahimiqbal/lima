@@ -393,7 +393,7 @@ class AristotleSdkProofAdapter:
                 prompt_parts.extend([
                     "",
                     "=== WORLD PROGRAM ===",
-                    f"World ID: {world.world_id}",
+                    f"World ID: {world.id}",
                     f"Mode: {world.mode}",
                     f"Thesis: {world.thesis}",
                 ])
