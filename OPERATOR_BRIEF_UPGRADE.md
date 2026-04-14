@@ -69,6 +69,23 @@ Single endpoint that assembles all operator-relevant data in a normalized struct
     "useful_lemmas": [],
     "blocked_patterns": []
   },
+  "invention": {
+    "batch_count": 0,
+    "raw_world_count": 0,
+    "distilled_world_count": 0,
+    "promising_world_count": 0
+  },
+  "world_evolution": {
+    "latest_run_id": "WE-...",
+    "generations_completed": 3,
+    "survivor_count": 8,
+    "best_world_label": "...",
+    "top_failure_modes": ["circular_bridge", "definition_missing"],
+    "promoted_world_id": "W-...",
+    "formal_probe_count": 36,
+    "circular_world_count": 20,
+    "learning_summary": "..."
+  },
   "self_improvement": {
     "local_proposal": "...",
     "local_reason": "..."
@@ -102,8 +119,33 @@ Single endpoint that assembles all operator-relevant data in a normalized struct
 3. **Manager Read & Understanding**: What the manager actually read
 4. **Verification**: Execution results and job approval/rejection
 5. **Discovery**: Spawned nodes, lemmas, patterns learned
-6. **Self-Improvement**: Local and global improvement proposals
-7. **Next**: Recommended operator action and update rules
+6. **Invention Lab**: Raw/distilled world batches, promising worlds, dead patterns
+7. **World Evolution**: Latest evolution run, survivor count, formal probe count, killed circular worlds, promoted world, top failure modes, learning summary
+8. **Self-Improvement**: Local and global improvement proposals
+9. **Next**: Recommended operator action and update rules
+
+### 3b. World Evolution Operator Surface
+
+**Files Modified:**
+- `app/service.py`: Adds `world_evolution` summary to `get_operator_brief()`
+- `app/templates/index.html`: Renders the World Evolution section and adds a guarded "Run world evolution" action
+
+**Purpose:**
+Makes the new world-evolution loop visible to operators instead of burying it in raw research nodes.
+
+**Displayed Metrics:**
+- latest run ID
+- generations completed
+- survivor count
+- formal probe count
+- circular worlds killed
+- best survivor label
+- promoted world ID
+- top failure modes
+- learning summary
+
+**Boundary:**
+The brief may show a promoted survivor, but this is not a solved signal. Solved status still requires bridge, closure, anti-circularity, and critical proof debt discharge through the normal verification path.
 
 ### 4. Recommended Operator Actions
 

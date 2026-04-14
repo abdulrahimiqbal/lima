@@ -55,6 +55,7 @@ DistilledWorldStatus = Literal[
     "candidate",
     "promising",
     "falsified",
+    "circularity_failed",
     "baking",
     "retired",
 ]
@@ -541,6 +542,66 @@ class InventionBatch(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class MiracleObject(BaseModel):
+    name: str
+    claimed_power: str
+    property_that_would_imply_target: str
+    risk_of_smuggling_target: Literal["low", "medium", "high"] = "medium"
+
+
+class CircularityAssessment(BaseModel):
+    status: Literal["passed", "failed", "unclear"] = "unclear"
+    reason: str
+    suspect_assumptions: list[str] = Field(default_factory=list)
+
+
+class WorldFitness(BaseModel):
+    novelty: float = Field(default=0.0, ge=0.0, le=1.0)
+    definability: float = Field(default=0.0, ge=0.0, le=1.0)
+    bridge_quality: float = Field(default=0.0, ge=0.0, le=1.0)
+    anti_circularity: float = Field(default=0.0, ge=0.0, le=1.0)
+    formal_probe_success: float = Field(default=0.0, ge=0.0, le=1.0)
+    debt_compression: float = Field(default=0.0, ge=0.0, le=1.0)
+    overall: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class EvolutionLineage(BaseModel):
+    parent_world_ids: list[str] = Field(default_factory=list)
+    mutation_reason: str | None = None
+    dead_patterns_avoided: list[str] = Field(default_factory=list)
+
+
+class FormalProbe(BaseModel):
+    id: str = Field(default_factory=lambda: f"FP-{uuid4().hex[:10]}")
+    world_id: str
+    probe_type: Literal[
+        "definition_probe",
+        "simulation_probe",
+        "bridge_probe",
+        "closure_probe",
+        "anti_smuggling_probe",
+    ]
+    source_text: str
+    formal_obligation: FormalObligationSpec
+    status: Literal["compiled", "submitted", "proved", "blocked", "inconclusive"] = "compiled"
+    result_status: str | None = None
+    failure_type: str | None = None
+    notes: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class WorldMutation(BaseModel):
+    id: str = Field(default_factory=lambda: f"WM-{uuid4().hex[:10]}")
+    campaign_id: str
+    generation_index: int
+    parent_world_id: str
+    failure_type: str
+    mutation_instruction: str
+    dead_patterns: list[str] = Field(default_factory=list)
+    child_world_ids: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class RawWorldInvention(BaseModel):
     id: str = Field(default_factory=lambda: f"RW-{uuid4().hex[:10]}")
     batch_id: str
@@ -554,6 +615,11 @@ class RawWorldInvention(BaseModel):
     likely_falsifiers: list[str] = Field(default_factory=list)
     proof_debt_sketch: list[str] = Field(default_factory=list)
     novelty_rationale: str
+    miracle_object: MiracleObject | None = None
+    hidden_circularity_risk: str | None = None
+    definability_probe: str | None = None
+    bridge_probe: str | None = None
+    closure_probe: str | None = None
     source_model: str = "deterministic"
     temperature: float | None = None
     wildness: InventionWildness = "high"
@@ -582,6 +648,11 @@ class DistilledWorld(BaseModel):
     plausibility_score: float = Field(default=0.5, ge=0.0, le=1.0)
     bridge_score: float = Field(default=0.5, ge=0.0, le=1.0)
     status: DistilledWorldStatus = "candidate"
+    miracle_object: MiracleObject | None = None
+    anti_circularity: CircularityAssessment | None = None
+    fitness: WorldFitness | None = None
+    lineage: EvolutionLineage = Field(default_factory=EvolutionLineage)
+    formal_probes: list[FormalProbe] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)
 
@@ -617,6 +688,62 @@ class BakeAttempt(BaseModel):
 
 class PromoteWorldRequest(BaseModel):
     distilled_world_id: str
+
+
+class WorldGeneration(BaseModel):
+    id: str = Field(default_factory=lambda: f"WG-{uuid4().hex[:10]}")
+    campaign_id: str
+    run_id: str
+    generation_index: int
+    batch_id: str
+    raw_world_count: int
+    distilled_world_count: int
+    circular_world_count: int = 0
+    survivor_world_ids: list[str] = Field(default_factory=list)
+    mutation_ids: list[str] = Field(default_factory=list)
+    formal_probe_ids: list[str] = Field(default_factory=list)
+    evidence_probe_count: int = 0
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class WorldEvolutionRunRequest(BaseModel):
+    generations: int = Field(default=3, ge=1, le=10)
+    worlds_per_generation: int = Field(default=80, ge=1, le=80)
+    survivors_per_generation: int = Field(default=8, ge=1, le=20)
+    mutations_per_survivor: int = Field(default=6, ge=0, le=20)
+    wildness: InventionWildness = "extreme"
+    max_formal_probes_per_generation: int = Field(default=12, ge=0, le=100)
+    max_evidence_probes_per_generation: int = Field(default=20, ge=0, le=200)
+    promote_best_survivor: bool = True
+
+
+class WorldEvolutionRun(BaseModel):
+    run_id: str = Field(default_factory=lambda: f"WE-{uuid4().hex[:10]}")
+    campaign_id: str
+    generations_requested: int
+    generations_completed: int = 0
+    raw_world_count: int = 0
+    distilled_world_count: int = 0
+    falsified_world_count: int = 0
+    circular_world_count: int = 0
+    survivor_count: int = 0
+    formal_probe_count: int = 0
+    proved_probe_count: int = 0
+    blocked_probe_count: int = 0
+    evidence_probe_count: int = 0
+    best_world_id: str | None = None
+    best_distilled_world_id: str | None = None
+    best_world_label: str | None = None
+    promoted_world_id: str | None = None
+    solve_status: Literal["not_solved", "solved"] = "not_solved"
+    learning_summary: str = ""
+    generation_ids: list[str] = Field(default_factory=list)
+    top_failure_modes: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+    @property
+    def id(self) -> str:
+        return self.run_id
 
 
 class CampaignCreate(BaseModel):

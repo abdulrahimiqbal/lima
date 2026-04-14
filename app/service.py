@@ -32,8 +32,11 @@ from .schemas import (
     PendingAristotleJob,
     DistilledWorld,
     ProofDebtItem,
+    WorldEvolutionRun,
+    WorldEvolutionRunRequest,
 )
 from .self_improvement import SelfImprovementService
+from .world_evolution import WorldEvolutionService
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,7 @@ class CampaignService:
         self.manager.policy_provider = self.memory.get_latest_policy
         self.self_improvement = SelfImprovementService(self.memory, settings)
         self.invention = InventionService(self.memory, settings)
+        self.world_evolution = WorldEvolutionService(self.memory, settings, self.invention)
         self._campaign_locks: dict[str, threading.Lock] = {}
         self._campaign_locks_guard = threading.Lock()
 
@@ -801,6 +805,7 @@ class CampaignService:
             ][:5],
             "dead_patterns": invention_lab["dead_patterns"][:10],
         }
+        world_evolution = self.world_evolution.get_summary(campaign_id)
         
         # Self-Improvement section
         self_improvement = {
@@ -871,6 +876,7 @@ class CampaignService:
             "verification": verification,
             "discovery": discovery,
             "invention": invention,
+            "world_evolution": world_evolution,
             "self_improvement": self_improvement,
             "next": next_action,
         }
@@ -928,6 +934,51 @@ class CampaignService:
             updated.active_world_id = world.world_program.id
             self._persist_campaign(updated)
             return updated
+
+    def run_world_evolution(
+        self,
+        campaign_id: str,
+        payload: WorldEvolutionRunRequest,
+    ) -> WorldEvolutionRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            active_policy = self.memory.get_latest_policy() or get_policy()
+            run, best_world = self.world_evolution.run(campaign, payload, policy=active_policy)
+
+            if best_world and payload.promote_best_survivor:
+                updated = campaign.model_copy(deep=True)
+                best_world.status = "baking"
+                updated.current_world_program = best_world.world_program.model_dump()
+                updated.alternative_world_programs = [
+                    candidate["payload"]["world_program"]
+                    for candidate in self.invention.get_lab(campaign_id)["distilled_worlds"]
+                    if candidate["id"] != best_world.id
+                ][:8]
+                active_debt = sorted(
+                    best_world.proof_debt,
+                    key=lambda debt: (not debt.critical, -debt.priority, debt.id),
+                )[:12]
+                updated.proof_debt_ledger = [debt.model_dump() for debt in active_debt]
+                updated.resolved_debt_ids = [
+                    debt.id for debt in active_debt if debt.status == "proved"
+                ]
+                updated.active_world_id = best_world.world_program.id
+                updated.status = "running" if updated.status == "solved" else updated.status
+                self._persist_campaign(updated)
+                self.memory.add_event(
+                    campaign_id=campaign_id,
+                    tick=campaign.tick_count,
+                    event_type="world_evolution_world_promoted",
+                    payload={
+                        "run_id": run.id,
+                        "distilled_world_id": best_world.id,
+                        "world_id": best_world.world_program.id,
+                        "label": best_world.world_program.label,
+                        "active_debt_count": len(active_debt),
+                    },
+                )
+
+            return run
 
     def get_invention_lab(self, campaign_id: str) -> dict:
         _ = self.get_campaign(campaign_id)

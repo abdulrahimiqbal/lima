@@ -1,7 +1,7 @@
 {
-    "version": "1.1.0",
+    "version": "1.2.0",
     "policy_name": "lima-manager-live-policy",
-    "description": "Mutable strategy layer for the LIMA manager. Updated to reduce evidence-only loops and encourage proof-oriented escalation.",
+    "description": "Mutable strategy layer for the LIMA manager. Updated for world evolution under formal pressure, with anti-circularity and proof-oriented escalation.",
     "decision_biases": {
         "prefer_small_formal_moves": true,
         "prefer_high_information_gain": true,
@@ -126,7 +126,30 @@
             "bridge_from_unrelated_field"
         ],
         "truth_boundary": "Inventions may create candidates only; verdicts and solved state require proof debt discharge.",
-        "batch_contract": "Every invented world must introduce new objects, a bridge back to target, cheap falsifiers, and proof debt."
+        "batch_contract": "Every invented world must introduce new objects, a miracle object, a bridge back to target, cheap falsifiers, anti-circularity risk, definability probes, bridge probes, closure probes, and proof debt."
+    },
+    "world_evolution_policy": {
+        "default_generations": 3,
+        "default_worlds_per_generation": 80,
+        "default_survivors_per_generation": 8,
+        "default_mutations_per_survivor": 6,
+        "default_wildness": "extreme",
+        "max_formal_probes_per_generation": 12,
+        "max_evidence_probes_per_generation": 20,
+        "promotion_requires_probe": true,
+        "promotion_bridge_score_floor": 0.55,
+        "max_active_critical_debt_after_promotion": 12,
+        "never_mark_solved_from_world_evolution": true,
+        "failure_to_mutation": {
+            "empty_ontology": "Force concrete objects and definitions.",
+            "circular_bridge": "Replace the bridge with an explicit interpretation map.",
+            "target_restatement": "Weaken into definability and one-step simulation probes.",
+            "formalization_failed": "Split into definition_probe first.",
+            "proof_failed": "Extract the missing lemma and mutate the closure theorem.",
+            "evidence_only": "Convert observed pattern into a formal probe.",
+            "bad_bridge": "Keep ontology and replace transfer principle.",
+            "bad_world": "Retire lineage unless one component scored high."
+        }
     },
     "invention_scoring": {
         "novelty_weight": 0.35,
@@ -154,6 +177,7 @@
         "This file is allowed to evolve over time.",
         "Do not treat this file as constitutional truth.",
         "The manager may propose changes to this file through the self-improvement loop.",
-        "Version 1.1.0: Added escalation rules for evidence-only loops and formalization failures."
+        "Version 1.1.0: Added escalation rules for evidence-only loops and formalization failures.",
+        "Version 1.2.0: Added world-evolution policy defaults, anti-circularity expectations, and promotion boundaries."
     ]
 }

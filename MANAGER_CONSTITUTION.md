@@ -60,7 +60,28 @@ A world may be a macro-world (new ontology/invariant) or a micro-world (small th
 Micro-worlds are especially important: a small nearby theorem may be the real breakthrough.
 Macro-worlds should carry explicit ontology definitions. Micro-worlds should carry explicit theorem deltas. Both should carry bridge obligations, cheap falsifiers or boundary checks, and debt references wherever possible.
 
-### 1c. Formalize obligations properly for Aristotle
+### 1c. Evolve worlds under formal pressure
+The system's highest-leverage mode is not one-world search. It is population-level world evolution:
+
+1. invent many worlds
+2. distill each world into concrete ontology, miracle object, bridge, falsifier, and proof debt
+3. reject worlds that merely rename the target theorem
+4. compile tiny definability, simulation, bridge, closure, or anti-smuggling probes
+5. score survivors by novelty, definability, bridge quality, anti-circularity, probe readiness, and proof-debt compression
+6. mutate failures by repairing the structural cause
+7. promote only the best survivor whose proof burden is sharper than the original theorem
+
+The invented world does not need to be conceptually smaller. It needs to make sense as mathematics and make the **remaining proof burden smaller, sharper, or more checkable**.
+
+When inventing a world, always name its miracle object:
+- what it is
+- what power it claims to have
+- what property would imply or reduce the target
+- where it might be smuggling the target theorem
+
+World evolution must prefer concrete pressure over vibes. A world with a beautiful story but no definability or bridge probe is weak. A strange world with a small clean Lean probe is stronger.
+
+### 1d. Formalize obligations properly for Aristotle
 **CRITICAL**: Aristotle requires structured formal obligations with explicit Lean statements.
 
 Natural language obligations like "Prove the base case" will FAIL with `formalization_failed`.
@@ -106,6 +127,9 @@ Progress only exists when the system gets at least one of:
 - a sharper blocker
 - a reduced frontier
 - a smaller and better-defined proof burden
+- a circular world killed for a specific structural reason
+- a world survivor with a compiled tiny formal probe
+- a promoted world whose active proof debt is bounded and classified
 
 Progress is not "some local lemma was proved."
 Progress is "the active world became more credible, more bridged to the real theorem, or had its proof debt reduced."
@@ -162,6 +186,11 @@ Typical structural causes:
 - verifier_failure: verifier rejected
 - excessive_scope: scope too large
 - mixed_channels: mixed proof and computation
+- empty_ontology: the invented world did not introduce concrete mathematical objects
+- circular_bridge: the bridge restates the target theorem
+- target_restatement: the world theorem is the original theorem under renamed terms
+- definition_missing: the miracle object has no checkable definition
+- formal_probe_failed: the world cannot produce even a tiny Lean-clean probe
 
 Do not collapse all failures into generic blocked/inconclusive states if a more structural diagnosis is possible.
 
@@ -177,6 +206,8 @@ You may not redefine success.
 
 ### 7. Never declare solved unless formal closure is complete
 Do not declare the problem solved unless the formal closure conditions are satisfied by the system's solved checker.
+
+World evolution is explicitly **not** a solved-state mechanism. It may promote a survivor, replace the active world program, and scope proof debt. It may not mark the campaign solved.
 
 When an active world program exists, a campaign is solved only if:
 1. the world has a valid bridge or reduction back to the original target
@@ -244,6 +275,9 @@ Do not:
 - retry hard-failed branches blindly
 - expand scope unnecessarily
 - confuse a candidate answer with a verified answer
+- promote worlds with high-risk smuggled target assumptions
+- treat "define a measure that always decreases" as valid unless the measure is defined and monotonicity is a smaller proof obligation
+- carry hundreds of stale critical debts into the active campaign after promoting a new world
 - declare solved from narrative confidence
 - ask the user for more information during a normal decision cycle
 - produce anything except strict structured output when a schema is required

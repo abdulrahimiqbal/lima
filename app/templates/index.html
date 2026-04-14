@@ -203,6 +203,7 @@ Avoid repeating the same world after a hard blocker</textarea>
             <button class="secondary" onclick="resumeCampaign()">Resume</button>
             <button class="secondary" onclick="refreshSelected()">Refresh</button>
             <button class="secondary" onclick="inventWorlds()">Wild invent</button>
+            <button class="secondary" onclick="runWorldEvolution()">Run world evolution</button>
             <button class="secondary" onclick="distillLatestBatch()">Distill latest</button>
             <button class="secondary" onclick="falsifyLatestBatch()">Falsify latest</button>
             <button class="secondary" onclick="promotePromisingWorld()">Promote world</button>
@@ -461,6 +462,7 @@ Avoid repeating the same world after a hard blocker</textarea>
         const verif = brief.verification;
         const disc = brief.discovery;
         const inv = brief.invention || {};
+        const we = brief.world_evolution || {};
         const si = brief.self_improvement;
         const next = brief.next;
 
@@ -694,6 +696,46 @@ Avoid repeating the same world after a hard blocker</textarea>
           </div>
 
           <div class="brief-section">
+            <h3>World Evolution</h3>
+            ${we.latest_run_id ? `
+            <div class="brief-value">
+              <div class="brief-label">Latest Run</div>
+              <div><strong>${we.latest_run_id}</strong> · ${we.generations_completed || 0} generations · ${we.survivor_count || 0} survivors</div>
+            </div>
+            <div class="brief-value">
+              <div class="brief-label">Pressure Metrics</div>
+              <div>${we.formal_probe_count || 0} formal probes, ${we.circular_world_count || 0} circular worlds killed.</div>
+            </div>
+            ${we.best_world_label ? `
+            <div class="brief-value">
+              <div class="brief-label">Best Survivor</div>
+              <div>${trimText(we.best_world_label, 160)}</div>
+            </div>
+            ` : ''}
+            ${we.promoted_world_id ? `
+            <div class="brief-value">
+              <div class="brief-label">Promoted World</div>
+              <div>${we.promoted_world_id}</div>
+            </div>
+            ` : ''}
+            ${we.top_failure_modes && we.top_failure_modes.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Top Failure Modes</div>
+              <ul class="brief-list">
+                ${we.top_failure_modes.slice(0, 5).map(mode => `<li>${mode}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${we.learning_summary ? `
+            <div class="brief-value">
+              <div class="brief-label">Learning Summary</div>
+              <div>${trimText(we.learning_summary, 260)}</div>
+            </div>
+            ` : ''}
+            ` : '<p class="muted">No world-evolution run yet.</p>'}
+          </div>
+
+          <div class="brief-section">
             <h3>Self-Improvement</h3>
             ${si.local_proposal && si.local_proposal !== 'None' ? `
             <div class="brief-value">
@@ -769,6 +811,28 @@ Avoid repeating the same world after a hard blocker</textarea>
         await api(`/api/campaigns/${selectedCampaignId}/invention/batches`, {
           method: 'POST',
           body: JSON.stringify({ mode: 'wild', wildness: 'high', requested_worlds: 30 }),
+        });
+        await refreshSelected();
+      }
+
+      async function runWorldEvolution() {
+        if (!selectedCampaignId) return;
+        const proceed = window.confirm(
+          'Run a full world-evolution pass: 3 generations, 80 worlds per generation, anti-circularity screening, formal probe compilation, and survivor promotion?'
+        );
+        if (!proceed) return;
+        await api(`/api/campaigns/${selectedCampaignId}/world-evolution/run`, {
+          method: 'POST',
+          body: JSON.stringify({
+            generations: 3,
+            worlds_per_generation: 80,
+            survivors_per_generation: 8,
+            mutations_per_survivor: 6,
+            wildness: 'extreme',
+            max_formal_probes_per_generation: 12,
+            max_evidence_probes_per_generation: 20,
+            promote_best_survivor: true,
+          }),
         });
         await refreshSelected();
       }

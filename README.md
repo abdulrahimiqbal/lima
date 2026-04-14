@@ -2,6 +2,19 @@
 
 Lima Learning is an experimental research-loop service for conjecture exploration. A manager proposes bounded next moves, a submission gate constrains scope/channel risk, and an executor records outcomes (formal or evidence-only) into the `lima_memory` store. It is deployable and actively tested, but it is not a guaranteed theorem prover and should be treated as an evolving system.
 
+## Recent Changes (v1.2.0)
+
+Lima now has a **world-evolution engine under formal pressure**. This is an additive orchestration layer on top of the existing manager, invention lab, memory, and Aristotle paths.
+
+- **Population-Level World Evolution**: `POST /api/campaigns/{campaign_id}/world-evolution/run` runs generations through `invent -> distill -> anti-circularity screen -> falsify -> compile probes -> score -> mutate survivors`.
+- **Miracle Object Contract**: Each invented world is expected to expose the object or principle that would make the target easier, the bridge back to standard mathematics, and the circularity risk.
+- **Anti-Circularity Screening**: Worlds that simply rename the target theorem, assume global descent without a definition, or bridge by "if target then target" are marked `circularity_failed`.
+- **Formal Probe Compilation**: Survivors get tiny Lean-clean definition, simulation, and bridge-shape probes before any grand proof attempt.
+- **Fitness-Based Promotion**: Promotion is based on definability, bridge quality, anti-circularity, formal-probe readiness, and proof-debt compression rather than narrative confidence.
+- **Scoped Proof Debt**: A promoted survivor replaces the active world program and installs only its top bounded proof-debt items instead of accumulating stale critical debt.
+- **Operator Visibility**: The operator brief now includes latest world-evolution run metrics, failure modes, promoted world ID, and learning summary.
+- **Truth Boundary Preserved**: The world-evolution endpoint never declares a campaign solved. It may promote a world and sharpen debt; solved status still requires the existing formal closure criteria.
+
 ## Recent Changes (v1.1.0)
 
 The system has been transformed from a bounded evidence collector into a more credible theorem-search loop:
@@ -26,7 +39,9 @@ The system has been transformed from a bounded evidence collector into a more cr
 2. Submission gate (`app/obligation_analysis.py`): classifies obligations, splits mixed obligations, enforces channel/complexity limits with adaptive budgeting.
 3. Executor (`app/executor.py`): runs proof jobs through a proof adapter and bounded evidence jobs locally. Fails honestly when formalization is incomplete.
 4. Learning (`app/learner.py`, `app/frontier.py`): updates memory/frontier state from verdicts, tracks evidence/formalization/timeout streaks, spawns targeted follow-up work.
-5. Canonical storage (`lima_memory/*`): campaigns, frontier nodes, events, candidate answers, policy snapshots.
+5. Invention lab (`app/invention.py`): creates, distills, falsifies, and promotes candidate mathematical worlds.
+6. World evolution (`app/world_evolution.py`): runs population-level generations, scores survivors, records lineage/mutations/formal probes, and optionally promotes the best survivor.
+7. Canonical storage (`lima_memory/*`): campaigns, frontier nodes, events, research nodes, candidate answers, policy snapshots.
 
 ## Key Behavioral Changes
 
@@ -108,6 +123,46 @@ The system has been transformed from a bounded evidence collector into a more cr
 - When set, mutating API routes require header `X-API-Key: <OPERATOR_API_KEY>`.
 - Read-only endpoints (`/healthz`, `/readyz`, list/get routes) remain open unless guarded externally.
 
+## World Evolution API
+
+Run a bounded evolutionary pass over invented worlds:
+
+```bash
+curl -sS -X POST "$LIMA_URL/api/campaigns/$CAMPAIGN_ID/world-evolution/run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generations": 3,
+    "worlds_per_generation": 80,
+    "survivors_per_generation": 8,
+    "mutations_per_survivor": 6,
+    "wildness": "extreme",
+    "max_formal_probes_per_generation": 12,
+    "max_evidence_probes_per_generation": 20,
+    "promote_best_survivor": true
+  }'
+```
+
+Expected first-run shape:
+
+```json
+{
+  "solve_status": "not_solved",
+  "generations_completed": 3,
+  "raw_world_count": 240,
+  "distilled_world_count": 240,
+  "survivor_count": 8,
+  "formal_probe_count": 36,
+  "promoted_world_id": "W-..."
+}
+```
+
+Important boundaries:
+
+- `solve_status` is expected to remain `not_solved` in v1 world evolution.
+- Formal probes are compiled and recorded as tiny Lean obligations; this endpoint does not synchronously launch dozens of live Aristotle proof jobs.
+- Promotion only changes the active world program and proof-debt scope. Formal closure still happens through the normal proof/execution path.
+- Circular worlds being killed is a positive signal: it means invention is under pressure rather than being rubber-stamped.
+
 ## What Is Real vs Mocked
 
 - Real:
@@ -117,6 +172,7 @@ The system has been transformed from a bounded evidence collector into a more cr
   - Honest formalization failure detection
   - Evidence-to-proof escalation logic
   - Adaptive budgeting
+  - World-evolution orchestration, anti-circularity screening, survivor scoring, lineage/mutation records, and Lean-clean probe compilation
 - Mocked / non-formal:
   - Mock proof adapter outcomes
   - Local bounded evidence channel (records evidence, not formal proof)
@@ -167,6 +223,8 @@ Set these GitHub repository secrets so the workflow can deploy non-interactively
 ## Known Limitations
 
 - A successful Aristotle run can still be incomplete if generated Lean contains unresolved `sorry`; this is mapped to `blocked/partial_proof`.
+- World evolution v1 compiles formal probes but does not prove them synchronously through Aristotle inside the run request.
+- Anti-circularity screening is deterministic and conservative; it catches obvious smuggling patterns, not every possible mathematical equivalence.
 - Evidence-only and mock paths are intentionally conservative and often return `inconclusive`.
 - Strategy quality depends heavily on policy and prompting.
 - Natural-language-to-Lean translation is not attempted; obligations must provide structured formal statements.

@@ -4,6 +4,23 @@
 
 This implementation adds top-down theorem-search strategy to LIMA by making "world models" first-class mathematical objects. The system can now search over both macro-worlds (new ontologies/invariants) and micro-worlds (small theorem shifts).
 
+## v1.2 Addendum: World Evolution
+
+World programs are now the substrate for population-level world evolution. The original world-program layer made a single active world auditable; the world-evolution layer generates many candidate worlds, screens them for circularity, compiles tiny formal probes, scores survivors, records mutation lineage, and promotes only the best survivor with bounded proof debt.
+
+See `WORLD_EVOLUTION_IMPLEMENTATION.md` for the full implementation summary.
+
+New files and integration points:
+
+- `app/world_evolution.py`: `WorldEvolutionService`
+- `POST /api/campaigns/{campaign_id}/world-evolution/run`
+- `tests/test_world_evolution.py`
+- operator brief `world_evolution` section
+- `MANAGER_CONSTITUTION.md` world-evolution mandate
+- `MANAGER_POLICY.json` `world_evolution_policy`
+
+Important boundary: world evolution may install a better active world program, but it cannot mark a campaign solved. The existing bridge/debt/falsifier solved criteria remain authoritative.
+
 ## Key Changes
 
 ### 1. New Schema Models (app/schemas.py)

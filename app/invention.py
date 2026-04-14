@@ -19,6 +19,7 @@ from .schemas import (
     FormalDefinition,
     InventionBatch,
     InventionBatchCreate,
+    MiracleObject,
     ProofDebtItem,
     RawWorldInvention,
     ReductionCertificate,
@@ -350,6 +351,15 @@ class InventionService:
         for item in worlds_payload:
             if not isinstance(item, dict):
                 continue
+            miracle_object = item.get("miracle_object")
+            if not isinstance(miracle_object, dict):
+                miracle_object = None
+            parsed_miracle_object = None
+            if miracle_object:
+                try:
+                    parsed_miracle_object = MiracleObject.model_validate(miracle_object)
+                except Exception:
+                    parsed_miracle_object = None
             worlds.append(
                 RawWorldInvention(
                     batch_id=batch.id,
@@ -363,6 +373,27 @@ class InventionService:
                     likely_falsifiers=list(item.get("likely_falsifiers") or []),
                     proof_debt_sketch=list(item.get("proof_debt_sketch") or []),
                     novelty_rationale=str(item.get("novelty_rationale") or ""),
+                    miracle_object=parsed_miracle_object,
+                    hidden_circularity_risk=(
+                        str(item.get("hidden_circularity_risk"))
+                        if item.get("hidden_circularity_risk") is not None
+                        else None
+                    ),
+                    definability_probe=(
+                        str(item.get("definability_probe"))
+                        if item.get("definability_probe") is not None
+                        else None
+                    ),
+                    bridge_probe=(
+                        str(item.get("bridge_probe"))
+                        if item.get("bridge_probe") is not None
+                        else None
+                    ),
+                    closure_probe=(
+                        str(item.get("closure_probe"))
+                        if item.get("closure_probe") is not None
+                        else None
+                    ),
                     source_model=self.settings.llm_model,
                     temperature=0.95 if batch.wildness == "extreme" else 0.75,
                     wildness=batch.wildness,
@@ -459,6 +490,13 @@ class InventionService:
             novelty_score=_score_novelty(raw_world),
             plausibility_score=_score_plausibility(raw_world),
             bridge_score=_score_bridge(raw_world),
+            miracle_object=raw_world.miracle_object
+            or MiracleObject(
+                name=raw_world.new_objects[0] if raw_world.new_objects else raw_world.label,
+                claimed_power=raw_world.thesis,
+                property_that_would_imply_target=raw_world.bridge_to_target,
+                risk_of_smuggling_target="medium",
+            ),
             notes=["Distilled from raw wild invention; truth is not assumed."],
         )
 
@@ -648,7 +686,10 @@ def _inventor_prompt(campaign: CampaignRecord, batch: InventionBatch) -> str:
         f"Strategy slots: {batch.strategy_slots}\n\n"
         "Return JSON: {\"worlds\": [...]} where each world has label, raw_text, "
         "new_objects, thesis, bridge_to_target, cheap_predictions, "
-        "likely_falsifiers, proof_debt_sketch, novelty_rationale."
+        "likely_falsifiers, proof_debt_sketch, novelty_rationale, "
+        "miracle_object {name, claimed_power, property_that_would_imply_target, "
+        "risk_of_smuggling_target}, hidden_circularity_risk, definability_probe, "
+        "bridge_probe, and closure_probe."
     )
 
 
