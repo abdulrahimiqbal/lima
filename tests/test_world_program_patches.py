@@ -155,6 +155,7 @@ def test_closure_bridge_prioritization():
         world_id=world.id,
         role="support",
         statement="Prove support lemma",
+        formal_statement="True",
         critical=False,
         priority=0.8,
     )
@@ -163,6 +164,7 @@ def test_closure_bridge_prioritization():
         world_id=world.id,
         role="closure",
         statement="Prove closure lemma",
+        formal_statement="True",
         critical=True,
         priority=0.7,  # Lower priority but should still go first
     )
