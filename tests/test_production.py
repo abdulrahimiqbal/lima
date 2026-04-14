@@ -234,6 +234,15 @@ def test_self_improvement_logic(tmp_path: Path):
         problem_statement="Test policy snapshots",
         operator_notes=[],
     )
+    
+    # Add a meaningful event so self-improvement has data to analyze
+    memory.add_event(
+        campaign_id="C-test",
+        tick=1,
+        event_type="execution_result",
+        payload={"status": "proved", "notes": "Test execution"}
+    )
+    
     service = SelfImprovementService(memory, settings)
     
     with patch.object(SelfImprovementService, "_call_llm") as mock_call:
@@ -264,6 +273,15 @@ def test_self_improvement_handles_malformed_llm_payload(tmp_path: Path):
         problem_statement="Test malformed llm payload",
         operator_notes=[],
     )
+    
+    # Add a meaningful event so self-improvement has data to analyze
+    memory.add_event(
+        campaign_id="C-test-malformed",
+        tick=1,
+        event_type="execution_result",
+        payload={"status": "proved", "notes": "Test execution"}
+    )
+    
     service = SelfImprovementService(memory, settings)
 
     with patch.object(SelfImprovementService, "_call_llm") as mock_call:
@@ -286,6 +304,15 @@ def test_self_improvement_handles_llm_rate_limit(tmp_path: Path):
         problem_statement="Test rate limit handling",
         operator_notes=[],
     )
+    
+    # Add a meaningful event so self-improvement has data to analyze
+    memory.add_event(
+        campaign_id="C-test-rate-limit",
+        tick=1,
+        event_type="execution_result",
+        payload={"status": "proved", "notes": "Test execution"}
+    )
+    
     service = SelfImprovementService(memory, settings)
 
     with patch.object(SelfImprovementService, "_call_llm") as mock_call:
