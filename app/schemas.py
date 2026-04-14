@@ -79,7 +79,11 @@ class FormalObligationSpec(BaseModel):
     def from_debt_item(cls, debt: "ProofDebtItem") -> "FormalObligationSpec":
         """Convert a ProofDebtItem to a FormalObligationSpec."""
         # Map debt role to channel hint and goal kind
-        if debt.role in {"closure", "bridge", "support"}:
+        inferred_goal_kind = _infer_goal_kind(debt.statement)
+        if debt.role == "support" and inferred_goal_kind in {"finite_check", "counterexample_search", "sanity_check"}:
+            channel_hint = "evidence"
+            goal_kind = inferred_goal_kind
+        elif debt.role in {"closure", "bridge", "support"}:
             channel_hint = "proof"
             goal_kind = "lemma" if debt.role == "support" else "theorem"
         elif debt.role in {"boundary", "falsifier"}:
@@ -87,7 +91,7 @@ class FormalObligationSpec(BaseModel):
             goal_kind = "finite_check" if debt.role == "boundary" else "counterexample_search"
         else:
             channel_hint = "auto"
-            goal_kind = _infer_goal_kind(debt.statement)
+            goal_kind = inferred_goal_kind
         
         return cls(
             id=debt.id,

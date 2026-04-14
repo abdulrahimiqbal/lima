@@ -40,7 +40,7 @@ PROOF_CUES = ("prove", "lemma", "theorem", "show that", "establish")
 def analyze_obligation(obligation: str | FormalObligationSpec) -> AnalyzedObligation:
     """Analyze an obligation and determine its properties."""
     if isinstance(obligation, FormalObligationSpec):
-        text = obligation.source_text
+        text = _routing_text(obligation)
     else:
         text = obligation.strip()
     
@@ -52,7 +52,17 @@ def analyze_obligation(obligation: str | FormalObligationSpec) -> AnalyzedObliga
     has_reduction = any(cue in lowered for cue in REDUCTION_CUES)
     has_proof = any(cue in lowered for cue in PROOF_CUES)
 
-    if has_counterexample:
+    if isinstance(obligation, FormalObligationSpec) and obligation.goal_kind in {
+        "finite_check",
+        "counterexample_search",
+        "sanity_check",
+    }:
+        obligation_type = {
+            "finite_check": "finite_check",
+            "counterexample_search": "counterexample_search",
+            "sanity_check": "sanity_check",
+        }[obligation.goal_kind]
+    elif has_counterexample:
         obligation_type = "counterexample_search"
     elif has_compute or ("finite" in lowered and "check" in lowered):
         obligation_type = "finite_check"
@@ -92,8 +102,12 @@ def analyze_obligation(obligation: str | FormalObligationSpec) -> AnalyzedObliga
     allowed = True
     rejection_reason = None
 
+    if isinstance(obligation, FormalObligationSpec) and obligation.channel_hint == "evidence":
+        submission_channel = "computational_evidence"
+    elif isinstance(obligation, FormalObligationSpec) and obligation.channel_hint == "proof":
+        submission_channel = "aristotle_proof"
     # Check for mixed channels - will be split instead of rejected
-    if has_compute and has_proof:
+    elif has_compute and has_proof:
         submission_channel = "reject"
         allowed = False
         rejection_reason = "mixed_channels"
@@ -124,8 +138,64 @@ def analyze_obligation(obligation: str | FormalObligationSpec) -> AnalyzedObliga
     )
 
 
+def _routing_text(spec: FormalObligationSpec) -> str:
+    """Return the smallest channel-specific text the gate should analyze."""
+    if spec.channel_hint == "evidence":
+        return _clean_evidence_text(spec)
+    if spec.channel_hint == "proof":
+        return _clean_proof_text(spec.source_text)
+    return spec.source_text
+
+
+def _clean_evidence_text(spec: FormalObligationSpec) -> str:
+    if spec.statement:
+        return f"Check bounded cases for: {spec.statement}"
+
+    text = spec.source_text.strip()
+    text = re.split(r"\bwith explicit transition lemmas\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    text = re.split(r"\band prove\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    text = text.rstrip(" ,.;")
+    if not any(cue in text.lower() for cue in COMPUTE_CUES):
+        text = f"Check bounded cases for: {text}"
+    return text
+
+
+def _clean_proof_text(text: str) -> str:
+    proof_text = text.strip()
+    transition_match = re.search(r"\bwith explicit transition lemmas\b(?P<tail>.*)$", proof_text, re.IGNORECASE)
+    if transition_match:
+        tail = transition_match.group("tail").strip(" .")
+        if tail:
+            return f"Prove explicit transition lemmas {tail}."
+        return "Prove explicit transition lemmas."
+    return proof_text
+
+
 def _split_mixed_obligation(spec: FormalObligationSpec) -> list[FormalObligationSpec]:
     """Split a mixed proof+compute obligation into separate obligations."""
+    if spec.channel_hint == "evidence":
+        return [
+            spec.model_copy(
+                update={
+                    "source_text": _clean_evidence_text(spec),
+                    "requires_proof": False,
+                    "requires_evidence": True,
+                    "metadata": {**spec.metadata, "channel_cleaned": "evidence"},
+                }
+            )
+        ]
+    if spec.channel_hint == "proof":
+        return [
+            spec.model_copy(
+                update={
+                    "source_text": _clean_proof_text(spec.source_text),
+                    "requires_proof": True,
+                    "requires_evidence": False,
+                    "metadata": {**spec.metadata, "channel_cleaned": "proof"},
+                }
+            )
+        ]
+
     text = spec.source_text
     lowered = text.lower()
     
@@ -136,10 +206,11 @@ def _split_mixed_obligation(spec: FormalObligationSpec) -> list[FormalObligation
         return [spec]  # Not actually mixed
     
     # Create proof-oriented obligation (remove compute cues)
-    proof_text = text
-    for cue in ["verify computationally", "check", "compute", "test"]:
-        proof_text = proof_text.replace(cue, "")
-    proof_text = f"Prove: {spec.source_text.split('and')[0].strip()}" if 'and' in text else f"Prove the local lemma: {text[:100]}"
+    proof_text = _clean_proof_text(text)
+    if proof_text == text:
+        for cue in ["verify computationally", "check", "compute", "test"]:
+            proof_text = proof_text.replace(cue, "")
+        proof_text = f"Prove: {spec.source_text.split('and')[0].strip()}" if 'and' in text else f"Prove the local lemma: {text[:100]}"
     
     proof_spec = FormalObligationSpec(
         source_text=proof_text,
@@ -158,19 +229,23 @@ def _split_mixed_obligation(spec: FormalObligationSpec) -> list[FormalObligation
     )
     
     # Create evidence-oriented obligation (remove proof cues)
-    evidence_text = text
-    for cue in ["prove", "theorem", "lemma", "show that", "establish"]:
-        evidence_text = evidence_text.replace(cue, "")
-    # Extract bounded part if present
-    if "for n <=" in lowered or "for all n <=" in lowered:
-        import re
+    evidence_text = _clean_evidence_text(spec)
+    if evidence_text == text:
+        for cue in ["prove", "theorem", "lemma", "show that", "establish"]:
+            evidence_text = evidence_text.replace(cue, "")
+        # Extract bounded part if present
+        if "for n <=" in lowered or "for all n <=" in lowered:
+            match = re.search(r"for (?:all )?n\s*<=\s*\d+", text, re.IGNORECASE)
+            if match:
+                evidence_text = f"Check computationally {match.group()}"
+            else:
+                evidence_text = f"Check bounded cases for: {text[:100]}"
+        else:
+            evidence_text = f"Check bounded cases for: {text[:100]}"
+    elif "for n <=" in lowered or "for all n <=" in lowered:
         match = re.search(r"for (?:all )?n\s*<=\s*\d+", text, re.IGNORECASE)
         if match:
             evidence_text = f"Check computationally {match.group()}"
-        else:
-            evidence_text = f"Check bounded cases for: {text[:100]}"
-    else:
-        evidence_text = f"Check bounded cases for: {text[:100]}"
     
     evidence_spec = FormalObligationSpec(
         source_text=evidence_text,

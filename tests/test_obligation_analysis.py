@@ -4,6 +4,7 @@ from app.schemas import (
     FormalObligationSpec,
     MemoryState,
     ManagerDecision,
+    ProofDebtItem,
     SelfImprovementNote,
     UpdateRules,
 )
@@ -196,3 +197,70 @@ def test_split_mixed_obligation_creates_two_specs() -> None:
     assert any(s.channel_hint == "proof" for s in result)
     assert any(s.channel_hint == "evidence" for s in result)
 
+
+def test_evidence_hinted_finite_check_with_transition_lemma_text_is_approved() -> None:
+    spec = FormalObligationSpec(
+        source_text="Isolate a finite check for n ≤ 2^16 with explicit transition lemmas for larger n.",
+        channel_hint="evidence",
+        goal_kind="finite_check",
+        statement="∀ n ≤ 2^16, iterate_Collatz(n) = 1",
+        requires_evidence=True,
+    )
+    plan = build_execution_plan(
+        ManagerDecision(
+            candidate_answer=CandidateAnswer(stance="undecided", summary="x", confidence=0.2),
+            alternatives=[],
+            target_frontier_node="F-1",
+            world_family="finite_check",
+            bounded_claim="Isolate a finite check for n ≤ 2^16 with explicit transition lemmas for larger n.",
+            formal_obligations=[spec],
+            expected_information_gain="gain",
+            why_this_next="why",
+            update_rules=UpdateRules(
+                if_proved="a",
+                if_refuted="b",
+                if_blocked="c",
+                if_inconclusive="d",
+            ),
+            self_improvement_note=SelfImprovementNote(proposal="p", reason="r"),
+        )
+    )
+
+    assert plan.approved_evidence_jobs == ["Check bounded cases for: ∀ n ≤ 2^16, iterate_Collatz(n) = 1"]
+    assert plan.approved_proof_jobs == []
+    assert "mixed_channels" not in str(plan.rejected_reasons.values())
+
+
+def test_support_debt_for_finite_check_routes_to_evidence() -> None:
+    debt = ProofDebtItem(
+        world_id="W-1",
+        role="support",
+        statement="Isolate a finite check for n ≤ 2^16 with explicit transition lemmas for larger n.",
+        critical=True,
+        status="open",
+    )
+    decision = ManagerDecision(
+        candidate_answer=CandidateAnswer(stance="undecided", summary="x", confidence=0.2),
+        alternatives=[],
+        target_frontier_node="F-1",
+        world_family="finite_check",
+        bounded_claim=debt.statement,
+        formal_obligations=[],
+        proof_debt=[debt],
+        critical_next_debt_id=debt.id,
+        expected_information_gain="gain",
+        why_this_next="why",
+        update_rules=UpdateRules(
+            if_proved="a",
+            if_refuted="b",
+            if_blocked="c",
+            if_inconclusive="d",
+        ),
+        self_improvement_note=SelfImprovementNote(proposal="p", reason="r"),
+    )
+
+    plan = build_execution_plan(decision)
+
+    assert plan.approved_evidence_jobs == ["Isolate a finite check for n ≤ 2^16"]
+    assert plan.approved_proof_jobs == []
+    assert "mixed_channels" not in str(plan.rejected_reasons.values())
