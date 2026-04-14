@@ -29,8 +29,8 @@ COMPUTE_CUES = (
     "search",
     "enumerate",
     "simulate",
-    "test",
     "verify computational",
+    "verify computationally",
 )
 COUNTEREXAMPLE_CUES = ("counterexample", "cycle", "diverge", "non-trivial cycle")
 REDUCTION_CUES = ("reduces", "reduction", "smaller", "less than", "decrease", "descend")
@@ -47,10 +47,10 @@ def analyze_obligation(obligation: str | FormalObligationSpec) -> AnalyzedObliga
     lowered = text.lower()
     has_bound = _has_bounded_cue(lowered)
     has_unbounded = _has_unbounded_cue(lowered)
-    has_compute = any(cue in lowered for cue in COMPUTE_CUES)
-    has_counterexample = any(cue in lowered for cue in COUNTEREXAMPLE_CUES)
-    has_reduction = any(cue in lowered for cue in REDUCTION_CUES)
-    has_proof = any(cue in lowered for cue in PROOF_CUES)
+    has_compute = _has_cue(lowered, COMPUTE_CUES)
+    has_counterexample = _has_cue(lowered, COUNTEREXAMPLE_CUES)
+    has_reduction = _has_cue(lowered, REDUCTION_CUES)
+    has_proof = _has_cue(lowered, PROOF_CUES)
 
     if isinstance(obligation, FormalObligationSpec) and obligation.goal_kind in {
         "finite_check",
@@ -155,7 +155,7 @@ def _clean_evidence_text(spec: FormalObligationSpec) -> str:
     text = re.split(r"\bwith explicit transition lemmas\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     text = re.split(r"\band prove\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     text = text.rstrip(" ,.;")
-    if not any(cue in text.lower() for cue in COMPUTE_CUES):
+    if not _has_cue(text.lower(), COMPUTE_CUES):
         text = f"Check bounded cases for: {text}"
     return text
 
@@ -199,8 +199,8 @@ def _split_mixed_obligation(spec: FormalObligationSpec) -> list[FormalObligation
     text = spec.source_text
     lowered = text.lower()
     
-    has_compute = any(cue in lowered for cue in COMPUTE_CUES)
-    has_proof = any(cue in lowered for cue in PROOF_CUES)
+    has_compute = _has_cue(lowered, COMPUTE_CUES)
+    has_proof = _has_cue(lowered, PROOF_CUES)
     
     if not (has_compute and has_proof):
         return [spec]  # Not actually mixed
@@ -491,6 +491,13 @@ def _has_bounded_cue(text: str) -> bool:
 
 def _has_unbounded_cue(text: str) -> bool:
     return any(cue in text for cue in UNBOUNDED_CUES)
+
+
+def _has_cue(text: str, cues: tuple[str, ...]) -> bool:
+    for cue in cues:
+        if re.search(rf"(?<!\w){re.escape(cue)}(?!\w)", text):
+            return True
+    return False
 
 
 def _looks_bounded_universal(text: str) -> bool:

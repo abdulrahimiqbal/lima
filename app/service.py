@@ -668,6 +668,8 @@ class CampaignService:
                 next_action["recommended_operator_action"] = "Update candidate answer and explore alternative approaches."
             else:
                 next_action["recommended_operator_action"] = "Review result and decide next step based on update rules."
+        elif campaign.pending_aristotle_job:
+            next_action["recommended_operator_action"] = "Wait for the pending Aristotle proof job to complete or poll it on the next step."
         
         return {
             "ops": ops,
