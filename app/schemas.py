@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 CampaignStatus = Literal["running", "paused", "solved", "failed"]
@@ -65,6 +65,16 @@ BakeAttemptStatus = Literal[
     "proved",
     "blocked",
     "inconclusive",
+]
+ProofDebtClass = Literal[
+    "world_definitions",
+    "world_coherence",
+    "in_world_theorem",
+    "bridge_to_nat",
+    "pullback_to_original",
+    "original_theorem",
+    "supporting_lemma",
+    "falsifier",
 ]
 
 
@@ -135,6 +145,7 @@ class FormalObligationSpec(BaseModel):
                 "debt_id": debt.id,
                 "debt_role": debt.role,
                 "debt_world_id": debt.world_id,
+                "debt_class": debt.debt_class,
                 "debt_critical": debt.critical,
                 "debt_priority": debt.priority,
                 "assigned_channel": debt.assigned_channel,
@@ -274,10 +285,34 @@ class CompressionPrinciple(BaseModel):
     description: str
 
 
+class WorldObjectDefinition(BaseModel):
+    """A named object introduced by a world, with optional formal shape."""
+
+    id: str = Field(default_factory=lambda: f"OBJ-{uuid4().hex[:8]}")
+    name: str
+    kind: Literal[
+        "set",
+        "function",
+        "relation",
+        "structure",
+        "measure",
+        "invariant",
+        "certificate",
+        "type",
+        "other",
+    ] = "other"
+    natural_language: str
+    lean_definition: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
+    status: Literal["draft", "formalized", "blocked"] = "draft"
+
+
 class BridgePlan(BaseModel):
     """Structured bridge back to the original theorem."""
     bridge_claim: str
     bridge_obligations: list[str] = Field(default_factory=list)
+    bridge_debt_ids: list[str] = Field(default_factory=list)
+    bridge_formal_obligations: list[FormalObligationSpec] = Field(default_factory=list)
     estimated_cost: float = Field(ge=0.0, le=1.0, default=0.5)
 
 
@@ -286,6 +321,11 @@ class ReductionCertificate(BaseModel):
     closure_items: list[str] = Field(default_factory=list)
     bridge_items: list[str] = Field(default_factory=list)
     support_items: list[str] = Field(default_factory=list)
+    closure_debt_ids: list[str] = Field(default_factory=list)
+    bridge_debt_ids: list[str] = Field(default_factory=list)
+    support_debt_ids: list[str] = Field(default_factory=list)
+    boundary_debt_ids: list[str] = Field(default_factory=list)
+    falsifier_debt_ids: list[str] = Field(default_factory=list)
     total_debt_count: int = 0
 
 
@@ -297,11 +337,55 @@ class WorldProgram(BaseModel):
     mode: Literal["macro", "micro"] = "macro"
     thesis: str
     ontology: list[str] = Field(default_factory=list)
+    ontology_definitions: list[WorldObjectDefinition] = Field(default_factory=list)
     compression_principles: list[CompressionPrinciple] = Field(default_factory=list)
     bridge_to_target: BridgePlan | None = None
     reduction_certificate: ReductionCertificate | None = None
     theorem_deltas: list[TheoremDelta] = Field(default_factory=list)
     falsifiers: list[str] = Field(default_factory=list)
+    audit_status: Literal["fallback", "draft", "auditable"] = "draft"
+    structural_warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def strengthen_world_shape(self) -> "WorldProgram":
+        """Backfill auditable structure while preserving legacy world payloads."""
+        if self.ontology and not self.ontology_definitions:
+            self.ontology_definitions = [
+                WorldObjectDefinition(
+                    name=name,
+                    natural_language=f"Define `{name}` precisely inside world `{self.label}`.",
+                )
+                for name in self.ontology
+            ]
+
+        warnings: list[str] = []
+        if self.audit_status != "fallback":
+            has_bridge_claim = bool(self.bridge_to_target and self.bridge_to_target.bridge_claim.strip())
+            has_bridge_work = bool(
+                self.bridge_to_target
+                and (
+                    self.bridge_to_target.bridge_obligations
+                    or self.bridge_to_target.bridge_debt_ids
+                    or self.bridge_to_target.bridge_formal_obligations
+                )
+            )
+            if not has_bridge_claim:
+                warnings.append("missing_bridge_claim")
+            if not has_bridge_work:
+                warnings.append("missing_checkable_bridge_work")
+            if not self.reduction_certificate:
+                warnings.append("missing_reduction_certificate")
+            if self.mode == "macro" and not self.ontology_definitions:
+                warnings.append("macro_world_missing_ontology_definitions")
+            if self.mode == "micro" and not self.theorem_deltas:
+                warnings.append("micro_world_missing_theorem_deltas")
+            if not self.falsifiers:
+                warnings.append("missing_falsifiers")
+
+        self.structural_warnings = sorted(set([*self.structural_warnings, *warnings]))
+        if self.audit_status != "fallback" and not self.structural_warnings:
+            self.audit_status = "auditable"
+        return self
 
 
 class ProofDebtItem(BaseModel):
@@ -309,6 +393,7 @@ class ProofDebtItem(BaseModel):
     id: str = Field(default_factory=lambda: f"D-{uuid4().hex[:8]}")
     world_id: str
     role: Literal["closure", "bridge", "support", "boundary", "falsifier"]
+    debt_class: ProofDebtClass | None = None
     statement: str
     formal_statement: str | None = None
     lean_declaration: str | None = None
@@ -537,6 +622,8 @@ class PendingAristotleJob(BaseModel):
     target_frontier_node: str
     world_family: WorldFamily
     bounded_claim: str
+    debt_id: str | None = None
+    obligation_text: str | None = None
     submitted_at: datetime
     last_polled_at: datetime | None = None
     poll_count: int = 0
@@ -567,6 +654,7 @@ class CampaignRecord(BaseModel):
     manager_backend: str
     executor_backend: str
     pending_aristotle_job: PendingAristotleJob | None = None
+    pending_aristotle_jobs: list[PendingAristotleJob] = Field(default_factory=list)
     # New world-oriented fields
     current_world_program: dict[str, Any] | None = None
     alternative_world_programs: list[dict[str, Any]] = Field(default_factory=list)

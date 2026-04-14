@@ -65,6 +65,8 @@ class MockProofAdapter:
             target_frontier_node=decision.target_frontier_node,
             world_family=decision.world_family,
             bounded_claim=decision.bounded_claim,
+            debt_id=_debt_id_for_plan(decision, plan),
+            obligation_text=plan.approved_proof_jobs[0] if plan.approved_proof_jobs else None,
             submitted_at=datetime.now(timezone.utc),
             decision_snapshot=decision.model_dump(),
             plan_snapshot=plan.model_dump(),
@@ -161,6 +163,7 @@ class AristotleSdkProofAdapter:
             raise RuntimeError("ARISTOTLE_API_KEY is missing")
 
         proof_obligation = plan.approved_proof_jobs[0]
+        debt_id = _debt_id_for_plan(decision, plan)
         
         # Get structured obligation if available
         normalized_obligations = decision.get_normalized_obligations()
@@ -187,6 +190,8 @@ class AristotleSdkProofAdapter:
                 target_frontier_node=decision.target_frontier_node,
                 world_family=decision.world_family,
                 bounded_claim=decision.bounded_claim,
+                debt_id=debt_id,
+                obligation_text=proof_obligation,
                 submitted_at=datetime.now(timezone.utc),
                 decision_snapshot=decision.model_dump(),
                 plan_snapshot=plan.model_dump(),
@@ -207,6 +212,8 @@ class AristotleSdkProofAdapter:
                 target_frontier_node=decision.target_frontier_node,
                 world_family=decision.world_family,
                 bounded_claim=decision.bounded_claim,
+                debt_id=debt_id,
+                obligation_text=proof_obligation,
                 submitted_at=datetime.now(timezone.utc),
                 decision_snapshot=decision.model_dump(),
                 plan_snapshot=plan.model_dump(),
@@ -221,6 +228,8 @@ class AristotleSdkProofAdapter:
                 target_frontier_node=decision.target_frontier_node,
                 world_family=decision.world_family,
                 bounded_claim=decision.bounded_claim,
+                debt_id=debt_id,
+                obligation_text=proof_obligation,
                 submitted_at=datetime.now(timezone.utc),
                 decision_snapshot=decision.model_dump(),
                 plan_snapshot=plan.model_dump(),
@@ -765,6 +774,22 @@ def _looks_like_lean_code(text: str) -> bool:
     if not LEAN_DECLARATION_RE.match(stripped):
         return False
     return any(token in stripped for token in (":=", " by", "\nby", "import ", "example "))
+
+
+def _debt_id_for_plan(decision: ManagerDecision, plan: ApprovedExecutionPlan) -> str | None:
+    if decision.critical_next_debt_id:
+        return decision.critical_next_debt_id
+    if not plan.approved_proof_jobs:
+        return None
+    proof_obligation = plan.approved_proof_jobs[0]
+    for spec in decision.get_normalized_obligations():
+        if spec.source_text == proof_obligation or proof_obligation in spec.source_text:
+            debt_id = spec.metadata.get("debt_id")
+            return str(debt_id) if debt_id else None
+    for debt in decision.proof_debt:
+        if debt.statement == proof_obligation:
+            return debt.id
+    return None
 
 
 class Executor:

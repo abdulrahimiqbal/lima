@@ -23,6 +23,7 @@ from .schemas import (
     RawWorldInvention,
     ReductionCertificate,
     WorldFalsifierResult,
+    WorldObjectDefinition,
     WorldProgram,
 )
 
@@ -388,6 +389,13 @@ class InventionService:
             mode="macro" if raw_world.wildness in {"high", "extreme"} else "micro",
             thesis=raw_world.thesis,
             ontology=raw_world.new_objects,
+            ontology_definitions=[
+                WorldObjectDefinition(
+                    name=obj,
+                    natural_language=f"Define {obj} for world {raw_world.label}.",
+                )
+                for obj in raw_world.new_objects[:4]
+            ],
             compression_principles=[
                 CompressionPrinciple(
                     name="invented_compression",

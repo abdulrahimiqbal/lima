@@ -49,14 +49,16 @@ Speculation is a feature, not a bug, as long as it is converted into checkable s
 Every decision should follow this order:
 1. Form a global thesis about the problem
 2. Invent one or more candidate mathematical worlds (macro or micro) in which the problem becomes easier
-3. For each world, explain why it would imply or reduce the original target if true
-4. Compile the chosen world into a finite reduction certificate
-5. Convert that reduction certificate into explicit proof debt
-6. Choose the next local obligation only as a consequence of that proof debt
+3. For each world, define the introduced ontology as named objects, not only prose labels
+4. Explain why the world would imply or reduce the original target if true, and make the bridge checkable
+5. Compile the chosen world into a finite reduction certificate whose items link to proof debt
+6. Convert that reduction certificate into explicit proof debt
+7. Choose the next local obligation only as a consequence of that proof debt
 
 World programs are first-class objects. Local obligations are downstream artifacts.
 A world may be a macro-world (new ontology/invariant) or a micro-world (small theorem shift).
 Micro-worlds are especially important: a small nearby theorem may be the real breakthrough.
+Macro-worlds should carry explicit ontology definitions. Micro-worlds should carry explicit theorem deltas. Both should carry bridge obligations, cheap falsifiers or boundary checks, and debt references wherever possible.
 
 ### 1c. Formalize obligations properly for Aristotle
 **CRITICAL**: Aristotle requires structured formal obligations with explicit Lean statements.

@@ -155,7 +155,7 @@ class Manager:
             bounded_claim = f"Local reduction check for node {target.id}: isolate one lemma that shrinks proof debt."
         
         # Simple deterministic fallback matching the updated schema
-        return ManagerDecision(
+        decision = ManagerDecision(
             candidate_answer=CandidateAnswer(
                 stance="undecided",
                 summary="Heuristically proceeding with formal exploration.",
@@ -185,6 +185,7 @@ class Manager:
             proof_debt=proof_debt,
             critical_next_debt_id=critical_next_debt_id,
         )
+        return self._normalize_decision(decision, policy, context)
     
     def _load_existing_world_from_context(self, context: ManagerContext) -> "WorldProgram | None":
         """Load existing world program from context for continuity."""
@@ -245,6 +246,7 @@ class Manager:
             ),
             theorem_deltas=[],
             falsifiers=[],
+            audit_status="fallback",
         )
     
     def _synthesize_default_debt(
@@ -305,16 +307,17 @@ class Manager:
                     "You should think top-down and construct a world-oriented plan:\n"
                     "1. Form a global_thesis about the problem\n"
                     "2. Propose a primary_world (macro or micro) that makes the problem easier\n"
-                    "3. For the world, explain the bridge_to_target\n"
-                    "4. Compile the world into explicit proof_debt items\n"
-                    "5. Choose the critical_next_debt_id from that debt\n"
-                    "6. Derive bounded_claim and formal_obligations from that debt item\n\n"
+                    "3. Define the world's ontology with ontology_definitions, not only prose labels\n"
+                    "4. For the world, explain bridge_to_target and link it to bridge proof debt where possible\n"
+                    "5. Compile the world into explicit proof_debt items and reduction_certificate debt IDs\n"
+                    "6. Choose the critical_next_debt_id from that debt\n"
+                    "7. Derive bounded_claim and formal_obligations from that debt item\n\n"
                     "WORLD CONTINUITY:\n"
                     "If current_world_program is present and not structurally broken, continue it rather than inventing a fresh world.\n"
                     "Reuse the existing world ID, update proof debt based on progress, and choose the next critical debt item.\n\n"
                     "World modes:\n"
-                    "- macro: new ontology/invariant/local-to-global view\n"
-                    "- micro: small theorem perturbation near the target\n\n"
+                    "- macro: new ontology/invariant/local-to-global view; include ontology_definitions\n"
+                    "- micro: small theorem perturbation near the target; include theorem_deltas\n\n"
                     "Proof debt roles:\n"
                     "- closure: items that close the world's reduction\n"
                     "- bridge: items that connect world back to target\n"
@@ -565,6 +568,7 @@ class Manager:
                         support_items=[decision.bounded_claim],
                         total_debt_count=1,
                     ),
+                    audit_status="fallback",
                 )
         
         # Apply theorem delta scoring if present
@@ -617,8 +621,82 @@ class Manager:
                 open_items = [d for d in decision.proof_debt if d.status == "open"]
                 if open_items:
                     decision.critical_next_debt_id = max(open_items, key=lambda d: d.priority).id
+
+        if decision.primary_world:
+            decision.primary_world = Manager._harden_world_program(decision)
         
         return decision
+
+    @staticmethod
+    def _harden_world_program(decision: ManagerDecision):
+        """Link world structure to proof debt so worlds remain auditable."""
+        from .schemas import (
+            BridgePlan,
+            FormalObligationSpec,
+            ReductionCertificate,
+            WorldObjectDefinition,
+            WorldProgram,
+        )
+
+        world = decision.primary_world
+        if world is None:
+            return world
+
+        if world.ontology and not world.ontology_definitions:
+            world.ontology_definitions = [
+                WorldObjectDefinition(
+                    name=name,
+                    natural_language=f"Define `{name}` precisely inside world `{world.label}`.",
+                )
+                for name in world.ontology
+            ]
+
+        if world.bridge_to_target is None:
+            world.bridge_to_target = BridgePlan(
+                bridge_claim="Prove that discharged world proof debt implies the target claim.",
+                estimated_cost=0.5,
+            )
+
+        bridge_debt = [d for d in decision.proof_debt if d.role == "bridge"]
+        closure_debt = [d for d in decision.proof_debt if d.role == "closure"]
+        support_debt = [d for d in decision.proof_debt if d.role == "support"]
+        boundary_debt = [d for d in decision.proof_debt if d.role == "boundary"]
+        falsifier_debt = [d for d in decision.proof_debt if d.role == "falsifier"]
+
+        if bridge_debt and not world.bridge_to_target.bridge_debt_ids:
+            world.bridge_to_target.bridge_debt_ids = [d.id for d in bridge_debt]
+        if bridge_debt and not world.bridge_to_target.bridge_obligations:
+            world.bridge_to_target.bridge_obligations = [d.statement for d in bridge_debt]
+        if bridge_debt and not world.bridge_to_target.bridge_formal_obligations:
+            world.bridge_to_target.bridge_formal_obligations = [
+                FormalObligationSpec.from_debt_item(d)
+                for d in bridge_debt
+                if d.formal_statement or d.lean_declaration
+            ]
+
+        if world.reduction_certificate is None:
+            world.reduction_certificate = ReductionCertificate(total_debt_count=len(decision.proof_debt))
+
+        rc = world.reduction_certificate
+        if closure_debt and not rc.closure_debt_ids:
+            rc.closure_debt_ids = [d.id for d in closure_debt]
+        if bridge_debt and not rc.bridge_debt_ids:
+            rc.bridge_debt_ids = [d.id for d in bridge_debt]
+        if support_debt and not rc.support_debt_ids:
+            rc.support_debt_ids = [d.id for d in support_debt]
+        if boundary_debt and not rc.boundary_debt_ids:
+            rc.boundary_debt_ids = [d.id for d in boundary_debt]
+        if falsifier_debt and not rc.falsifier_debt_ids:
+            rc.falsifier_debt_ids = [d.id for d in falsifier_debt]
+        if rc.total_debt_count < len(decision.proof_debt):
+            rc.total_debt_count = len(decision.proof_debt)
+
+        if not world.falsifiers:
+            falsifier_text = [d.statement for d in [*boundary_debt, *falsifier_debt]]
+            if falsifier_text:
+                world.falsifiers = falsifier_text
+
+        return WorldProgram.model_validate(world.model_dump())
 
     def _build_read_receipt_from_context(
         self, context: ManagerContext, target: FrontierNode

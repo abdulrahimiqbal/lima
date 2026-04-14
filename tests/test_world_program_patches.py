@@ -375,3 +375,79 @@ def test_world_aware_solved_check():
     
     # Now all critical debt should be proved, so campaign should be solved
     assert campaign.status == "solved"
+
+
+def test_manager_hardens_world_with_debt_references():
+    """Test that normalization links bridge/certificate structure to proof debt."""
+    world = WorldProgram(
+        label="Bridge World",
+        family_tags=["bridge"],
+        mode="macro",
+        thesis="Use a certificate object to bridge the target",
+        ontology=["certificate_object"],
+        bridge_to_target=BridgePlan(
+            bridge_claim="Certificate soundness implies the target",
+            bridge_obligations=[],
+            estimated_cost=0.5,
+        ),
+    )
+
+    bridge_debt = ProofDebtItem(
+        id="D-bridge",
+        world_id=world.id,
+        role="bridge",
+        statement="Prove certificate soundness implies the target",
+        critical=True,
+        priority=0.9,
+    )
+    closure_debt = ProofDebtItem(
+        id="D-close",
+        world_id=world.id,
+        role="closure",
+        statement="Prove all certificate states close",
+        critical=True,
+        priority=0.8,
+    )
+
+    decision = ManagerDecision(
+        candidate_answer=CandidateAnswer(
+            stance="undecided",
+            summary="Test",
+            confidence=0.5,
+        ),
+        alternatives=[],
+        target_frontier_node="F-root",
+        world_family="bridge",
+        bounded_claim="Test",
+        formal_obligations=["Test"],
+        expected_information_gain="Test",
+        why_this_next="Test",
+        update_rules=UpdateRules(
+            if_proved="Continue",
+            if_refuted="Revise",
+            if_blocked="Split",
+            if_inconclusive="Retry",
+        ),
+        self_improvement_note=SelfImprovementNote(
+            proposal="None",
+            reason="Test",
+        ),
+        manager_read_receipt=ManagerReadReceipt(
+            problem_summary="Test",
+            target_node_id_confirmed="F-root",
+            target_node_text_confirmed="Test",
+            why_not_other_frontier_nodes="Test",
+        ),
+        primary_world=world,
+        proof_debt=[bridge_debt, closure_debt],
+    )
+
+    normalized = Manager._normalize_decision(decision, policy={}, context=None)
+
+    assert normalized.primary_world is not None
+    assert normalized.primary_world.ontology_definitions[0].name == "certificate_object"
+    assert normalized.primary_world.bridge_to_target is not None
+    assert normalized.primary_world.bridge_to_target.bridge_debt_ids == ["D-bridge"]
+    assert normalized.primary_world.reduction_certificate is not None
+    assert normalized.primary_world.reduction_certificate.bridge_debt_ids == ["D-bridge"]
+    assert normalized.primary_world.reduction_certificate.closure_debt_ids == ["D-close"]

@@ -7,6 +7,7 @@ from app.schemas import (
     BridgePlan,
     ReductionCertificate,
     WorldProgram,
+    WorldObjectDefinition,
     ProofDebtItem,
     ManagerDecision,
     CampaignRecord,
@@ -63,7 +64,51 @@ def test_world_program():
     )
     assert world.mode == "micro"
     assert len(world.compression_principles) == 1
+    assert len(world.ontology_definitions) == 1
+    assert world.ontology_definitions[0].name == "bounded_domain"
     print("✓ WorldProgram works")
+
+
+def test_world_program_audit_fields():
+    """Test that worlds carry auditable definitions and debt references."""
+    world = WorldProgram(
+        label="Auditable world",
+        family_tags=["bridge"],
+        mode="macro",
+        thesis="Transfer through a certificate structure",
+        ontology=["certificate_state"],
+        ontology_definitions=[
+            WorldObjectDefinition(
+                name="certificate_state",
+                kind="certificate",
+                natural_language="A finite certificate state encoding the target transition.",
+            )
+        ],
+        bridge_to_target=BridgePlan(
+            bridge_claim="A closed certificate proves the original target.",
+            bridge_obligations=["Prove certificate soundness"],
+            bridge_debt_ids=["D-bridge"],
+            estimated_cost=0.4,
+        ),
+        reduction_certificate=ReductionCertificate(
+            closure_items=["Close certificate transitions"],
+            bridge_items=["Soundness bridge"],
+            support_items=["Define certificate_state"],
+            closure_debt_ids=["D-close"],
+            bridge_debt_ids=["D-bridge"],
+            support_debt_ids=["D-def"],
+            total_debt_count=3,
+        ),
+        falsifiers=["Find an invalid transition accepted by the certificate"],
+    )
+
+    assert world.audit_status == "auditable"
+    assert world.structural_warnings == []
+    assert world.bridge_to_target is not None
+    assert world.bridge_to_target.bridge_debt_ids == ["D-bridge"]
+    assert world.reduction_certificate is not None
+    assert world.reduction_certificate.closure_debt_ids == ["D-close"]
+    print("✓ WorldProgram audit fields work")
 
 
 def test_proof_debt_item():
@@ -259,6 +304,7 @@ if __name__ == "__main__":
     
     test_theorem_delta()
     test_world_program()
+    test_world_program_audit_fields()
     test_proof_debt_item()
     test_formal_obligation_from_debt()
     test_manager_decision_with_world()

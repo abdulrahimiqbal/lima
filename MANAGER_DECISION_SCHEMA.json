@@ -250,6 +250,25 @@
                 "mode": {"type": "string", "enum": ["macro", "micro"]},
                 "thesis": {"type": "string"},
                 "ontology": {"type": "array", "items": {"type": "string"}},
+                "ontology_definitions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "kind": {
+                                "type": "string",
+                                "enum": ["set", "function", "relation", "structure", "measure", "invariant", "certificate", "type", "other"]
+                            },
+                            "natural_language": {"type": "string"},
+                            "lean_definition": {"type": ["string", "null"]},
+                            "depends_on": {"type": "array", "items": {"type": "string"}},
+                            "status": {"type": "string", "enum": ["draft", "formalized", "blocked"]}
+                        },
+                        "required": ["name", "natural_language"]
+                    }
+                },
                 "compression_principles": {
                     "type": "array",
                     "items": {
@@ -265,6 +284,11 @@
                     "properties": {
                         "bridge_claim": {"type": "string"},
                         "bridge_obligations": {"type": "array", "items": {"type": "string"}},
+                        "bridge_debt_ids": {"type": "array", "items": {"type": "string"}},
+                        "bridge_formal_obligations": {
+                            "type": "array",
+                            "items": {"$ref": "#/properties/formal_obligations/items/oneOf/1"}
+                        },
                         "estimated_cost": {"type": "number"}
                     }
                 },
@@ -274,6 +298,11 @@
                         "closure_items": {"type": "array", "items": {"type": "string"}},
                         "bridge_items": {"type": "array", "items": {"type": "string"}},
                         "support_items": {"type": "array", "items": {"type": "string"}},
+                        "closure_debt_ids": {"type": "array", "items": {"type": "string"}},
+                        "bridge_debt_ids": {"type": "array", "items": {"type": "string"}},
+                        "support_debt_ids": {"type": "array", "items": {"type": "string"}},
+                        "boundary_debt_ids": {"type": "array", "items": {"type": "string"}},
+                        "falsifier_debt_ids": {"type": "array", "items": {"type": "string"}},
                         "total_debt_count": {"type": "number"}
                     }
                 },
@@ -293,7 +322,9 @@
                         }
                     }
                 },
-                "falsifiers": {"type": "array", "items": {"type": "string"}}
+                "falsifiers": {"type": "array", "items": {"type": "string"}},
+                "audit_status": {"type": "string", "enum": ["fallback", "draft", "auditable"]},
+                "structural_warnings": {"type": "array", "items": {"type": "string"}}
             }
         },
         "alternative_worlds": {
@@ -308,12 +339,21 @@
                     "id": {"type": "string"},
                     "world_id": {"type": "string"},
                     "role": {"type": "string", "enum": ["closure", "bridge", "support", "boundary", "falsifier"]},
+                    "debt_class": {
+                        "type": ["string", "null"],
+                        "enum": ["world_definitions", "world_coherence", "in_world_theorem", "bridge_to_nat", "pullback_to_original", "original_theorem", "supporting_lemma", "falsifier", null]
+                    },
                     "statement": {"type": "string"},
+                    "formal_statement": {"type": ["string", "null"]},
+                    "lean_declaration": {"type": ["string", "null"]},
+                    "assigned_channel": {"type": "string", "enum": ["aristotle", "evidence", "human", "auto"]},
+                    "expected_difficulty": {"type": "number"},
                     "depends_on": {"type": "array", "items": {"type": "string"}},
                     "critical": {"type": "boolean"},
                     "status": {"type": "string", "enum": ["open", "active", "proved", "refuted", "blocked"]},
                     "priority": {"type": "number"},
-                    "notes": {"type": "array", "items": {"type": "string"}}
+                    "notes": {"type": "array", "items": {"type": "string"}},
+                    "last_failure_type": {"type": ["string", "null"]}
                 }
             }
         },

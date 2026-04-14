@@ -16,6 +16,7 @@ from .learner import update_memory
 from .manager import Manager, get_policy
 from .obligation_analysis import build_execution_plan
 from .schemas import (
+    ApprovedExecutionPlan,
     CampaignCreate,
     CampaignEventRecord,
     CampaignRecord,
@@ -26,9 +27,11 @@ from .schemas import (
     InventionBatch,
     InventionBatchCreate,
     ManagerContext,
+    ManagerDecision,
     MemoryState,
     PendingAristotleJob,
     DistilledWorld,
+    ProofDebtItem,
 )
 from .self_improvement import SelfImprovementService
 
@@ -154,9 +157,9 @@ class CampaignService:
             if campaign.status in {"solved", "failed", "paused"}:
                 return campaign
 
-            # Check if there's a pending Aristotle job
-            if campaign.pending_aristotle_job:
-                return self._poll_pending_job(campaign)
+            # Check if there are pending Aristotle jobs.
+            if self._pending_jobs(campaign):
+                return self._poll_pending_jobs(campaign)
 
             # No pending job - proceed with normal decision flow
             context = self._build_context_from_memory(campaign_id, campaign=campaign)
@@ -203,8 +206,8 @@ class CampaignService:
 
             # Handle proof jobs vs evidence jobs differently
             if plan.approved_proof_jobs:
-                # Submit proof job and store pending state
-                pending_job = self.executor.submit_proof(campaign, decision, plan)
+                # Submit every currently unlocked independent proof debt.
+                pending_jobs = self._submit_proof_wave(campaign, decision, context, tick, active_policy, plan)
                 
                 updated = campaign.model_copy(deep=True)
                 updated.tick_count = tick
@@ -212,19 +215,21 @@ class CampaignService:
                 updated.last_manager_decision = decision.model_dump()
                 updated.manager_backend = decision.manager_backend
                 updated.current_candidate_answer = decision.candidate_answer
-                updated.pending_aristotle_job = pending_job
+                self._set_pending_jobs(updated, pending_jobs)
                 
-                self.memory.add_event(
-                    campaign_id=campaign_id,
-                    tick=tick,
-                    event_type="aristotle_job_submitted",
-                    payload={
-                        "project_id": pending_job.project_id,
-                        "target_frontier_node": pending_job.target_frontier_node,
-                        "world_family": pending_job.world_family,
-                        "status": pending_job.status,
-                    },
-                )
+                for pending_job in pending_jobs:
+                    self.memory.add_event(
+                        campaign_id=campaign_id,
+                        tick=tick,
+                        event_type="aristotle_job_submitted",
+                        payload={
+                            "project_id": pending_job.project_id,
+                            "target_frontier_node": pending_job.target_frontier_node,
+                            "world_family": pending_job.world_family,
+                            "debt_id": pending_job.debt_id,
+                            "status": pending_job.status,
+                        },
+                    )
                 
                 self._persist_campaign(updated)
                 return updated
@@ -246,92 +251,79 @@ class CampaignService:
                 updated = self._finalize_execution(campaign, decision, result, context, tick, active_policy)
                 return updated
 
-    def _poll_pending_job(self, campaign: CampaignRecord) -> CampaignRecord:
-        """Poll an existing pending Aristotle job."""
-        pending_job = campaign.pending_aristotle_job
-        if not pending_job:
+    def _poll_pending_jobs(self, campaign: CampaignRecord) -> CampaignRecord:
+        """Poll existing pending Aristotle jobs and finalize any terminal results."""
+        pending_jobs = self._pending_jobs(campaign)
+        if not pending_jobs:
             return campaign
-        
-        # Poll the job
-        updated_job, result = self.executor.poll_proof(pending_job)
-        
-        # Update campaign with new job state
+
         updated = campaign.model_copy(deep=True)
-        updated.pending_aristotle_job = updated_job
-        
-        if result is None:
-            # Still pending - record poll event and return
+        still_pending: list[PendingAristotleJob] = []
+        active_policy = self.memory.get_latest_policy() or get_policy()
+
+        for pending_job in pending_jobs:
+            updated_job, result = self.executor.poll_proof(pending_job)
+
+            if result is None:
+                still_pending.append(updated_job)
+                self.memory.add_event(
+                    campaign_id=campaign.id,
+                    tick=campaign.tick_count,
+                    event_type="aristotle_job_polled",
+                    payload={
+                        "project_id": updated_job.project_id,
+                        "poll_count": updated_job.poll_count,
+                        "status": updated_job.status,
+                        "debt_id": updated_job.debt_id,
+                    },
+                )
+                continue
+
+            from .schemas import ApprovedExecutionPlan, ManagerDecision
+
+            decision = ManagerDecision.model_validate(pending_job.decision_snapshot)
+            plan = ApprovedExecutionPlan.model_validate(pending_job.plan_snapshot)
+            started = time.perf_counter()
+            elapsed = int((time.perf_counter() - started) * 1000)
+            result = self.executor._attach_plan_metadata(
+                result,
+                plan,
+                elapsed,
+                executed_proof_jobs=plan.approved_proof_jobs[:1],
+                executed_evidence_jobs=[],
+            )
+
+            updated = self._apply_decision_world_state(updated, decision)
+            updated = update_memory(updated, decision, result, policy=active_policy)
+            updated = apply_execution_result(updated, decision, result)
+            updated.last_execution_result = result.model_dump()
+            self._recompute_resolved_debt_ids(updated)
+
             self.memory.add_event(
                 campaign_id=campaign.id,
                 tick=campaign.tick_count,
-                event_type="aristotle_job_polled",
+                event_type="aristotle_job_completed",
                 payload={
                     "project_id": updated_job.project_id,
                     "poll_count": updated_job.poll_count,
                     "status": updated_job.status,
+                    "debt_id": updated_job.debt_id,
+                    "result_status": result.status,
+                    "failure_type": result.failure_type,
                 },
             )
-            self._persist_campaign(updated)
-            return updated
-        
-        # Job completed - finalize execution
-        # Reconstruct decision and plan from snapshots
-        from .schemas import ManagerDecision, ApprovedExecutionPlan
-        decision = ManagerDecision.model_validate(pending_job.decision_snapshot)
-        plan = ApprovedExecutionPlan.model_validate(pending_job.plan_snapshot)
-        
-        # Attach plan metadata to result
-        started = time.perf_counter()
-        elapsed = int((time.perf_counter() - started) * 1000)
-        result = self.executor._attach_plan_metadata(
-            result,
-            plan,
-            elapsed,
-            executed_proof_jobs=plan.approved_proof_jobs[:1],
-            executed_evidence_jobs=[],
-        )
-        
-        # Get policy
-        active_policy = self.memory.get_latest_policy() or get_policy()
-        
-        # Install world/debt state BEFORE memory and frontier updates
-        updated = self._apply_decision_world_state(updated, decision)
-        
-        # Apply memory and frontier updates
-        updated = update_memory(updated, decision, result, policy=active_policy)
-        updated = apply_execution_result(updated, decision, result)
-        updated.last_execution_result = result.model_dump()
-        
-        # Recompute resolved debt IDs from final ledger
-        self._recompute_resolved_debt_ids(updated)
-        
-        # Clear pending job
-        updated.pending_aristotle_job = None
-        
-        # Record completion event
-        self.memory.add_event(
-            campaign_id=campaign.id,
-            tick=campaign.tick_count,
-            event_type="aristotle_job_completed",
-            payload={
-                "project_id": updated_job.project_id,
-                "poll_count": updated_job.poll_count,
-                "status": updated_job.status,
-                "result_status": result.status,
-                "failure_type": result.failure_type,
-            },
-        )
-        
-        # Record execution result
-        raw_payload = result.raw if isinstance(result.raw, dict) else {}
-        self.memory.record_execution_result(
-            campaign_id=campaign.id,
-            tick=campaign.tick_count,
-            decision=decision.model_dump(),
-            result=updated.last_execution_result,
-            raw_request=raw_payload.get("aristotle_request"),
-            raw_response=raw_payload.get("aristotle_response"),
-        )
+
+            raw_payload = result.raw if isinstance(result.raw, dict) else {}
+            self.memory.record_execution_result(
+                campaign_id=campaign.id,
+                tick=campaign.tick_count,
+                decision=decision.model_dump(),
+                result=updated.last_execution_result,
+                raw_request=raw_payload.get("aristotle_request"),
+                raw_response=raw_payload.get("aristotle_response"),
+            )
+
+        self._set_pending_jobs(updated, still_pending)
         
         self._persist_campaign(updated)
         return updated
@@ -374,6 +366,130 @@ class CampaignService:
             d["id"] for d in campaign.proof_debt_ledger
             if d.get("id") and d.get("status") == "proved"
         ]
+
+    def _pending_jobs(self, campaign: CampaignRecord) -> list[PendingAristotleJob]:
+        jobs = list(campaign.pending_aristotle_jobs or [])
+        if campaign.pending_aristotle_job and all(
+            job.project_id != campaign.pending_aristotle_job.project_id for job in jobs
+        ):
+            jobs.insert(0, campaign.pending_aristotle_job)
+        return jobs
+
+    def _set_pending_jobs(
+        self,
+        campaign: CampaignRecord,
+        jobs: list[PendingAristotleJob],
+    ) -> None:
+        campaign.pending_aristotle_jobs = jobs
+        campaign.pending_aristotle_job = jobs[0] if jobs else None
+        active_debt_ids = {job.debt_id for job in jobs if job.debt_id}
+        for debt in campaign.proof_debt_ledger:
+            if debt.get("id") in active_debt_ids and debt.get("status") == "open":
+                debt["status"] = "active"
+
+    def _submit_proof_wave(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        context: ManagerContext,
+        tick: int,
+        active_policy: dict,
+        base_plan: ApprovedExecutionPlan,
+    ) -> list[PendingAristotleJob]:
+        ready_debts = self._ready_proof_debts(campaign, decision, active_policy)
+        pending_jobs: list[PendingAristotleJob] = []
+
+        if ready_debts:
+            ledger = self._ledger_debt_items(campaign, decision)
+            for debt in ready_debts:
+                debt_decision = decision.model_copy(
+                    deep=True,
+                    update={
+                        "bounded_claim": debt.statement,
+                        "formal_obligations": [],
+                        "proof_debt": ledger,
+                        "critical_next_debt_id": debt.id,
+                    },
+                )
+                plan = build_execution_plan(debt_decision, policy=active_policy, memory=campaign.memory)
+                self.memory.add_event(
+                    campaign_id=campaign.id,
+                    tick=tick,
+                    event_type="obligation_analysis",
+                    payload={
+                        **plan.model_dump(),
+                        "wavefront_debt_id": debt.id,
+                        "wavefront_debt_class": debt.debt_class,
+                    },
+                )
+                if plan.approved_proof_jobs:
+                    pending_jobs.append(self.executor.submit_proof(campaign, debt_decision, plan))
+            if pending_jobs:
+                self.memory.add_event(
+                    campaign_id=campaign.id,
+                    tick=tick,
+                    event_type="aristotle_wave_submitted",
+                    payload={
+                        "job_count": len(pending_jobs),
+                        "debt_ids": [job.debt_id for job in pending_jobs],
+                    },
+                )
+                return pending_jobs
+
+        for proof_job in base_plan.approved_proof_jobs:
+            split_plan = base_plan.model_copy(
+                deep=True,
+                update={
+                    "approved_proof_jobs": [proof_job],
+                    "approved_evidence_jobs": [],
+                    "channel_used": "aristotle_proof",
+                },
+            )
+            pending_jobs.append(self.executor.submit_proof(campaign, decision, split_plan))
+        return pending_jobs
+
+    def _ready_proof_debts(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+        active_policy: dict,
+    ) -> list[ProofDebtItem]:
+        ledger = self._ledger_debt_items(campaign, decision)
+        if not ledger:
+            return []
+
+        pending_debt_ids = {job.debt_id for job in self._pending_jobs(campaign) if job.debt_id}
+        status_by_id = {debt.id: debt.status for debt in ledger}
+        resolved_ids = set(campaign.resolved_debt_ids)
+        resolved_ids.update(debt_id for debt_id, status in status_by_id.items() if status == "proved")
+
+        ready = [
+            debt
+            for debt in ledger
+            if debt.status == "open"
+            and debt.id not in pending_debt_ids
+            and debt.assigned_channel in {"aristotle", "auto"}
+            and debt.role in {"closure", "bridge", "support"}
+            and all(dep_id in resolved_ids for dep_id in debt.depends_on)
+        ]
+        ready.sort(key=lambda item: (-item.priority, item.expected_difficulty, item.id))
+        limits = active_policy.get("complexity_limits", {})
+        max_wave = int(limits.get("parallel_aristotle_jobs_per_wave", limits.get("max_proof_obligations_per_step", 1)))
+        return ready[: max(1, max_wave)]
+
+    def _ledger_debt_items(
+        self,
+        campaign: CampaignRecord,
+        decision: ManagerDecision,
+    ) -> list[ProofDebtItem]:
+        raw_items = campaign.proof_debt_ledger or [item.model_dump() for item in decision.proof_debt]
+        items: list[ProofDebtItem] = []
+        for raw_item in raw_items:
+            try:
+                items.append(ProofDebtItem.model_validate(raw_item))
+            except Exception:
+                logger.warning("Skipping invalid proof debt item in campaign=%s", campaign.id)
+        return items
 
     def _finalize_execution(
         self,
@@ -874,6 +990,11 @@ class CampaignService:
             if pending_job_payload
             else None
         )
+        pending_jobs_payload = payload.get("pending_aristotle_jobs") or []
+        pending_jobs = [
+            PendingAristotleJob.model_validate(job_payload)
+            for job_payload in pending_jobs_payload
+        ]
 
         status_raw = payload.get("status", campaign_node.get("status", "running"))
         status_normalized = "running" if status_raw == "active" else status_raw
@@ -896,6 +1017,7 @@ class CampaignService:
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
             pending_aristotle_job=pending_job,
+            pending_aristotle_jobs=pending_jobs,
             current_world_program=payload.get("current_world_program"),
             alternative_world_programs=payload.get("alternative_world_programs", []),
             proof_debt_ledger=payload.get("proof_debt_ledger", []),
@@ -914,6 +1036,11 @@ class CampaignService:
             if pending_job_payload
             else None
         )
+        pending_jobs_payload = payload.get("pending_aristotle_jobs") or []
+        pending_jobs = [
+            PendingAristotleJob.model_validate(job_payload)
+            for job_payload in pending_jobs_payload
+        ]
         
         return CampaignRecord(
             id=campaign_node["id"],
@@ -938,6 +1065,7 @@ class CampaignService:
             manager_backend=payload.get("manager_backend", self.settings.manager_backend_resolved),
             executor_backend=payload.get("executor_backend", self.settings.executor_backend),
             pending_aristotle_job=pending_job,
+            pending_aristotle_jobs=pending_jobs,
             current_world_program=payload.get("current_world_program"),
             alternative_world_programs=payload.get("alternative_world_programs", []),
             proof_debt_ledger=payload.get("proof_debt_ledger", []),
@@ -988,6 +1116,9 @@ class CampaignService:
                 "pending_aristotle_job": campaign.pending_aristotle_job.model_dump(mode='json')
                 if campaign.pending_aristotle_job
                 else None,
+                "pending_aristotle_jobs": [
+                    job.model_dump(mode="json") for job in self._pending_jobs(campaign)
+                ],
                 "current_world_program": campaign.current_world_program,
                 "alternative_world_programs": campaign.alternative_world_programs,
                 "proof_debt_ledger": campaign.proof_debt_ledger,
