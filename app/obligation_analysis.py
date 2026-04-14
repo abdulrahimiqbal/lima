@@ -420,6 +420,20 @@ def _analyze_with_role_awareness(obligation: FormalObligationSpec) -> AnalyzedOb
                 base_analysis.obligation_type = "counterexample_search"
             else:
                 base_analysis.obligation_type = "finite_check"
+
+    # Never submit debt-driven or explicit proof jobs that lack formal Lean content.
+    strict_proof_gate = bool(
+        obligation.channel_hint == "proof"
+        or obligation.requires_proof
+        or obligation.metadata.get("debt_id")
+        or obligation.metadata.get("debt_role") in {"closure", "bridge", "support"}
+    )
+    if strict_proof_gate and base_analysis.submission_channel == "aristotle_proof":
+        missing_formal = not (obligation.statement or obligation.lean_declaration)
+        if missing_formal:
+            base_analysis.submission_channel = "reject"
+            base_analysis.allowed_in_default_loop = False
+            base_analysis.rejection_reason = "formalization_required"
     
     return base_analysis
 
@@ -441,7 +455,13 @@ def _compute_adaptive_budgets(
     
     # Check evidence streak
     evidence_streak = memory.evidence_streaks.get(node_key, 0)
-    if evidence_streak >= 2:
+    evidence_threshold = int(limits.get("evidence_only_streak_threshold", 3))
+    if evidence_streak >= evidence_threshold:
+        # Hard-stop evidence churn after repeated evidence-only results.
+        base_evidence = 0
+        notes.append(f"reduced_evidence_budget_after_{evidence_streak}_evidence_only_results")
+        notes.append(f"evidence_hard_stop_after_{evidence_streak}_evidence_only_results")
+    elif evidence_streak >= 2:
         # Reduce evidence budget, reserve for proof work
         base_evidence = max(1, base_evidence - 1)
         notes.append(f"reduced_evidence_budget_after_{evidence_streak}_evidence_only_results")

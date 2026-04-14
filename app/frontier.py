@@ -32,15 +32,12 @@ def _extract_root_claim(problem_statement: str) -> str:
 
 
 def choose_frontier_node(frontier: list[FrontierNode]) -> FrontierNode | None:
-    candidates = [
-        node
-        for node in frontier
-        if node.status in {"open", "active", "blocked"}
-    ]
-    if not candidates:
+    actionable = [node for node in frontier if node.status in {"open", "active"}]
+    blocked = [node for node in frontier if node.status == "blocked"]
+    if not actionable and not blocked:
         return None
-    blocked = [node for node in candidates if node.status == "blocked"]
-    pool = blocked or candidates
+    # Prefer fresh actionable work; revisit blocked nodes only when necessary.
+    pool = actionable or blocked
     return sorted(pool, key=lambda item: (-item.priority, item.failure_count, item.id))[0]
 
 

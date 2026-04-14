@@ -179,6 +179,8 @@ class CampaignService:
                 failure = "excessive_scope"
                 if any(reason == "mixed_channels" for reason in plan.rejected_reasons.values()):
                     failure = "mixed_channels"
+                elif any(reason == "formalization_required" for reason in plan.rejected_reasons.values()):
+                    failure = "formalization_failed"
                 result = ExecutionResult(
                     status="blocked",
                     failure_type=failure,
