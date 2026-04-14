@@ -6,14 +6,29 @@ from .schemas import CampaignRecord, ExecutionResult, FrontierNode, ManagerDecis
 
 
 def seed_frontier(problem_statement: str) -> list[FrontierNode]:
+    root_claim = _extract_root_claim(problem_statement)
     return [
         FrontierNode(
-            text=problem_statement,
+            text=root_claim,
             status="open",
             priority=1.0,
             kind="claim",
         )
     ]
+
+
+def _extract_root_claim(problem_statement: str) -> str:
+    text = problem_statement.strip()
+    if not text:
+        return text
+
+    for marker in ("\n\nResearch brief:", "\nResearch brief:", "\n\nWhat I want:", "\nWhat I want:"):
+        if marker in text:
+            candidate = text.split(marker, 1)[0].strip()
+            if candidate:
+                return candidate
+
+    return text
 
 
 def choose_frontier_node(frontier: list[FrontierNode]) -> FrontierNode | None:

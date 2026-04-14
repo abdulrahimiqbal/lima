@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from lima_memory import MemoryService, SqliteKnowledgeStore
 
 from app.config import Settings
+from app.frontier import seed_frontier
 from app.main import create_app
 from app.manager import Manager, load_root_file, get_constitution
 from app.self_improvement import SelfImprovementService
@@ -76,6 +77,15 @@ def test_health_ready_status(tmp_path: Path):
     data = response.json()
     assert data["database"] == "ok"
     assert data["manager"]["backend"] == "rules"
+
+
+def test_seed_frontier_uses_problem_not_research_brief():
+    frontier = seed_frontier(
+        "For every positive integer n, repeated iteration reaches 1.\n\n"
+        "Research brief:\n- Treat this as top-down.\n- Avoid computation-first."
+    )
+    assert len(frontier) == 1
+    assert frontier[0].text == "For every positive integer n, repeated iteration reaches 1."
 
 
 def test_readyz_strict_live_mode_fails_on_probe_error(tmp_path: Path, monkeypatch):

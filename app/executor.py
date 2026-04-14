@@ -26,6 +26,12 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
+LEAN_DECLARATION_RE = re.compile(
+    r"^\s*(?:import|open|namespace|section|variable|variables|theorem|lemma|def|example)\b",
+    re.MULTILINE,
+)
+
+
 class ProofAdapter(Protocol):
     name: str
 
@@ -163,7 +169,14 @@ class AristotleSdkProofAdapter:
             if spec.source_text == proof_obligation or proof_obligation in spec.source_text:
                 obligation_spec = spec
                 break
-        
+        if obligation_spec is None:
+            for debt in decision.proof_debt:
+                if debt.statement == proof_obligation:
+                    from .schemas import FormalObligationSpec
+
+                    obligation_spec = FormalObligationSpec.from_debt_item(debt)
+                    break
+
         lean_result = self._obligation_to_lean(obligation_spec or proof_obligation)
         
         # Check if formalization failed
@@ -703,8 +716,8 @@ class AristotleSdkProofAdapter:
         if isinstance(obligation, str):
             text = obligation.strip()
             
-            # Check if it looks like Lean code already
-            if any(kw in text for kw in ["theorem", "lemma", "def ", "example", "import"]):
+            # Accept only strings that actually start like Lean code.
+            if _looks_like_lean_code(text):
                 return {
                     "status": "ok",
                     "lean_code": text,
@@ -743,6 +756,15 @@ def _sanitize_theorem_name(text: str) -> str:
     if not name:
         name = "obligation"
     return name
+
+
+def _looks_like_lean_code(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if not LEAN_DECLARATION_RE.match(stripped):
+        return False
+    return any(token in stripped for token in (":=", " by", "\nby", "import ", "example "))
 
 
 class Executor:

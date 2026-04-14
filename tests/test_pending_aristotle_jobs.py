@@ -8,12 +8,15 @@ from app.schemas import (
     CandidateAnswer,
     CampaignRecord,
     ExecutionResult,
+    FormalObligationSpec,
     FrontierNode,
     ManagerDecision,
     MemoryState,
     PendingAristotleJob,
+    ProofDebtItem,
     SelfImprovementNote,
     UpdateRules,
+    WorldProgram,
 )
 
 
@@ -199,3 +202,65 @@ def test_campaign_without_pending_job_backward_compatible():
     # Deserialize
     restored = CampaignRecord.model_validate(serialized)
     assert restored.pending_aristotle_job is None
+
+
+def test_submit_proof_uses_debt_item_structure_and_fails_honestly():
+    """Debt-driven proof jobs without formal statements should fail before Aristotle submission."""
+    executor = Executor(
+        Settings(
+            executor_backend="aristotle",
+            aristotle_api_key="fake-key",
+        )
+    )
+    campaign = _campaign()
+    decision = ManagerDecision(
+        candidate_answer=CandidateAnswer(stance="undecided", summary="x", confidence=0.2),
+        alternatives=[],
+        target_frontier_node="F-1",
+        world_family="bridge",
+        bounded_claim="local claim",
+        formal_obligations=[
+            FormalObligationSpec(
+                source_text="Secondary obligation",
+                statement="True",
+                theorem_name="secondary_obligation",
+                requires_proof=True,
+            )
+        ],
+        expected_information_gain="gain",
+        why_this_next="why",
+        update_rules=UpdateRules(
+            if_proved="a",
+            if_refuted="b",
+            if_blocked="c",
+            if_inconclusive="d",
+        ),
+        self_improvement_note=SelfImprovementNote(proposal="p", reason="r"),
+        primary_world=WorldProgram(
+            label="Test world",
+            family_tags=["bridge"],
+            mode="micro",
+            thesis="test world",
+        ),
+        proof_debt=[
+            ProofDebtItem(
+                id="D-1",
+                world_id="W-1",
+                role="support",
+                statement="Prove one local lemma for: Let T(n) be the Collatz map on positive integers",
+                critical=True,
+            )
+        ],
+        critical_next_debt_id="D-1",
+    )
+    plan = ApprovedExecutionPlan(
+        original_obligations=[decision.proof_debt[0].statement],
+        approved_proof_jobs=[decision.proof_debt[0].statement],
+        channel_used="aristotle_proof",
+    )
+
+    pending_job = executor.submit_proof(campaign, decision, plan)
+
+    assert pending_job.status == "failed"
+    assert pending_job.project_id.startswith("formalization-failed")
+    assert pending_job.lean_code == ""

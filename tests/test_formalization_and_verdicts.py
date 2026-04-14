@@ -77,6 +77,14 @@ def test_string_obligation_natural_language_fails_honestly():
     assert "unstructured_natural_language" in str(result.get("artifacts", []))
 
 
+def test_string_obligation_with_lemma_word_but_not_lean_fails_honestly():
+    """Natural-language text mentioning 'lemma' should not be treated as Lean code."""
+    obligation = "Prove one local lemma for: Let T(n) be the Collatz map on positive integers"
+    result = AristotleSdkProofAdapter._obligation_to_lean(obligation)
+    assert result["status"] == "formalization_failed"
+    assert "Cannot formalize natural language" in result["notes"]
+
+
 def test_sanitize_theorem_name():
     """Test theorem name sanitization."""
     assert _sanitize_theorem_name("test theorem") == "test_theorem"
