@@ -256,8 +256,8 @@ class AristotleSdkProofAdapter:
             if result_tar_path:
                 updated_job.result_tar_path = result_tar_path
             
-            # Check if terminal
-            if project_status in {"complete", "complete_with_errors", "out_of_budget", "failed", "canceled"}:
+            # Check if terminal (status strings are uppercase from enum)
+            if project_status.upper() in {"COMPLETE", "COMPLETE_WITH_ERRORS", "OUT_OF_BUDGET", "FAILED", "CANCELED"}:
                 # Reconstruct decision and plan from snapshots
                 from .schemas import ManagerDecision, ApprovedExecutionPlan
                 decision = ManagerDecision.model_validate(pending_job.decision_snapshot)
