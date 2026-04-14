@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from app.config import Settings
-from app.manager import Manager, get_policy
+from app.manager import Manager, _extract_json, get_policy
 from app.schemas import (
     CandidateAnswer,
     FrontierNode,
@@ -115,3 +115,16 @@ def test_llm_partial_payload_is_coerced_without_fallback(tmp_path: Path) -> None
     assert result.manager_read_receipt.target_node_id_confirmed == "F-1"
     assert result.candidate_answer.summary
     assert result.self_improvement_note.reason
+
+
+def test_extract_json_recovers_first_object_from_wrapped_text() -> None:
+    payload = """Here is the decision:
+
+```json
+{"candidate_answer":{"stance":"undecided","summary":"s","confidence":0.2}}
+```
+
+Extra commentary after the JSON.
+"""
+    parsed = _extract_json(payload)
+    assert parsed["candidate_answer"]["stance"] == "undecided"

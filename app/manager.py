@@ -355,6 +355,7 @@ class Manager:
             "model": self.settings.llm_model,
             "temperature": self.settings.llm_temperature,
             "messages": messages,
+            "response_format": {"type": "json_object"},
         }
         response = requests.post(
             self.settings.llm_base_url.rstrip("/") + "/chat/completions",
@@ -670,12 +671,27 @@ class Manager:
 
 def _extract_json(content: str) -> dict[str, Any]:
     content = content.strip()
-    # Find the outermost { }
-    match = re.search(r"(\{.*\})", content, re.DOTALL)
-    if match:
-        content = match.group(1)
-    else:
-        # Fallback if no clean JSON object is found
-        return json.loads(content)
-    
+    if content.startswith("```"):
+        fence_match = re.search(r"```(?:json)?\s*(.*?)```", content, re.DOTALL)
+        if fence_match:
+            content = fence_match.group(1).strip()
+
+    decoder = json.JSONDecoder()
+    candidate_offsets = [idx for idx, char in enumerate(content) if char == "{"] or [0]
+    last_error: json.JSONDecodeError | None = None
+
+    for offset in candidate_offsets:
+        snippet = content[offset:].lstrip()
+        if not snippet.startswith("{"):
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(snippet)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    if last_error is not None:
+        raise last_error
     return json.loads(content)
