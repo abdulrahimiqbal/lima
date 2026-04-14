@@ -81,12 +81,16 @@ class InventionService:
         )
 
         raw_worlds = self._generate_raw_worlds(campaign, batch)
+        source_models = {world.source_model for world in raw_worlds}
+        source = "deterministic"
+        if any(model != "deterministic" for model in source_models):
+            source = "mixed" if "deterministic" in source_models else "llm"
         batch.raw_world_ids = [world.id for world in raw_worlds]
         batch.metrics = {
             "raw_world_count": len(raw_worlds),
             "strategy_slot_count": len(batch.strategy_slots),
             "wildness": batch.wildness,
-            "source": "llm" if any(w.source_model != "deterministic" for w in raw_worlds) else "deterministic",
+            "source": source,
         }
 
         self._record_batch(batch)
@@ -309,7 +313,12 @@ class InventionService:
             try:
                 llm_worlds = self._generate_raw_worlds_with_llm(campaign, batch)
                 if llm_worlds:
-                    return llm_worlds[: batch.requested_worlds]
+                    llm_worlds = llm_worlds[: batch.requested_worlds]
+                    if len(llm_worlds) >= batch.requested_worlds:
+                        return llm_worlds
+                    needed = batch.requested_worlds - len(llm_worlds)
+                    fallback_worlds = self._generate_raw_worlds_deterministic(campaign, batch)
+                    return [*llm_worlds, *fallback_worlds[:needed]]
             except Exception:
                 logger.exception("Wild inventor LLM call failed; using deterministic fallback.")
         return self._generate_raw_worlds_deterministic(campaign, batch)

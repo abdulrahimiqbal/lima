@@ -10,6 +10,7 @@ from app.schemas import (
     DistilledWorld,
     InventionBatchCreate,
     ProofDebtItem,
+    RawWorldInvention,
     WorldObjectDefinition,
     WorldProgram,
 )
@@ -194,3 +195,56 @@ def test_world_evolution_run_records_mutations_and_lineage(tmp_path: Path) -> No
         limit=20,
     )
     assert mutations
+
+
+def test_llm_invention_batch_tops_up_underproduced_worlds(tmp_path: Path, monkeypatch) -> None:
+    settings = Settings(
+        memory_db_path=str(tmp_path / "memory.db"),
+        worker_poll_seconds=999,
+        manager_backend="llm",
+        executor_backend="mock",
+        llm_api_key="test-key",
+    )
+    service = CampaignService(settings)
+    campaign = service.create_campaign(
+        payload=CampaignCreate(
+            title="Underproduced LLM batch",
+            problem_statement="Explore Collatz worlds.",
+            auto_run=False,
+        )
+    )
+
+    def fake_llm_worlds(campaign, batch):
+        return [
+            RawWorldInvention(
+                batch_id=batch.id,
+                campaign_id=campaign.id,
+                label="LLM short world",
+                raw_text="A single LLM world.",
+                new_objects=["llm object"],
+                thesis="One generated world is not enough.",
+                bridge_to_target="Bridge by an explicit interpretation map.",
+                cheap_predictions=["Probe one sample."],
+                likely_falsifiers=["Missing interpretation map."],
+                proof_debt_sketch=["Define the interpretation map."],
+                novelty_rationale="Short LLM response.",
+                source_model="llm-test",
+            )
+        ]
+
+    monkeypatch.setattr(service.invention, "_generate_raw_worlds_with_llm", fake_llm_worlds)
+
+    batch = service.invention.create_batch(
+        campaign,
+        InventionBatchCreate(
+            requested_worlds=5,
+            wildness="extreme",
+        ),
+    )
+    raw_worlds = service.invention._list_raw_worlds(campaign.id, batch.id)
+
+    assert len(batch.raw_world_ids) == 5
+    assert len(raw_worlds) == 5
+    assert batch.metrics["source"] == "mixed"
+    assert any(world.source_model == "llm-test" for world in raw_worlds)
+    assert any(world.source_model == "deterministic" for world in raw_worlds)
