@@ -473,19 +473,14 @@ class AristotleSdkProofAdapter:
         except ImportError:
             raise RuntimeError("aristotlelib is not installed")
 
-        # Reconstruct project from project_id
-        # Note: The Aristotle SDK may not support direct project_id lookup
-        # If not, we'll need to track the project object differently
-        # For now, assume we can refresh by creating a new Project reference
+        # Reconstruct project from project_id using from_id() method
         try:
-            # Try to get project by ID - this may require SDK support
-            project = Project(project_id=project_id)
-            await project.refresh()
-        except Exception:
-            # Fallback: If SDK doesn't support project_id lookup, we're stuck
-            # This is a limitation that needs SDK support
-            logger.warning(f"Cannot poll project {project_id} - SDK may not support project_id lookup")
-            return "running", None
+            project = await Project.from_id(project_id)
+        except Exception as exc:
+            # Log the actual error for debugging
+            logger.error(f"Failed to poll project {project_id}: {exc}", exc_info=True)
+            # Return failed status instead of silently returning "running"
+            return "failed", None
         
         status_str = project.status.value if hasattr(project.status, 'value') else str(project.status)
         
