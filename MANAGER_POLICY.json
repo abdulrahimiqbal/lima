@@ -109,6 +109,45 @@
         "after_proof_failure": "Identify the missing lemma or split the theorem into smaller provable pieces. Each piece must have a formal Lean statement.",
         "formalization_requirements": "CRITICAL: Every proof obligation MUST include a 'statement' field with valid Lean syntax (e.g., '∀ n : ℕ, n > 2 → n^2 > 2*n') OR a 'lean_declaration' with complete Lean code. Natural language alone will fail. Include 'tactic_hints' when you have strategic insight. Link obligations to proof debt via 'metadata'."
     },
+    "invention_policy": {
+        "default_batch_size": 30,
+        "default_wildness": "high",
+        "strategy_slots": [
+            "alien_state_space_encoding",
+            "parity_word_grammar",
+            "residue_flow_conservation",
+            "minimal_counterexample_world",
+            "compressed_trajectory_dynamics",
+            "inverse_tree_normal_form",
+            "rewrite_system_termination",
+            "two_adic_shadow_dynamics",
+            "automaton_boundary_world",
+            "bridge_from_unrelated_field"
+        ],
+        "truth_boundary": "Inventions may create candidates only; verdicts and solved state require proof debt discharge.",
+        "batch_contract": "Every invented world must introduce new objects, a bridge back to target, cheap falsifiers, and proof debt."
+    },
+    "invention_scoring": {
+        "novelty_weight": 0.35,
+        "bridge_weight": 0.30,
+        "falsifiability_weight": 0.20,
+        "formalizability_weight": 0.15,
+        "penalize_restatement": 0.35,
+        "reward_dead_pattern_avoidance": 0.20
+    },
+    "falsifier_policy": {
+        "falsify_before_aristotle": true,
+        "store_negative_patterns": true,
+        "collatz_probe_samples": [3, 7, 27, 31, 63, 127],
+        "kill_empty_ontology": true,
+        "kill_circular_bridge": true
+    },
+    "retrieval_policy": {
+        "include_recent_invention_batches": 5,
+        "include_promising_worlds": 10,
+        "include_dead_patterns": 20,
+        "include_bake_attempts": 20
+    },
     "learned_patterns": [],
     "notes": [
         "This file is allowed to evolve over time.",

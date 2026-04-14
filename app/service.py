@@ -11,6 +11,7 @@ from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeSt
 from .config import Settings
 from .executor import Executor
 from .frontier import apply_execution_result, seed_frontier
+from .invention import InventionService
 from .learner import update_memory
 from .manager import Manager, get_policy
 from .obligation_analysis import build_execution_plan
@@ -22,9 +23,12 @@ from .schemas import (
     CandidateAnswer,
     ExecutionResult,
     FrontierNode,
+    InventionBatch,
+    InventionBatchCreate,
     ManagerContext,
     MemoryState,
     PendingAristotleJob,
+    DistilledWorld,
 )
 from .self_improvement import SelfImprovementService
 
@@ -53,6 +57,7 @@ class CampaignService:
         )
         self.manager.policy_provider = self.memory.get_latest_policy
         self.self_improvement = SelfImprovementService(self.memory, settings)
+        self.invention = InventionService(self.memory, settings)
         self._campaign_locks: dict[str, threading.Lock] = {}
         self._campaign_locks_guard = threading.Lock()
 
@@ -476,6 +481,7 @@ class CampaignService:
         """Assemble a comprehensive operator brief for the UI."""
         campaign = self.get_campaign(campaign_id)
         system = self.system_status()
+        invention_lab = self.invention.get_lab(campaign_id)
         
         # Ops section
         executor_conn = system["executor"]["connectivity"]
@@ -608,6 +614,27 @@ class CampaignService:
             "formalization_streaks": campaign.memory.formalization_streaks,
             "timeout_streaks": campaign.memory.timeout_streaks,
         }
+
+        invention = {
+            **invention_lab["summary"],
+            "latest_batch_id": (
+                invention_lab["batches"][0]["id"]
+                if invention_lab["batches"]
+                else None
+            ),
+            "promising_worlds": [
+                {
+                    "id": node["id"],
+                    "label": node["title"],
+                    "status": node["status"],
+                    "novelty_score": node["payload"].get("novelty_score"),
+                    "bridge_score": node["payload"].get("bridge_score"),
+                }
+                for node in invention_lab["distilled_worlds"]
+                if node["payload"].get("status") in {"promising", "baking"}
+            ][:5],
+            "dead_patterns": invention_lab["dead_patterns"][:10],
+        }
         
         # Self-Improvement section
         self_improvement = {
@@ -677,9 +704,68 @@ class CampaignService:
             "manager_understanding": manager_understanding,
             "verification": verification,
             "discovery": discovery,
+            "invention": invention,
             "self_improvement": self_improvement,
             "next": next_action,
         }
+
+    def create_invention_batch(
+        self,
+        campaign_id: str,
+        payload: InventionBatchCreate,
+    ) -> InventionBatch:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            active_policy = self.memory.get_latest_policy() or get_policy()
+            return self.invention.create_batch(campaign, payload, policy=active_policy)
+
+    def distill_invention_batch(
+        self,
+        campaign_id: str,
+        batch_id: str,
+    ) -> list[DistilledWorld]:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            return self.invention.distill_batch(campaign, batch_id)
+
+    def falsify_invention_batch(
+        self,
+        campaign_id: str,
+        batch_id: str,
+    ) -> list[dict]:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            results = self.invention.falsify_batch(campaign, batch_id)
+            return [result.model_dump(mode="json") for result in results]
+
+    def promote_invention_world(
+        self,
+        campaign_id: str,
+        distilled_world_id: str,
+    ) -> CampaignRecord:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world = self.invention.promote_world(campaign, distilled_world_id)
+            updated = campaign.model_copy(deep=True)
+            updated.current_world_program = world.world_program.model_dump()
+            updated.alternative_world_programs = [
+                candidate["payload"]["world_program"]
+                for candidate in self.invention.get_lab(campaign_id)["distilled_worlds"]
+                if candidate["id"] != distilled_world_id
+            ][:8]
+            updated.proof_debt_ledger = [
+                debt.model_dump() for debt in world.proof_debt
+            ]
+            updated.resolved_debt_ids = [
+                debt.id for debt in world.proof_debt if debt.status == "proved"
+            ]
+            updated.active_world_id = world.world_program.id
+            self._persist_campaign(updated)
+            return updated
+
+    def get_invention_lab(self, campaign_id: str) -> dict:
+        _ = self.get_campaign(campaign_id)
+        return self.invention.get_lab(campaign_id)
 
     def smoke_aristotle(self, *, strict_live_probe: bool = False) -> dict:
         return self.executor.check_connectivity(strict_live_probe=strict_live_probe)

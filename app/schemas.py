@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -41,6 +41,35 @@ GoalKind = Literal[
     "counterexample_search",
     "reduction_check",
 ]
+InventionMode = Literal["wild", "repair", "mutation", "combination"]
+InventionWildness = Literal["medium", "high", "extreme"]
+InventionBatchStatus = Literal[
+    "generated",
+    "distilled",
+    "falsified",
+    "compiled",
+    "baking",
+    "complete",
+]
+DistilledWorldStatus = Literal[
+    "candidate",
+    "promising",
+    "falsified",
+    "baking",
+    "retired",
+]
+FalsifierStatus = Literal["survived", "falsified", "inconclusive"]
+BakeAttemptStatus = Literal[
+    "formalization_failed",
+    "submitted",
+    "proved",
+    "blocked",
+    "inconclusive",
+]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class FormalObligationSpec(BaseModel):
@@ -98,6 +127,8 @@ class FormalObligationSpec(BaseModel):
             source_text=debt.statement,
             channel_hint=channel_hint,
             goal_kind=goal_kind,
+            statement=debt.formal_statement,
+            lean_declaration=debt.lean_declaration,
             requires_proof=(channel_hint == "proof"),
             requires_evidence=(channel_hint == "evidence"),
             metadata={
@@ -106,6 +137,8 @@ class FormalObligationSpec(BaseModel):
                 "debt_world_id": debt.world_id,
                 "debt_critical": debt.critical,
                 "debt_priority": debt.priority,
+                "assigned_channel": debt.assigned_channel,
+                "expected_difficulty": debt.expected_difficulty,
             },
         )
 
@@ -277,11 +310,16 @@ class ProofDebtItem(BaseModel):
     world_id: str
     role: Literal["closure", "bridge", "support", "boundary", "falsifier"]
     statement: str
+    formal_statement: str | None = None
+    lean_declaration: str | None = None
+    assigned_channel: Literal["aristotle", "evidence", "human", "auto"] = "auto"
+    expected_difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
     depends_on: list[str] = Field(default_factory=list)
     critical: bool = False
     status: Literal["open", "active", "proved", "refuted", "blocked"] = "open"
     priority: float = 1.0
     notes: list[str] = Field(default_factory=list)
+    last_failure_type: str | None = None
 
 
 class ManagerDecision(BaseModel):
@@ -373,6 +411,109 @@ class ExecutionResult(BaseModel):
     channel_used: str = "none"
     timing_ms: int | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class InventionBatchCreate(BaseModel):
+    mode: InventionMode = "wild"
+    wildness: InventionWildness = "high"
+    requested_worlds: int = Field(default=30, ge=1, le=80)
+    prompt: str | None = None
+    strategy_slots: list[str] = Field(default_factory=list)
+
+
+class InventionBatch(BaseModel):
+    id: str = Field(default_factory=lambda: f"IB-{uuid4().hex[:10]}")
+    campaign_id: str
+    problem_statement: str
+    mode: InventionMode = "wild"
+    wildness: InventionWildness = "high"
+    requested_worlds: int = 30
+    prompt: str | None = None
+    strategy_slots: list[str] = Field(default_factory=list)
+    status: InventionBatchStatus = "generated"
+    raw_world_ids: list[str] = Field(default_factory=list)
+    distilled_world_ids: list[str] = Field(default_factory=list)
+    selected_world_ids: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class RawWorldInvention(BaseModel):
+    id: str = Field(default_factory=lambda: f"RW-{uuid4().hex[:10]}")
+    batch_id: str
+    campaign_id: str
+    label: str
+    raw_text: str
+    new_objects: list[str] = Field(default_factory=list)
+    thesis: str
+    bridge_to_target: str
+    cheap_predictions: list[str] = Field(default_factory=list)
+    likely_falsifiers: list[str] = Field(default_factory=list)
+    proof_debt_sketch: list[str] = Field(default_factory=list)
+    novelty_rationale: str
+    source_model: str = "deterministic"
+    temperature: float | None = None
+    wildness: InventionWildness = "high"
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class FormalDefinition(BaseModel):
+    id: str = Field(default_factory=lambda: f"DEF-{uuid4().hex[:8]}")
+    world_id: str
+    name: str
+    natural_language: str
+    lean_stub: str | None = None
+    status: Literal["draft", "formalized", "blocked"] = "draft"
+
+
+class DistilledWorld(BaseModel):
+    id: str = Field(default_factory=lambda: f"DW-{uuid4().hex[:10]}")
+    batch_id: str
+    raw_world_id: str
+    campaign_id: str
+    world_program: WorldProgram
+    definitions: list[FormalDefinition] = Field(default_factory=list)
+    falsifiable_predictions: list[str] = Field(default_factory=list)
+    proof_debt: list[ProofDebtItem] = Field(default_factory=list)
+    novelty_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    plausibility_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    bridge_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    status: DistilledWorldStatus = "candidate"
+    notes: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class WorldFalsifierResult(BaseModel):
+    id: str = Field(default_factory=lambda: f"FR-{uuid4().hex[:10]}")
+    batch_id: str
+    distilled_world_id: str
+    campaign_id: str
+    status: FalsifierStatus
+    falsifier_type: str
+    summary: str
+    counterexamples: list[str] = Field(default_factory=list)
+    pattern: str | None = None
+    artifacts: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class BakeAttempt(BaseModel):
+    id: str = Field(default_factory=lambda: f"BA-{uuid4().hex[:10]}")
+    campaign_id: str
+    distilled_world_id: str
+    debt_id: str
+    channel: Literal["aristotle", "evidence", "human"] = "aristotle"
+    status: BakeAttemptStatus
+    failure_type: str | None = None
+    lean_code: str | None = None
+    aristotle_project_id: str | None = None
+    notes: str
+    artifacts: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class PromoteWorldRequest(BaseModel):
+    distilled_world_id: str
 
 
 class CampaignCreate(BaseModel):

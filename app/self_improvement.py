@@ -53,7 +53,10 @@ class SelfImprovementService:
                 e for e in events 
                 if e.event_type in {
                     "execution_result", "manager_decision", "obligation_analysis",
-                    "aristotle_job_completed", "campaign_created"
+                    "aristotle_job_completed", "campaign_created",
+                    "invention_batch_created", "invention_batch_distilled",
+                    "invention_batch_falsified", "distilled_world_promoted",
+                    "bake_attempt_recorded",
                 }
             ]
             
@@ -100,7 +103,11 @@ class SelfImprovementService:
                 "blocked_state_rules",
                 "confidence_rules",
                 "prompt_insertions",
-                "learned_patterns"
+                "learned_patterns",
+                "invention_policy",
+                "invention_scoring",
+                "falsifier_policy",
+                "retrieval_policy",
             }
             
             patch = proposal.get("patch", {})
@@ -164,7 +171,9 @@ class SelfImprovementService:
             meaningful_events = [
                 e for e in events 
                 if e.event_type in {
-                    "execution_result", "aristotle_job_completed"
+                    "execution_result", "aristotle_job_completed",
+                    "invention_batch_falsified", "distilled_world_promoted",
+                    "bake_attempt_recorded",
                 }
             ]
             total_events += len(meaningful_events)

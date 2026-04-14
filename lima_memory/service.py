@@ -38,6 +38,16 @@ def _formal_obligation_text(obligation: Any) -> str:
     return str(obligation)
 
 
+def _formal_obligation_payload(obligation: Any) -> dict[str, Any]:
+    if isinstance(obligation, str):
+        return {"source_text": obligation, "representation": "string"}
+    if isinstance(obligation, dict):
+        return dict(obligation)
+    if hasattr(obligation, "model_dump"):
+        return obligation.model_dump(mode="json")
+    return {"source_text": str(obligation), "representation": type(obligation).__name__}
+
+
 class MemoryService:
     """Canonical research-state layer for LIMA."""
 
@@ -114,6 +124,68 @@ class MemoryService:
 
     def list_frontier_nodes(self, campaign_id: str, limit: int = 500) -> list[NodeRecord]:
         return self.store.list_nodes(campaign_id, node_type="FrontierNode", limit=limit)
+
+    def get_research_node(self, campaign_id: str, node_id: str) -> NodeRecord | None:
+        return self.store.get_node(campaign_id, node_id)
+
+    def list_research_nodes(
+        self,
+        campaign_id: str,
+        *,
+        node_type: str | None = None,
+        limit: int = 100,
+    ) -> list[NodeRecord]:
+        return self.store.list_nodes(campaign_id, node_type=node_type, limit=limit)
+
+    def upsert_research_node(
+        self,
+        *,
+        campaign_id: str,
+        node_id: str,
+        node_type: str,
+        title: str,
+        summary: str = "",
+        status: str = "speculative",
+        confidence: float | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> NodeRecord:
+        existing = self.store.get_node(campaign_id, node_id)
+        node = NodeRecord(
+            id=node_id,
+            campaign_id=campaign_id,
+            node_type=node_type,
+            title=(title or node_type)[:160],
+            summary=summary,
+            status=status,
+            confidence=confidence,
+            payload=payload or {},
+            created_at=existing.created_at if existing else _utc_now_iso(),
+            updated_at=_utc_now_iso(),
+        )
+        self.store.upsert_node(node)
+        return node
+
+    def add_research_edge(
+        self,
+        *,
+        campaign_id: str,
+        src_id: str,
+        edge_type: str,
+        dst_id: str,
+        weight: float = 1.0,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        self.store.add_edge(
+            EdgeRecord(
+                id=make_id("E"),
+                campaign_id=campaign_id,
+                src_id=src_id,
+                edge_type=edge_type,
+                dst_id=dst_id,
+                weight=weight,
+                payload=payload or {},
+            )
+        )
 
     def update_campaign_payload(
         self,
@@ -335,11 +407,12 @@ class MemoryService:
                 )
             )
 
-        obligations: list[dict[str, str]] = []
+        obligations: list[dict[str, Any]] = []
         for obligation in decision.get("formal_obligations", []):
             obligation_text = _formal_obligation_text(obligation)
+            obligation_payload = _formal_obligation_payload(obligation)
             obligation_id = make_id("O")
-            obligations.append({"id": obligation_id, "text": obligation_text})
+            obligations.append({"id": obligation_id, "text": obligation_text, "payload": obligation_payload})
             self.store.upsert_node(
                 NodeRecord(
                     id=obligation_id,
@@ -348,7 +421,7 @@ class MemoryService:
                     title=obligation_text[:120],
                     summary=obligation_text,
                     status="open",
-                    payload={},
+                    payload=obligation_payload,
                 )
             )
             self.store.add_edge(

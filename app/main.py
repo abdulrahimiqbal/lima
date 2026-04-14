@@ -11,7 +11,13 @@ from fastapi.templating import Jinja2Templates
 
 from .background import CampaignWorker
 from .config import Settings
-from .schemas import CampaignControl, CampaignCreate, CampaignUpdateNotes
+from .schemas import (
+    CampaignControl,
+    CampaignCreate,
+    CampaignUpdateNotes,
+    InventionBatchCreate,
+    PromoteWorldRequest,
+)
 from .service import CampaignService
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -218,6 +224,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.get_operator_brief(campaign_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/campaigns/{campaign_id}/invention/lab")
+    def get_invention_lab(
+        campaign_id: str,
+        service: CampaignService = Depends(get_service),
+    ):
+        try:
+            return service.get_invention_lab(campaign_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/invention/batches")
+    def create_invention_batch(
+        campaign_id: str,
+        payload: InventionBatchCreate,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.create_invention_batch(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/invention/batches/{batch_id}/distill")
+    def distill_invention_batch(
+        campaign_id: str,
+        batch_id: str,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.distill_invention_batch(campaign_id, batch_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/invention/batches/{batch_id}/falsify")
+    def falsify_invention_batch(
+        campaign_id: str,
+        batch_id: str,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.falsify_invention_batch(campaign_id, batch_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/invention/worlds/promote")
+    def promote_invention_world(
+        campaign_id: str,
+        payload: PromoteWorldRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.promote_invention_world(campaign_id, payload.distilled_world_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

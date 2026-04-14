@@ -202,6 +202,10 @@ Avoid repeating the same world after a hard blocker</textarea>
             <button class="secondary" onclick="pauseCampaign()">Pause</button>
             <button class="secondary" onclick="resumeCampaign()">Resume</button>
             <button class="secondary" onclick="refreshSelected()">Refresh</button>
+            <button class="secondary" onclick="inventWorlds()">Wild invent</button>
+            <button class="secondary" onclick="distillLatestBatch()">Distill latest</button>
+            <button class="secondary" onclick="falsifyLatestBatch()">Falsify latest</button>
+            <button class="secondary" onclick="promotePromisingWorld()">Promote world</button>
           </div>
         </div>
 
@@ -456,6 +460,7 @@ Avoid repeating the same world after a hard blocker</textarea>
         const mu = brief.manager_understanding;
         const verif = brief.verification;
         const disc = brief.discovery;
+        const inv = brief.invention || {};
         const si = brief.self_improvement;
         const next = brief.next;
 
@@ -657,6 +662,38 @@ Avoid repeating the same world after a hard blocker</textarea>
           </div>
 
           <div class="brief-section">
+            <h3>Invention Lab</h3>
+            ${inv.batch_count || inv.raw_world_count || inv.distilled_world_count ? `
+            <div class="brief-value">
+              <div class="brief-label">World Lab State</div>
+              <div>${inv.batch_count || 0} batches, ${inv.raw_world_count || 0} raw worlds, ${inv.distilled_world_count || 0} distilled worlds, ${inv.promising_world_count || 0} promising worlds, ${inv.proof_debt_count || 0} debt items.</div>
+            </div>
+            ${inv.latest_batch_id ? `
+            <div class="brief-value">
+              <div class="brief-label">Latest Batch</div>
+              <div>${inv.latest_batch_id}</div>
+            </div>
+            ` : ''}
+            ${inv.promising_worlds && inv.promising_worlds.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Promising Worlds</div>
+              <ul class="brief-list">
+                ${inv.promising_worlds.slice(0, 5).map(w => `<li><strong>${w.id}</strong>: ${trimText(w.label, 100)} <span class="muted">(novelty ${formatScore(w.novelty_score)}, bridge ${formatScore(w.bridge_score)})</span></li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ${inv.dead_patterns && inv.dead_patterns.length > 0 ? `
+            <div class="brief-value">
+              <div class="brief-label">Dead Patterns</div>
+              <ul class="brief-list">
+                ${inv.dead_patterns.slice(0, 5).map(pattern => `<li>${trimText(pattern, 120)}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
+            ` : '<p class="muted">No invention batches yet.</p>'}
+          </div>
+
+          <div class="brief-section">
             <h3>Self-Improvement</h3>
             ${si.local_proposal && si.local_proposal !== 'None' ? `
             <div class="brief-value">
@@ -722,6 +759,59 @@ Avoid repeating the same world after a hard blocker</textarea>
         await loadCampaigns();
       }
 
+      async function latestInventionLab() {
+        if (!selectedCampaignId) return null;
+        return api(`/api/campaigns/${selectedCampaignId}/invention/lab`);
+      }
+
+      async function inventWorlds() {
+        if (!selectedCampaignId) return;
+        await api(`/api/campaigns/${selectedCampaignId}/invention/batches`, {
+          method: 'POST',
+          body: JSON.stringify({ mode: 'wild', wildness: 'high', requested_worlds: 30 }),
+        });
+        await refreshSelected();
+      }
+
+      async function distillLatestBatch() {
+        if (!selectedCampaignId) return;
+        const lab = await latestInventionLab();
+        const batchId = lab?.batches?.[0]?.id;
+        if (!batchId) {
+          alert('No invention batch to distill.');
+          return;
+        }
+        await api(`/api/campaigns/${selectedCampaignId}/invention/batches/${batchId}/distill`, { method: 'POST' });
+        await refreshSelected();
+      }
+
+      async function falsifyLatestBatch() {
+        if (!selectedCampaignId) return;
+        const lab = await latestInventionLab();
+        const batchId = lab?.batches?.[0]?.id;
+        if (!batchId) {
+          alert('No invention batch to falsify.');
+          return;
+        }
+        await api(`/api/campaigns/${selectedCampaignId}/invention/batches/${batchId}/falsify`, { method: 'POST' });
+        await refreshSelected();
+      }
+
+      async function promotePromisingWorld() {
+        if (!selectedCampaignId) return;
+        const lab = await latestInventionLab();
+        const world = lab?.distilled_worlds?.find((node) => ['promising', 'baking', 'candidate'].includes(node.payload?.status));
+        if (!world) {
+          alert('No distilled world available to promote.');
+          return;
+        }
+        await api(`/api/campaigns/${selectedCampaignId}/invention/worlds/promote`, {
+          method: 'POST',
+          body: JSON.stringify({ distilled_world_id: world.id }),
+        });
+        await refreshSelected();
+      }
+
       async function pauseCampaign() {
         if (!selectedCampaignId) return;
         const campaign = await api(`/api/campaigns/${selectedCampaignId}/control`, {
@@ -742,6 +832,11 @@ Avoid repeating the same world after a hard blocker</textarea>
         const brief = await api(`/api/campaigns/${selectedCampaignId}/operator-brief`);
         await renderCampaign(campaign, brief);
         await loadCampaigns();
+      }
+
+      function formatScore(value) {
+        if (typeof value !== 'number') return 'N/A';
+        return value.toFixed(2);
       }
 
       loadInterfaces();
