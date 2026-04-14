@@ -22,7 +22,8 @@
     "complexity_limits": {
         "max_primary_claims_per_cycle": 1,
         "max_formal_obligations_per_cycle": 4,
-        "max_proof_obligations_per_step": 1,
+        "max_proof_obligations_per_step": 4,
+        "parallel_aristotle_jobs_per_wave": 4,
         "max_evidence_jobs_per_step": 2,
         "max_new_frontier_nodes_per_cycle": 3,
         "max_alternative_candidate_answers": 2,

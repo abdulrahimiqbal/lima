@@ -776,6 +776,7 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
         ProofDebtItem(
             world_id=world.id,
             role="support",
+            debt_class="world_definitions",
             statement=f"Define the invented object `{first_object}` precisely for world `{world.label}`.",
             assigned_channel="human",
             expected_difficulty=0.35,
@@ -786,6 +787,7 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
         ProofDebtItem(
             world_id=world.id,
             role="boundary",
+            debt_class="falsifier",
             statement=f"Search cheap falsifiers for world `{world.label}`: {', '.join(raw_world.likely_falsifiers[:2])}.",
             assigned_channel="evidence",
             expected_difficulty=0.25,
@@ -796,6 +798,7 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
         ProofDebtItem(
             world_id=world.id,
             role="bridge",
+            debt_class="bridge_to_nat",
             statement=f"Prove the bridge from `{world.label}` back to the target: {raw_world.bridge_to_target}",
             assigned_channel="aristotle",
             expected_difficulty=0.85,
@@ -806,6 +809,7 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
         ProofDebtItem(
             world_id=world.id,
             role="closure",
+            debt_class="in_world_theorem",
             statement=f"Prove the main closure claim inside world `{world.label}`: {raw_world.thesis}",
             assigned_channel="aristotle",
             expected_difficulty=0.9,
@@ -819,6 +823,7 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
             ProofDebtItem(
                 world_id=world.id,
                 role="support",
+                debt_class="supporting_lemma",
                 statement=sketch,
                 assigned_channel="auto",
                 expected_difficulty=0.6,

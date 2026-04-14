@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 
 from app.config import Settings
 from app.executor import Executor
+from app.service import CampaignService
 from app.schemas import (
     ApprovedExecutionPlan,
     CandidateAnswer,
+    CampaignCreate,
     CampaignRecord,
     ExecutionResult,
     FormalObligationSpec,
@@ -202,6 +204,68 @@ def test_campaign_without_pending_job_backward_compatible():
     # Deserialize
     restored = CampaignRecord.model_validate(serialized)
     assert restored.pending_aristotle_job is None
+
+
+def test_service_submits_unlocked_proof_debts_as_wave(tmp_path):
+    service = CampaignService(
+        Settings(
+            memory_db_path=str(tmp_path / "memory.db"),
+            manager_backend="rules",
+            executor_backend="mock",
+            worker_poll_seconds=999,
+        )
+    )
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Wave",
+            problem_statement="Prove a small theorem",
+            auto_run=False,
+        )
+    )
+    debt_a = ProofDebtItem(
+        id="D-a",
+        world_id="W-1",
+        role="bridge",
+        debt_class="bridge_to_nat",
+        statement="Prove bridge lemma",
+        formal_statement="True",
+        assigned_channel="aristotle",
+        critical=True,
+        priority=0.9,
+    )
+    debt_b = ProofDebtItem(
+        id="D-b",
+        world_id="W-1",
+        role="closure",
+        debt_class="in_world_theorem",
+        statement="Prove world closure",
+        formal_statement="True",
+        assigned_channel="aristotle",
+        critical=True,
+        priority=0.8,
+    )
+    campaign.current_world_program = WorldProgram(
+        id="W-1",
+        label="Test world",
+        thesis="Tiny thesis",
+        bridge_to_target={"bridge_claim": "bridge", "bridge_obligations": []},
+    ).model_dump()
+    campaign.active_world_id = "W-1"
+    campaign.proof_debt_ledger = [debt_a.model_dump(), debt_b.model_dump()]
+    service._persist_campaign(campaign)
+
+    submitted = service.step_campaign(campaign.id)
+
+    assert submitted.pending_aristotle_job is not None
+    assert len(submitted.pending_aristotle_jobs) == 2
+    assert {job.debt_id for job in submitted.pending_aristotle_jobs} == {"D-a", "D-b"}
+    assert {debt["status"] for debt in submitted.proof_debt_ledger} == {"active"}
+
+    completed = service.step_campaign(campaign.id)
+
+    assert completed.pending_aristotle_job is None
+    assert completed.pending_aristotle_jobs == []
+    assert {debt["status"] for debt in completed.proof_debt_ledger} == {"blocked"}
 
 
 def test_submit_proof_uses_debt_item_structure_and_fails_honestly():

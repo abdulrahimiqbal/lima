@@ -215,6 +215,7 @@ class CampaignService:
                 updated.last_manager_decision = decision.model_dump()
                 updated.manager_backend = decision.manager_backend
                 updated.current_candidate_answer = decision.candidate_answer
+                updated = self._apply_decision_world_state(updated, decision)
                 self._set_pending_jobs(updated, pending_jobs)
                 
                 for pending_job in pending_jobs:
@@ -995,6 +996,8 @@ class CampaignService:
             PendingAristotleJob.model_validate(job_payload)
             for job_payload in pending_jobs_payload
         ]
+        if pending_job and all(job.project_id != pending_job.project_id for job in pending_jobs):
+            pending_jobs.insert(0, pending_job)
 
         status_raw = payload.get("status", campaign_node.get("status", "running"))
         status_normalized = "running" if status_raw == "active" else status_raw
@@ -1041,6 +1044,8 @@ class CampaignService:
             PendingAristotleJob.model_validate(job_payload)
             for job_payload in pending_jobs_payload
         ]
+        if pending_job and all(job.project_id != pending_job.project_id for job in pending_jobs):
+            pending_jobs.insert(0, pending_job)
         
         return CampaignRecord(
             id=campaign_node["id"],
