@@ -20,6 +20,24 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _formal_obligation_text(obligation: Any) -> str:
+    if isinstance(obligation, str):
+        return obligation
+    if isinstance(obligation, dict):
+        for key in ("source_text", "statement", "theorem_name", "id"):
+            value = obligation.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return str(obligation)
+    source_text = getattr(obligation, "source_text", None)
+    if isinstance(source_text, str) and source_text.strip():
+        return source_text.strip()
+    statement = getattr(obligation, "statement", None)
+    if isinstance(statement, str) and statement.strip():
+        return statement.strip()
+    return str(obligation)
+
+
 class MemoryService:
     """Canonical research-state layer for LIMA."""
 
@@ -319,15 +337,16 @@ class MemoryService:
 
         obligations: list[dict[str, str]] = []
         for obligation in decision.get("formal_obligations", []):
+            obligation_text = _formal_obligation_text(obligation)
             obligation_id = make_id("O")
-            obligations.append({"id": obligation_id, "text": obligation})
+            obligations.append({"id": obligation_id, "text": obligation_text})
             self.store.upsert_node(
                 NodeRecord(
                     id=obligation_id,
                     campaign_id=campaign_id,
                     node_type="FormalObligation",
-                    title=obligation[:120],
-                    summary=obligation,
+                    title=obligation_text[:120],
+                    summary=obligation_text,
                     status="open",
                     payload={},
                 )
@@ -352,6 +371,7 @@ class MemoryService:
                 metadata={"tick": tick},
             )
         )
+
         self.add_event(
             campaign_id=campaign_id,
             tick=tick,

@@ -10,6 +10,7 @@ from app.schemas import (
     CampaignUpdateNotes,
     CandidateAnswer,
     ExecutionResult,
+    FormalObligationSpec,
     ManagerDecision,
     SelfImprovementNote,
     UpdateRules,
@@ -142,6 +143,35 @@ def test_manager_and_execution_are_mirrored_to_memory(tmp_path: Path, monkeypatc
     summary = service.get_memory_summary(campaign.id)
     assert summary["campaign"]["id"] == campaign.id
     assert summary["recent_results"]
+
+
+def test_structured_formal_obligations_are_mirrored_to_memory(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Structured obligation mirror",
+            problem_statement="Show bounded progress.",
+            operator_notes=[],
+            auto_run=False,
+        )
+    )
+    decision = _decision(target_frontier_node=campaign.frontier[0].id)
+    decision.formal_obligations = [
+        FormalObligationSpec(
+            source_text="Isolate a finite check for n <= 16 with explicit transition lemmas.",
+            statement="∀ n <= 16, collatz_reaches_one n",
+            channel_hint="evidence",
+            goal_kind="finite_check",
+        )
+    ]
+
+    mirrored = service.memory.record_manager_decision(
+        campaign_id=campaign.id,
+        tick=0,
+        decision=decision.model_dump(),
+    )
+
+    assert mirrored["obligations"][0]["text"] == "Isolate a finite check for n <= 16 with explicit transition lemmas."
 
 
 def test_memory_endpoints(tmp_path: Path) -> None:
