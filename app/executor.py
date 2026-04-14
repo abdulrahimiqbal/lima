@@ -400,29 +400,31 @@ class AristotleSdkProofAdapter:
                 if world.bridge_to_target:
                     prompt_parts.append(f"Bridge to target: {world.bridge_to_target}")
             
-            # Add proof debt context if this obligation came from debt
+            # Add proof debt context from decision obligations
             normalized_obligations = decision.get_normalized_obligations()
             for spec in normalized_obligations:
-                if spec.source_text == proof_obligation or proof_obligation in spec.source_text:
-                    if spec.metadata.get("debt_role"):
-                        prompt_parts.extend([
-                            "",
-                            "=== PROOF DEBT CONTEXT ===",
-                            f"Role: {spec.metadata.get('debt_role')}",
-                            f"Critical: {spec.metadata.get('debt_critical', False)}",
-                        ])
-                    # Add tactic hints if available
-                    if spec.tactic_hints:
-                        prompt_parts.extend([
-                            "",
-                            "=== TACTIC HINTS ===",
-                        ] + [f"- {hint}" for hint in spec.tactic_hints])
-                    # Add assumptions if available
-                    if spec.assumptions:
-                        prompt_parts.extend([
-                            "",
-                            "=== ASSUMPTIONS ===",
-                        ] + [f"- {assumption}" for assumption in spec.assumptions])
+                # Add context from any obligation with debt metadata
+                if spec.metadata.get("debt_role"):
+                    prompt_parts.extend([
+                        "",
+                        "=== PROOF DEBT CONTEXT ===",
+                        f"Role: {spec.metadata.get('debt_role')}",
+                        f"Critical: {spec.metadata.get('debt_critical', False)}",
+                    ])
+                # Add tactic hints if available
+                if spec.tactic_hints:
+                    prompt_parts.extend([
+                        "",
+                        "=== TACTIC HINTS ===",
+                    ] + [f"- {hint}" for hint in spec.tactic_hints])
+                # Add assumptions if available
+                if spec.assumptions:
+                    prompt_parts.extend([
+                        "",
+                        "=== ASSUMPTIONS ===",
+                    ] + [f"- {assumption}" for assumption in spec.assumptions])
+                # Only use first obligation with metadata
+                if spec.metadata.get("debt_role") or spec.tactic_hints or spec.assumptions:
                     break
             
             prompt = "\n".join(prompt_parts)
