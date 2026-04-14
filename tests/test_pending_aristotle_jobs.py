@@ -259,13 +259,147 @@ def test_service_submits_unlocked_proof_debts_as_wave(tmp_path):
     assert submitted.pending_aristotle_job is not None
     assert len(submitted.pending_aristotle_jobs) == 2
     assert {job.debt_id for job in submitted.pending_aristotle_jobs} == {"D-a", "D-b"}
-    assert {debt["status"] for debt in submitted.proof_debt_ledger} == {"active"}
+    status_by_id = {debt["id"]: debt["status"] for debt in submitted.proof_debt_ledger}
+    assert status_by_id["D-a"] == "active"
+    assert status_by_id["D-b"] == "active"
+    assert any(
+        debt.get("debt_class") == "pullback_to_original" and debt["status"] == "open"
+        for debt in submitted.proof_debt_ledger
+    )
 
     completed = service.step_campaign(campaign.id)
 
     assert completed.pending_aristotle_job is None
     assert completed.pending_aristotle_jobs == []
-    assert {debt["status"] for debt in completed.proof_debt_ledger} == {"blocked"}
+    completed_status_by_id = {debt["id"]: debt["status"] for debt in completed.proof_debt_ledger}
+    assert completed_status_by_id["D-a"] == "blocked"
+    assert completed_status_by_id["D-b"] == "blocked"
+    assert any(
+        debt.get("debt_class") == "pullback_to_original" and debt["status"] == "open"
+        for debt in completed.proof_debt_ledger
+    )
+
+
+def test_fallback_world_cannot_silently_replace_active_world(tmp_path):
+    service = CampaignService(
+        Settings(
+            memory_db_path=str(tmp_path / "memory.db"),
+            manager_backend="rules",
+            executor_backend="mock",
+            worker_poll_seconds=999,
+        )
+    )
+    campaign = _campaign()
+    active_world = WorldProgram(
+        id="W-active",
+        label="Promoted World",
+        family_tags=["reformulate"],
+        thesis="Active thesis",
+        audit_status="auditable",
+    )
+    active_debt = ProofDebtItem(
+        id="D-active",
+        world_id=active_world.id,
+        role="bridge",
+        statement="Original bridge debt",
+        assigned_channel="aristotle",
+        critical=True,
+    )
+    repair_world = WorldProgram(
+        id="W-fallback",
+        label="Fallback World",
+        family_tags=["direct"],
+        thesis="Fallback repair",
+        audit_status="fallback",
+    )
+    repair_debt = ProofDebtItem(
+        id="D-repair",
+        world_id=repair_world.id,
+        role="support",
+        statement="Repair formalization",
+        assigned_channel="auto",
+        critical=True,
+    )
+    campaign.current_world_program = active_world.model_dump()
+    campaign.active_world_id = active_world.id
+    campaign.proof_debt_ledger = [active_debt.model_dump()]
+
+    decision = _decision().model_copy(
+        update={
+            "primary_world": repair_world,
+            "proof_debt": [repair_debt],
+            "critical_next_debt_id": repair_debt.id,
+        }
+    )
+
+    updated = service._apply_decision_world_state(campaign, decision)
+
+    assert updated.active_world_id == active_world.id
+    assert updated.current_world_program["id"] == active_world.id
+    debt_by_id = {debt["id"]: debt for debt in updated.proof_debt_ledger}
+    assert debt_by_id["D-active"]["world_id"] == active_world.id
+    assert debt_by_id["D-repair"]["world_id"] == active_world.id
+
+
+def test_explicit_world_replace_changes_active_world_and_preserves_history(tmp_path):
+    service = CampaignService(
+        Settings(
+            memory_db_path=str(tmp_path / "memory.db"),
+            manager_backend="rules",
+            executor_backend="mock",
+            worker_poll_seconds=999,
+        )
+    )
+    campaign = _campaign()
+    old_world = WorldProgram(
+        id="W-old",
+        label="Old World",
+        family_tags=["reformulate"],
+        thesis="Old thesis",
+        audit_status="auditable",
+    )
+    old_debt = ProofDebtItem(
+        id="D-old",
+        world_id=old_world.id,
+        role="bridge",
+        statement="Old bridge debt",
+        assigned_channel="aristotle",
+        critical=True,
+    )
+    new_world = WorldProgram(
+        id="W-new",
+        label="New World",
+        family_tags=["bridge"],
+        thesis="New thesis",
+        audit_status="auditable",
+    )
+    new_debt = ProofDebtItem(
+        id="D-new",
+        world_id=new_world.id,
+        role="bridge",
+        statement="New bridge debt",
+        assigned_channel="aristotle",
+        critical=True,
+    )
+    campaign.current_world_program = old_world.model_dump()
+    campaign.active_world_id = old_world.id
+    campaign.proof_debt_ledger = [old_debt.model_dump()]
+
+    decision = _decision().model_copy(
+        update={
+            "primary_world": new_world,
+            "proof_debt": [new_debt],
+            "critical_next_debt_id": new_debt.id,
+            "world_transition": "replace",
+            "world_transition_reason": "bridge formalization failed after repair attempts",
+        }
+    )
+
+    updated = service._apply_decision_world_state(campaign, decision)
+
+    assert updated.active_world_id == new_world.id
+    assert updated.current_world_program["id"] == new_world.id
+    assert {debt["id"] for debt in updated.proof_debt_ledger} == {"D-old", "D-new"}
 
 
 def test_submit_proof_uses_debt_item_structure_and_fails_honestly():

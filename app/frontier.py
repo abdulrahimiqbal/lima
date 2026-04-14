@@ -219,6 +219,36 @@ def apply_execution_result(
         # Use world-aware solved logic only
         ledger = updated.proof_debt_ledger
         has_bridge = world.get("bridge_to_target") is not None
+        soundness_certificate = world.get("soundness_certificate") or {}
+        soundness_debt_ids = set(soundness_certificate.get("soundness_debt_ids") or [])
+        ledger_by_id = {d.get("id"): d for d in ledger}
+        soundness_debt_proved = bool(soundness_certificate) and (
+            soundness_certificate.get("status") == "proved"
+            or (
+                bool(soundness_debt_ids)
+                and all(
+                    ledger_by_id.get(debt_id, {}).get("status") == "proved"
+                    for debt_id in soundness_debt_ids
+                )
+            )
+        )
+        if soundness_debt_ids:
+            if all(
+                ledger_by_id.get(debt_id, {}).get("status") == "proved"
+                for debt_id in soundness_debt_ids
+            ):
+                soundness_certificate["status"] = "proved"
+            elif any(
+                ledger_by_id.get(debt_id, {}).get("status") == "blocked"
+                for debt_id in soundness_debt_ids
+            ):
+                soundness_certificate["status"] = "blocked"
+            elif any(
+                ledger_by_id.get(debt_id, {}).get("status") == "proved"
+                for debt_id in soundness_debt_ids
+            ):
+                soundness_certificate["status"] = "partially_proved"
+            world["soundness_certificate"] = soundness_certificate
         critical_debt = [d for d in ledger if d.get("critical")]
         
         if critical_debt:
@@ -230,12 +260,12 @@ def apply_execution_result(
                 for d in critical_falsifiers
             )
             
-            if has_bridge and all_critical_proved and no_live_falsifiers:
+            if has_bridge and soundness_debt_proved and all_critical_proved and no_live_falsifiers:
                 updated.status = "solved"
         else:
             # No critical debt - only allow solved if world explicitly has zero debt
             rc = world.get("reduction_certificate") or {}
-            if has_bridge and int(rc.get("total_debt_count", 1)) == 0:
+            if has_bridge and soundness_debt_proved and int(rc.get("total_debt_count", 1)) == 0:
                 updated.status = "solved"
     else:
         # Fallback to old behavior when no world program exists

@@ -17,6 +17,7 @@ from app.schemas import (
     MemoryState,
     ProofDebtItem,
     SelfImprovementNote,
+    SoundnessCertificate,
     UpdateRules,
     WorldProgram,
     ManagerReadReceipt,
@@ -63,6 +64,12 @@ def test_proof_debt_ordering_sync():
             bridge_claim="Test bridge",
             bridge_obligations=[],
             estimated_cost=0.3,
+        ),
+        soundness_certificate=SoundnessCertificate(
+            source_world_statement="Test",
+            target_statement="Test bridge",
+            interpretation_claim="Interpret the test world in the target domain.",
+            soundness_debt_ids=["D-2"],
         ),
     )
     
@@ -284,6 +291,12 @@ def test_world_aware_solved_check():
             bridge_obligations=[],
             estimated_cost=0.3,
         ),
+        soundness_certificate=SoundnessCertificate(
+            source_world_statement="Test",
+            target_statement="Test bridge",
+            interpretation_claim="Interpret the test world in the target domain.",
+            soundness_debt_ids=["D-2"],
+        ),
     )
     
     debt1 = ProofDebtItem(
@@ -377,6 +390,127 @@ def test_world_aware_solved_check():
     assert campaign.status == "solved"
 
 
+def test_world_aware_solved_check_requires_soundness_debt():
+    """Closure and ordinary bridge debt are not enough without soundness transfer."""
+    world = WorldProgram(
+        label="Test World",
+        family_tags=["direct"],
+        mode="micro",
+        thesis="Test",
+        bridge_to_target=BridgePlan(
+            bridge_claim="Test bridge",
+            bridge_obligations=[],
+            estimated_cost=0.3,
+        ),
+        soundness_certificate=SoundnessCertificate(
+            source_world_statement="Test",
+            target_statement="Test bridge",
+            interpretation_claim="Interpret the test world in the target domain.",
+            soundness_debt_ids=["D-sound"],
+        ),
+    )
+
+    closure_debt = ProofDebtItem(
+        id="D-close",
+        world_id=world.id,
+        role="closure",
+        statement="First critical debt",
+        critical=True,
+        status="open",
+    )
+    bridge_debt = ProofDebtItem(
+        id="D-bridge",
+        world_id=world.id,
+        role="bridge",
+        statement="Bridge debt",
+        critical=True,
+        status="proved",
+    )
+    soundness_debt = ProofDebtItem(
+        id="D-sound",
+        world_id=world.id,
+        role="bridge",
+        debt_class="pullback_to_original",
+        statement="Soundness transfer debt",
+        critical=True,
+        status="open",
+    )
+
+    campaign = CampaignRecord(
+        id="C-test",
+        title="Test",
+        problem_statement="Test",
+        status="running",
+        auto_run=True,
+        operator_notes=[],
+        frontier=[
+            FrontierNode(
+                id="F-root",
+                text="Test",
+                status="open",
+            )
+        ],
+        memory=MemoryState(),
+        tick_count=0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        manager_backend="rules",
+        executor_backend="mock",
+        current_world_program=world.model_dump(),
+        proof_debt_ledger=[
+            closure_debt.model_dump(),
+            bridge_debt.model_dump(),
+            soundness_debt.model_dump(),
+        ],
+        active_world_id=world.id,
+    )
+
+    decision = ManagerDecision(
+        candidate_answer=CandidateAnswer(
+            stance="undecided",
+            summary="Test",
+            confidence=0.5,
+        ),
+        alternatives=[],
+        target_frontier_node="F-root",
+        world_family="direct",
+        bounded_claim="Test",
+        formal_obligations=["Test"],
+        expected_information_gain="Test",
+        why_this_next="Test",
+        update_rules=UpdateRules(
+            if_proved="Continue",
+            if_refuted="Revise",
+            if_blocked="Split",
+            if_inconclusive="Retry",
+        ),
+        self_improvement_note=SelfImprovementNote(
+            proposal="None",
+            reason="Test",
+        ),
+        manager_read_receipt=ManagerReadReceipt(
+            problem_summary="Test",
+            target_node_id_confirmed="F-root",
+            target_node_text_confirmed="Test",
+            why_not_other_frontier_nodes="Test",
+        ),
+        primary_world=world,
+        proof_debt=[closure_debt, bridge_debt, soundness_debt],
+        critical_next_debt_id=closure_debt.id,
+    )
+
+    result = ExecutionResult(
+        status="proved",
+        failure_type=None,
+        notes="Proved closure",
+        executor_backend="mock",
+    )
+
+    campaign = apply_execution_result(campaign, decision, result)
+
+    assert campaign.status == "running"
+
+
 def test_manager_hardens_world_with_debt_references():
     """Test that normalization links bridge/certificate structure to proof debt."""
     world = WorldProgram(
@@ -447,7 +581,10 @@ def test_manager_hardens_world_with_debt_references():
     assert normalized.primary_world is not None
     assert normalized.primary_world.ontology_definitions[0].name == "certificate_object"
     assert normalized.primary_world.bridge_to_target is not None
-    assert normalized.primary_world.bridge_to_target.bridge_debt_ids == ["D-bridge"]
+    assert "D-bridge" in normalized.primary_world.bridge_to_target.bridge_debt_ids
     assert normalized.primary_world.reduction_certificate is not None
-    assert normalized.primary_world.reduction_certificate.bridge_debt_ids == ["D-bridge"]
+    assert "D-bridge" in normalized.primary_world.reduction_certificate.bridge_debt_ids
     assert normalized.primary_world.reduction_certificate.closure_debt_ids == ["D-close"]
+    assert normalized.primary_world.soundness_certificate is not None
+    assert normalized.primary_world.soundness_certificate.soundness_debt_ids
+    assert any(d.debt_class == "pullback_to_original" for d in normalized.proof_debt)

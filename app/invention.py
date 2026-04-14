@@ -22,6 +22,7 @@ from .schemas import (
     ProofDebtItem,
     RawWorldInvention,
     ReductionCertificate,
+    SoundnessCertificate,
     WorldFalsifierResult,
     WorldObjectDefinition,
     WorldProgram,
@@ -410,6 +411,18 @@ class InventionService:
                 ],
                 estimated_cost=0.7,
             ),
+            soundness_certificate=SoundnessCertificate(
+                source_world_statement=raw_world.thesis,
+                target_statement=raw_world.bridge_to_target,
+                interpretation_claim=(
+                    "Interpret the invented objects and closure theorem as a "
+                    "statement over the original target domain."
+                ),
+                soundness_obligations=[
+                    "Prove the interpretation preserves the original theorem statement.",
+                    "Prove world closure transfers to the original target.",
+                ],
+            ),
             reduction_certificate=ReductionCertificate(
                 closure_items=raw_world.proof_debt_sketch[:2],
                 bridge_items=[raw_world.bridge_to_target],
@@ -427,6 +440,14 @@ class InventionService:
             for obj in raw_world.new_objects[:4]
         ]
         proof_debt = _compile_debt(world_program, raw_world)
+        soundness_debt = [d for d in proof_debt if d.debt_class == "pullback_to_original"]
+        if world_program.soundness_certificate:
+            world_program.soundness_certificate.soundness_debt_ids = [d.id for d in soundness_debt]
+            world_program.soundness_certificate.soundness_obligations.extend(
+                d.statement
+                for d in soundness_debt
+                if d.statement not in world_program.soundness_certificate.soundness_obligations
+            )
         return DistilledWorld(
             batch_id=raw_world.batch_id,
             raw_world_id=raw_world.id,
@@ -805,6 +826,21 @@ def _compile_debt(world: WorldProgram, raw_world: RawWorldInvention) -> list[Pro
             critical=True,
             priority=0.85,
             notes=["Bridge debt; do not claim solved until this closes."],
+        ),
+        ProofDebtItem(
+            world_id=world.id,
+            role="bridge",
+            debt_class="pullback_to_original",
+            statement=(
+                f"Prove soundness transfer for `{world.label}`: the invented "
+                "world theorem implies the original target statement over the "
+                "standard domain."
+            ),
+            assigned_channel="aristotle",
+            expected_difficulty=0.85,
+            critical=True,
+            priority=0.84,
+            notes=["Soundness debt; internal world closure is not enough."],
         ),
         ProofDebtItem(
             world_id=world.id,

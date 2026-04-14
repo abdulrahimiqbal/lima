@@ -313,8 +313,9 @@ class Manager:
                     "6. Choose the critical_next_debt_id from that debt\n"
                     "7. Derive bounded_claim and formal_obligations from that debt item\n\n"
                     "WORLD CONTINUITY:\n"
-                    "If current_world_program is present and not structurally broken, continue it rather than inventing a fresh world.\n"
-                    "Reuse the existing world ID, update proof debt based on progress, and choose the next critical debt item.\n\n"
+                    "If current_world_program is present, continue it by default. Set world_transition='continue' or 'repair'.\n"
+                    "Only set world_transition='retire' or 'replace' with a concrete world_transition_reason when falsifiers, repeated bridge/scaffold failure, or operator override justify changing worlds.\n"
+                    "Reuse the existing world ID for ordinary repair work, update proof debt based on progress, and choose the next critical debt item.\n\n"
                     "World modes:\n"
                     "- macro: new ontology/invariant/local-to-global view; include ontology_definitions\n"
                     "- micro: small theorem perturbation near the target; include theorem_deltas\n\n"
@@ -607,9 +608,13 @@ class Manager:
                 )
             ]
         
-        # Cap proof debt length
+        # Cap proof debt length before hardening; hardening may add mandatory
+        # bridge/soundness debt that should not be truncated away.
         if len(decision.proof_debt) > 8:
             decision.proof_debt = decision.proof_debt[:8]
+
+        if decision.primary_world:
+            decision.primary_world = Manager._harden_world_program(decision)
         
         # Normalize critical_next_debt_id
         if decision.critical_next_debt_id is None and decision.proof_debt:
@@ -622,9 +627,6 @@ class Manager:
                 if open_items:
                     decision.critical_next_debt_id = max(open_items, key=lambda d: d.priority).id
 
-        if decision.primary_world:
-            decision.primary_world = Manager._harden_world_program(decision)
-        
         return decision
 
     @staticmethod
@@ -633,7 +635,9 @@ class Manager:
         from .schemas import (
             BridgePlan,
             FormalObligationSpec,
+            ProofDebtItem,
             ReductionCertificate,
+            SoundnessCertificate,
             WorldObjectDefinition,
             WorldProgram,
         )
@@ -662,6 +666,44 @@ class Manager:
         support_debt = [d for d in decision.proof_debt if d.role == "support"]
         boundary_debt = [d for d in decision.proof_debt if d.role == "boundary"]
         falsifier_debt = [d for d in decision.proof_debt if d.role == "falsifier"]
+        soundness_debt = [
+            d
+            for d in decision.proof_debt
+            if d.role == "bridge" and d.debt_class == "pullback_to_original"
+        ]
+
+        if world.soundness_certificate is None:
+            target_claim = world.bridge_to_target.bridge_claim if world.bridge_to_target else decision.bounded_claim
+            world.soundness_certificate = SoundnessCertificate(
+                source_world_statement=world.thesis,
+                target_statement=target_claim,
+                interpretation_claim=(
+                    "Interpret every invented world object and theorem statement back "
+                    "in the original target domain."
+                ),
+            )
+
+        if not soundness_debt:
+            depends_on = [d.id for d in bridge_debt if d.status != "proved"]
+            transfer_debt = ProofDebtItem(
+                world_id=world.id,
+                role="bridge",
+                debt_class="pullback_to_original",
+                statement=(
+                    f"Prove soundness transfer for `{world.label}`: the world thesis "
+                    f"and bridge obligations imply the original target claim."
+                ),
+                assigned_channel="aristotle",
+                expected_difficulty=0.85,
+                depends_on=depends_on,
+                critical=True,
+                status="open",
+                priority=0.98,
+                notes=["Mandatory soundness debt; internal world closure is not enough."],
+            )
+            decision.proof_debt.append(transfer_debt)
+            soundness_debt = [transfer_debt]
+            bridge_debt = [*bridge_debt, transfer_debt]
 
         if bridge_debt and not world.bridge_to_target.bridge_debt_ids:
             world.bridge_to_target.bridge_debt_ids = [d.id for d in bridge_debt]
@@ -690,6 +732,29 @@ class Manager:
             rc.falsifier_debt_ids = [d.id for d in falsifier_debt]
         if rc.total_debt_count < len(decision.proof_debt):
             rc.total_debt_count = len(decision.proof_debt)
+
+        sc = world.soundness_certificate
+        if sc:
+            existing_ids = set(sc.soundness_debt_ids)
+            for debt in soundness_debt:
+                if debt.id not in existing_ids:
+                    sc.soundness_debt_ids.append(debt.id)
+                    existing_ids.add(debt.id)
+                if debt.statement not in sc.soundness_obligations:
+                    sc.soundness_obligations.append(debt.statement)
+            if not sc.soundness_formal_obligations:
+                sc.soundness_formal_obligations = [
+                    FormalObligationSpec.from_debt_item(d)
+                    for d in soundness_debt
+                    if d.formal_statement or d.lean_declaration
+                ]
+            soundness_statuses = [d.status for d in soundness_debt]
+            if soundness_statuses and all(status == "proved" for status in soundness_statuses):
+                sc.status = "proved"
+            elif any(status == "blocked" for status in soundness_statuses):
+                sc.status = "blocked"
+            elif any(status == "proved" for status in soundness_statuses):
+                sc.status = "partially_proved"
 
         if not world.falsifiers:
             falsifier_text = [d.statement for d in [*boundary_debt, *falsifier_debt]]

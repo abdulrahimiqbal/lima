@@ -333,33 +333,79 @@ class CampaignService:
         self, campaign: CampaignRecord, decision: ManagerDecision
     ) -> CampaignRecord:
         """Apply world program and proof debt from decision to campaign state."""
-        # Install world program
+        preserve_active_world = False
         if decision.primary_world:
-            campaign.current_world_program = decision.primary_world.model_dump()
-            campaign.active_world_id = decision.primary_world.id
+            if self._world_transition_allowed(campaign, decision):
+                previous_world_id = campaign.active_world_id
+                campaign.current_world_program = decision.primary_world.model_dump()
+                campaign.active_world_id = decision.primary_world.id
+                if previous_world_id and previous_world_id != decision.primary_world.id:
+                    self.memory.add_event(
+                        campaign_id=campaign.id,
+                        tick=campaign.tick_count,
+                        event_type="world_replaced",
+                        payload={
+                            "old_world_id": previous_world_id,
+                            "new_world_id": decision.primary_world.id,
+                            "transition": decision.world_transition,
+                            "reason": decision.world_transition_reason,
+                        },
+                    )
+            else:
+                preserve_active_world = True
+                self.memory.add_event(
+                    campaign_id=campaign.id,
+                    tick=campaign.tick_count,
+                    event_type="world_switch_blocked",
+                    payload={
+                        "active_world_id": campaign.active_world_id,
+                        "proposed_world_id": decision.primary_world.id,
+                        "transition": decision.world_transition,
+                        "reason": decision.world_transition_reason,
+                    },
+                )
         
         if decision.alternative_worlds:
             campaign.alternative_world_programs = [w.model_dump() for w in decision.alternative_worlds]
         
-        # Merge proof debt ledger, preserving statuses from matching IDs
         if decision.proof_debt:
-            # Build map of existing debt statuses
-            existing_statuses = {}
+            existing_by_id = {}
             for debt_dict in campaign.proof_debt_ledger:
                 debt_id = debt_dict.get("id")
                 if debt_id:
-                    existing_statuses[debt_id] = debt_dict.get("status", "open")
-            
-            # Replace ledger with new debt, preserving statuses where IDs match
-            new_ledger = []
+                    existing_by_id[debt_id] = dict(debt_dict)
+            new_ledger = list(existing_by_id.values())
             for debt_item in decision.proof_debt:
                 debt_dict = debt_item.model_dump()
-                if debt_item.id in existing_statuses:
-                    debt_dict["status"] = existing_statuses[debt_item.id]
-                new_ledger.append(debt_dict)
+                if preserve_active_world and campaign.active_world_id:
+                    debt_dict["world_id"] = campaign.active_world_id
+                    debt_dict["notes"] = [
+                        *debt_dict.get("notes", []),
+                        "Attached as repair debt under the active world; proposed world switch was not audited.",
+                    ]
+                if debt_item.id in existing_by_id:
+                    debt_dict["status"] = existing_by_id[debt_item.id].get("status", debt_dict.get("status", "open"))
+                    existing_by_id[debt_item.id].update(debt_dict)
+                else:
+                    new_ledger.append(debt_dict)
             campaign.proof_debt_ledger = new_ledger
         
         return campaign
+
+    def _world_transition_allowed(self, campaign: CampaignRecord, decision: ManagerDecision) -> bool:
+        if decision.primary_world is None:
+            return False
+        if not campaign.active_world_id or not campaign.current_world_program:
+            return True
+        if decision.primary_world.id == campaign.active_world_id:
+            return True
+        current_audit_status = campaign.current_world_program.get("audit_status")
+        proposed_audit_status = decision.primary_world.audit_status
+        if current_audit_status == "fallback" and proposed_audit_status != "fallback":
+            return True
+        if decision.world_transition in {"retire", "replace"} and decision.world_transition_reason:
+            return True
+        return False
     
     def _recompute_resolved_debt_ids(self, campaign: CampaignRecord) -> None:
         """Recompute resolved_debt_ids from final ledger state."""
@@ -468,6 +514,7 @@ class CampaignService:
             debt
             for debt in ledger
             if debt.status == "open"
+            and (not campaign.active_world_id or debt.world_id == campaign.active_world_id)
             and debt.id not in pending_debt_ids
             and debt.assigned_channel in {"aristotle", "auto"}
             and debt.role in {"closure", "bridge", "support"}

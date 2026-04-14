@@ -58,7 +58,7 @@ We are trying to solve Collatz. The system may invent aggressively.
 
 It may only declare closure when:
 
-1. the active world has a bridge back to Collatz;
+1. the active world has a formally tracked soundness bridge back to standard natural-number Collatz;
 2. all critical proof debt is formally proved;
 3. no live critical falsifier remains unresolved;
 4. final proof artifacts are replayable.

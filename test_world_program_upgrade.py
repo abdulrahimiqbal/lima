@@ -5,6 +5,7 @@ from app.schemas import (
     TheoremDelta,
     CompressionPrinciple,
     BridgePlan,
+    SoundnessCertificate,
     ReductionCertificate,
     WorldProgram,
     WorldObjectDefinition,
@@ -89,6 +90,13 @@ def test_world_program_audit_fields():
             bridge_obligations=["Prove certificate soundness"],
             bridge_debt_ids=["D-bridge"],
             estimated_cost=0.4,
+        ),
+        soundness_certificate=SoundnessCertificate(
+            source_world_statement="The certificate world closes.",
+            target_statement="A closed certificate proves the original target.",
+            interpretation_claim="Certificate states interpret as original target transitions.",
+            soundness_debt_ids=["D-bridge"],
+            status="proved",
         ),
         reduction_certificate=ReductionCertificate(
             closure_items=["Close certificate transitions"],

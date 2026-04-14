@@ -16,6 +16,7 @@ from app.schemas import (
     ManagerReadReceipt,
     CompressionPrinciple,
     BridgePlan,
+    SoundnessCertificate,
     ReductionCertificate,
 )
 from app.frontier import apply_execution_result
@@ -76,11 +77,17 @@ def test_world_program_flow():
             ],
             estimated_cost=0.4,
         ),
+        soundness_certificate=SoundnessCertificate(
+            source_world_statement="Prove Collatz for n ≤ 1000, then extend",
+            target_statement="Collatz holds for all positive integers",
+            interpretation_claim="Bounded verification plus descent is interpreted over the standard natural-number Collatz map.",
+            soundness_debt_ids=["D-sound"],
+        ),
         reduction_certificate=ReductionCertificate(
             closure_items=["Bounded verification complete"],
-            bridge_items=["Descent lemma proved"],
+            bridge_items=["Descent lemma proved", "Soundness transfer proved"],
             support_items=[],
-            total_debt_count=2,
+            total_debt_count=3,
         ),
     )
     
@@ -96,6 +103,7 @@ def test_world_program_flow():
     )
     
     debt_descent = ProofDebtItem(
+        id="D-descent",
         world_id=world.id,
         role="bridge",
         statement="Prove descent lemma: if n > 1000, Collatz(n) reduces to Collatz(m) for m < n",
@@ -103,6 +111,18 @@ def test_world_program_flow():
         critical=True,
         status="open",
         priority=0.9,
+    )
+
+    debt_soundness = ProofDebtItem(
+        id="D-sound",
+        world_id=world.id,
+        role="bridge",
+        debt_class="pullback_to_original",
+        statement="Prove bounded verification plus descent implies classical Collatz over standard natural numbers",
+        depends_on=[debt_bounded.id, debt_descent.id],
+        critical=True,
+        status="open",
+        priority=0.85,
     )
     
     # 4. Create manager decision with world program
@@ -137,13 +157,17 @@ def test_world_program_flow():
         ),
         global_thesis="Reduce infinite problem to bounded verification + descent argument",
         primary_world=world,
-        proof_debt=[debt_bounded, debt_descent],
+        proof_debt=[debt_bounded, debt_descent, debt_soundness],
         critical_next_debt_id=debt_bounded.id,
     )
     
     # 5. Persist world program to campaign
     campaign.current_world_program = world.model_dump()
-    campaign.proof_debt_ledger = [debt_bounded.model_dump(), debt_descent.model_dump()]
+    campaign.proof_debt_ledger = [
+        debt_bounded.model_dump(),
+        debt_descent.model_dump(),
+        debt_soundness.model_dump(),
+    ]
     campaign.active_world_id = world.id
     
     print("✓ Created campaign with world program")
@@ -214,7 +238,7 @@ def test_world_program_flow():
             why_not_other_frontier_nodes="Focused on critical debt",
         ),
         primary_world=world,
-        proof_debt=[debt_bounded, debt_descent],
+        proof_debt=[debt_bounded, debt_descent, debt_soundness],
         critical_next_debt_id=debt_descent.id,
     )
     
@@ -222,6 +246,7 @@ def test_world_program_flow():
     campaign.proof_debt_ledger = [
         {**debt_bounded.model_dump(), "status": "proved"},
         {**debt_descent.model_dump(), "status": "open"},
+        {**debt_soundness.model_dump(), "status": "open"},
     ]
     
     # 10. Simulate execution result: descent lemma proved
@@ -249,15 +274,77 @@ def test_world_program_flow():
     assert descent_debt["status"] == "proved", "Descent debt should be marked proved"
     print()
     
-    # 12. Campaign should NOW be solved (all critical debt proved + valid bridge)
-    assert campaign.status == "solved", "Campaign should be solved (all critical debt proved)"
+    # 12. Campaign should NOT be solved yet (soundness transfer still open)
+    assert campaign.status == "running", "Campaign should still be running (soundness debt open)"
+    print("✓ Campaign correctly remains running (soundness transfer not yet proved)")
+    print()
+
+    # 13. Prove the soundness transfer back to standard Collatz
+    decision3 = ManagerDecision(
+        candidate_answer=CandidateAnswer(
+            stance="likely_true",
+            summary="Soundness transfer should close the proof",
+            confidence=0.85,
+        ),
+        alternatives=[],
+        target_frontier_node="F-root",
+        world_family="bridge",
+        bounded_claim="Prove soundness transfer",
+        formal_obligations=[
+            "Prove bounded verification plus descent implies classical Collatz over standard natural numbers"
+        ],
+        expected_information_gain="Transfers the world result back to the original theorem",
+        why_this_next="Final critical soundness debt item",
+        update_rules=UpdateRules(
+            if_proved="Campaign solved",
+            if_refuted="Soundness bridge failed, need new world",
+            if_blocked="Split transfer theorem",
+            if_inconclusive="Refine interpretation",
+        ),
+        self_improvement_note=SelfImprovementNote(
+            proposal="None",
+            reason="Final transfer step",
+        ),
+        manager_read_receipt=ManagerReadReceipt(
+            problem_summary="Collatz conjecture",
+            target_node_id_confirmed="F-root",
+            target_node_text_confirmed="Prove Collatz",
+            why_not_other_frontier_nodes="Focused on critical soundness debt",
+        ),
+        primary_world=world,
+        proof_debt=[debt_bounded, debt_descent, debt_soundness],
+        critical_next_debt_id=debt_soundness.id,
+    )
+
+    campaign.proof_debt_ledger = [
+        {**debt_bounded.model_dump(), "status": "proved"},
+        {**debt_descent.model_dump(), "status": "proved"},
+        {**debt_soundness.model_dump(), "status": "open"},
+    ]
+
+    result_soundness = ExecutionResult(
+        status="proved",
+        failure_type=None,
+        notes="Soundness transfer proved via Lean",
+        artifacts=["soundness_transfer.lean"],
+        spawned_nodes=[],
+        executor_backend="aristotle_proof",
+        channel_used="aristotle_proof",
+    )
+
+    campaign = apply_execution_result(campaign, decision3, result_soundness)
+    campaign = update_memory(campaign, decision3, result_soundness, policy={})
+
+    # 14. Campaign should NOW be solved (closure + bridge + soundness proved)
+    assert campaign.status == "solved", "Campaign should be solved (closure, bridge, and soundness proved)"
     print("✓ Campaign correctly marked SOLVED")
     print("  All critical debt items proved")
     print("  Valid bridge to target exists")
+    print("  Soundness transfer to the original theorem is proved")
     print("  World-aware solved criterion satisfied")
     print()
     
-    # 13. Check world diagnostics
+    # 15. Check world diagnostics
     world_diag = campaign.memory.world_diagnostics.get(world.id, {})
     print("✓ World diagnostics tracked:")
     print(f"  Proof hits: {world_diag.get('proof_hits', 0)}")

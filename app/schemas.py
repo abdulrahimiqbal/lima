@@ -316,6 +316,19 @@ class BridgePlan(BaseModel):
     estimated_cost: float = Field(ge=0.0, le=1.0, default=0.5)
 
 
+class SoundnessCertificate(BaseModel):
+    """Formal account of how an invented world transfers back to the target."""
+
+    source_world_statement: str
+    target_statement: str
+    interpretation_claim: str
+    required_axioms: list[str] = Field(default_factory=list)
+    soundness_obligations: list[str] = Field(default_factory=list)
+    soundness_formal_obligations: list[FormalObligationSpec] = Field(default_factory=list)
+    soundness_debt_ids: list[str] = Field(default_factory=list)
+    status: Literal["draft", "partially_proved", "proved", "blocked"] = "draft"
+
+
 class ReductionCertificate(BaseModel):
     """Finite closure summary for a world."""
     closure_items: list[str] = Field(default_factory=list)
@@ -340,6 +353,7 @@ class WorldProgram(BaseModel):
     ontology_definitions: list[WorldObjectDefinition] = Field(default_factory=list)
     compression_principles: list[CompressionPrinciple] = Field(default_factory=list)
     bridge_to_target: BridgePlan | None = None
+    soundness_certificate: SoundnessCertificate | None = None
     reduction_certificate: ReductionCertificate | None = None
     theorem_deltas: list[TheoremDelta] = Field(default_factory=list)
     falsifiers: list[str] = Field(default_factory=list)
@@ -373,6 +387,8 @@ class WorldProgram(BaseModel):
                 warnings.append("missing_bridge_claim")
             if not has_bridge_work:
                 warnings.append("missing_checkable_bridge_work")
+            if self.soundness_certificate is None:
+                warnings.append("missing_soundness_certificate")
             if not self.reduction_certificate:
                 warnings.append("missing_reduction_certificate")
             if self.mode == "macro" and not self.ontology_definitions:
@@ -427,6 +443,8 @@ class ManagerDecision(BaseModel):
     alternative_worlds: list[WorldProgram] = Field(default_factory=list)
     proof_debt: list[ProofDebtItem] = Field(default_factory=list)
     critical_next_debt_id: str | None = None
+    world_transition: Literal["continue", "repair", "retire", "replace"] = "continue"
+    world_transition_reason: str | None = None
 
     @field_validator("formal_obligations", mode="before")
     @classmethod
