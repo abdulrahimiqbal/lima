@@ -751,6 +751,7 @@ class FormalProbeBakeRequest(BaseModel):
     run_id: str | None = None
     max_probes: int = Field(default=36, ge=1, le=200)
     submit_all_at_once: bool = True
+    retry_failed_submissions: bool = True
 
 
 class FormalProbeBakeRun(BaseModel):

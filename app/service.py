@@ -1097,7 +1097,12 @@ class CampaignService:
             except Exception:
                 logger.warning("Skipping invalid FormalProbe node=%s", node.id)
                 continue
-            if probe.status != "compiled":
+            retryable = (
+                payload.retry_failed_submissions
+                and probe.status in {"inconclusive", "blocked", "submitted"}
+                and probe.failure_type in {"sdk_error", "submission_failed", None}
+            )
+            if probe.status != "compiled" and not retryable:
                 continue
             if payload.world_id and probe.world_id != payload.world_id:
                 continue
