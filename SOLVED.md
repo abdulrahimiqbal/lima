@@ -159,3 +159,38 @@ Decision implication:
 ```text
 Do not retry the same abstract `exists strict descent rank` probe unchanged. Move to concrete candidate rank families and falsify/mutate them one at a time.
 ```
+
+### R7. Candidate Rank-Family Gauntlet Narrowed The Search
+
+These facts come from candidate rank-family run `CR-ac5fcfe426` on world `W-0273193499`, digested in `PD-f60693b1a3`.
+
+Verified probe outcomes:
+
+```text
+identity rank fails on odd branch at n = 3: proved
+identity rank decreases on even positive inputs: proved
+simple parity-penalty linear rank fails at n = 3: proved
+two-step identity rank still fails at n = 3: proved
+small linear penalties cannot replace a useful non-circular rank: proved
+bounded certificate soundness remains trivial and useful: proved
+explicit bounded certificate for n = 3: proved
+positive-measure precondition fixes the local transformer zero-measure issue: proved
+```
+
+Status:
+
+```text
+8 / 8 candidate-rank probes Lean-clean and proved in digest PD-f60693b1a3
+```
+
+Interpretation:
+
+```text
+The system has now verified that the naive numeric-size family is dead, even after two-step and simple parity-penalty repairs. The viable direction is not "rank by size plus tiny parity correction". It must be a richer certificate/rank object that encodes trajectory structure, residue/valuation behavior, inverse-tree position, parity grammar, or another nonlocal invariant.
+```
+
+Decision implication:
+
+```text
+Next mutation wave should stop testing tiny linear penalties and instead generate structured rank/certificate families: accelerated odd-map potentials, residue-class potentials, inverse-tree certificates, parity-word grammar ranks, and 2-adic shadow measures. Each family must come with explicit small falsifiers and one soundness/bridge probe before any global closure attempt.
+```
