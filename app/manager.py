@@ -521,7 +521,7 @@ class Manager:
             "  \"channel_hint\": \"proof\",\n"
             "  \"requires_proof\": true\n"
             "}\n\n"
-            "See MANAGER_FORMALIZATION_GUIDE.md for complete examples."
+            "See docs/notes/MANAGER_FORMALIZATION_GUIDE.md for complete examples."
         )
 
     @staticmethod

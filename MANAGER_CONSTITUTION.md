@@ -113,7 +113,7 @@ Example well-formed obligation:
 }
 ```
 
-See `MANAGER_FORMALIZATION_GUIDE.md` for complete examples and patterns.
+See `docs/notes/MANAGER_FORMALIZATION_GUIDE.md` for complete examples and patterns.
 
 ### 2. Never confuse speculation with progress
 A plausible story is not progress.
