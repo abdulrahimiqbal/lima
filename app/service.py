@@ -48,6 +48,8 @@ from .schemas import (
     FormalProbeDigestRequest,
     FormalProbeDigestRun,
     FrontierNode,
+    GlobalForcingHuntWaveRequest,
+    GlobalForcingHuntWaveRun,
     HybridCertificateFamilyRequest,
     HybridCertificateFamilyRun,
     InventionBatch,
@@ -2149,6 +2151,82 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="composite_scarcity_theorem_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_global_forcing_hunt_wave(
+        self,
+        campaign_id: str,
+        payload: GlobalForcingHuntWaveRequest,
+    ) -> GlobalForcingHuntWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for global forcing hunt wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_global_forcing_hunt_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"global-forcing-hunt:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = GlobalForcingHuntWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                forcing_gates=[
+                    "explicit dynamic alternatives force local progress",
+                    "bounded finite candidate search passes",
+                    "all-odd bad block needs recovery margin",
+                    "legal persistent bad frontier exists without dynamic forcing",
+                    "weak scarcity and equal recovery remain insufficient",
+                    "persistent bad frontier decomposes into the three missing failures",
+                    "finite persistent-bad exclusion over repaired candidates",
+                    "named global forcing target remains counting-only",
+                ],
+                expected_learning=[
+                    "Whether bounded-horizon forcing survives a first adversarial finite search.",
+                    "Whether the theorem needs genuinely dynamic admissibility beyond static legality.",
+                    "Whether persistent bad frontiers expose a smaller obstruction or kill the route.",
+                    "Whether the next proof should target dynamic forcing rather than more local algebra.",
+                ],
+                summary=(
+                    "Global forcing hunt wave compiled adversarial bounded-horizon probes for "
+                    "Composite Scarcity: finite search, recovery margins, persistent bad frontiers, "
+                    "and counting-only target shape."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="GlobalForcingHuntWaveRun",
+                title=f"global-forcing-hunt-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="global_forcing_hunt_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -5101,6 +5179,325 @@ theorem theorem_named_target_is_counting_shape_{suffix} :
                     notes=(
                         "Composite scarcity theorem probe; prioritize parameterized "
                         "scarcity/recovery lemmas and adversarial insufficiency gates."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_global_forcing_hunt_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+import Mathlib
+
+structure ForcingFrontier_{suffix} where
+  horizon : Nat
+  badChildren : Nat
+  totalChildren : Nat
+  oddDebt : Nat
+  recovery : Nat
+  obstruction : Nat
+  nextObstruction : Nat
+
+def legalForcingFrontier_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  f.totalChildren > 0 /\\ f.badChildren <= f.totalChildren
+
+def strongForcingScarcity_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  4 * f.badChildren < f.totalChildren
+
+def weakForcingScarcity_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  2 * f.badChildren <= f.totalChildren
+
+def forcingRecoveryWins_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  2 * f.oddDebt < f.horizon + f.recovery
+
+def survivorObstructionFalls_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  f.nextObstruction < f.obstruction
+
+def localForcingProgress_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  strongForcingScarcity_{suffix} f \\/
+    forcingRecoveryWins_{suffix} f \\/
+    survivorObstructionFalls_{suffix} f
+
+def densityContractsFromFrontier_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  2 * f.badChildren < f.totalChildren
+
+def explicitDynamicAlternative_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  strongForcingScarcity_{suffix} f \\/
+    (f.oddDebt <= f.horizon /\\ f.horizon + 1 <= f.recovery) \\/
+    survivorObstructionFalls_{suffix} f
+
+def persistentBadFrontier_{suffix} (f : ForcingFrontier_{suffix}) : Prop :=
+  legalForcingFrontier_{suffix} f /\\ Not (localForcingProgress_{suffix} f)
+
+def boundedGlobalForcingTarget_{suffix} (horizon : Nat) : Prop :=
+  ∀ f : ForcingFrontier_{suffix},
+    legalForcingFrontier_{suffix} f ->
+    f.horizon <= horizon ->
+    explicitDynamicAlternative_{suffix} f ->
+    localForcingProgress_{suffix} f
+
+def strongDepth2Candidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 2, badChildren := 1, totalChildren := 8, oddDebt := 2,
+    recovery := 0, obstruction := 5, nextObstruction := 5 }}
+
+def recoveredAllOddCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 3, badChildren := 4, totalChildren := 8, oddDebt := 3,
+    recovery := 4, obstruction := 5, nextObstruction := 5 }}
+
+def survivorDropCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 3, badChildren := 4, totalChildren := 8, oddDebt := 3,
+    recovery := 0, obstruction := 5, nextObstruction := 3 }}
+
+def mixedGoodCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 4, badChildren := 1, totalChildren := 16, oddDebt := 3,
+    recovery := 5, obstruction := 7, nextObstruction := 7 }}
+
+def allOddNoRecoveryCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 3, badChildren := 4, totalChildren := 8, oddDebt := 3,
+    recovery := 0, obstruction := 5, nextObstruction := 5 }}
+
+def equalRecoveryCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 3, badChildren := 4, totalChildren := 8, oddDebt := 3,
+    recovery := 3, obstruction := 5, nextObstruction := 5 }}
+
+def weakScarcityCandidate_{suffix} : ForcingFrontier_{suffix} :=
+  {{ horizon := 5, badChildren := 4, totalChildren := 8, oddDebt := 3,
+    recovery := 3, obstruction := 5, nextObstruction := 5 }}
+
+def repairedDepth2SearchPass_{suffix} : Prop :=
+  localForcingProgress_{suffix} strongDepth2Candidate_{suffix} /\\
+  localForcingProgress_{suffix} recoveredAllOddCandidate_{suffix} /\\
+  localForcingProgress_{suffix} survivorDropCandidate_{suffix} /\\
+  localForcingProgress_{suffix} mixedGoodCandidate_{suffix}
+
+def noPersistentBadInRepairedSearch_{suffix} : Prop :=
+  Not (persistentBadFrontier_{suffix} strongDepth2Candidate_{suffix}) /\\
+  Not (persistentBadFrontier_{suffix} recoveredAllOddCandidate_{suffix}) /\\
+  Not (persistentBadFrontier_{suffix} survivorDropCandidate_{suffix}) /\\
+  Not (persistentBadFrontier_{suffix} mixedGoodCandidate_{suffix})
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "closure_probe",
+                "Global forcing hunt / explicit dynamic alternatives force local progress.",
+                f"""{base_defs}
+
+theorem explicit_dynamic_alternative_forces_local_progress_{suffix}
+    (f : ForcingFrontier_{suffix})
+    (h : explicitDynamicAlternative_{suffix} f) :
+    localForcingProgress_{suffix} f := by
+  unfold explicitDynamicAlternative_{suffix} localForcingProgress_{suffix} at *
+  rcases h with hStrong | hRecovery | hSurvivor
+  · exact Or.inl hStrong
+  · right
+    left
+    rcases hRecovery with ⟨hOdd, hRec⟩
+    unfold forcingRecoveryWins_{suffix}
+    omega
+  · exact Or.inr (Or.inr hSurvivor)
+""",
+                True,
+                "explicit_dynamic_forcing",
+            ),
+            (
+                "bridge_probe",
+                "Global forcing hunt / bounded target follows from explicit dynamic alternatives.",
+                f"""{base_defs}
+
+theorem bounded_target_from_explicit_dynamic_alternatives_{suffix}
+    (horizon : Nat) :
+    boundedGlobalForcingTarget_{suffix} horizon := by
+  intro f _hLegal _hHorizon hAlt
+  unfold explicitDynamicAlternative_{suffix} localForcingProgress_{suffix} at *
+  rcases hAlt with hStrong | hRecovery | hSurvivor
+  · exact Or.inl hStrong
+  · right
+    left
+    rcases hRecovery with ⟨hOdd, hRec⟩
+    unfold forcingRecoveryWins_{suffix}
+    omega
+  · exact Or.inr (Or.inr hSurvivor)
+""",
+                True,
+                "bounded_target_skeleton",
+            ),
+            (
+                "closure_probe",
+                "Global forcing hunt / repaired finite search candidates all force progress.",
+                f"""{base_defs}
+
+theorem repaired_finite_search_candidates_force_progress_{suffix} :
+    repairedDepth2SearchPass_{suffix} := by
+  native_decide
+""",
+                True,
+                "finite_search_pass",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Global forcing hunt / all-odd no-recovery candidate is a legal persistent bad frontier.",
+                f"""{base_defs}
+
+theorem all_odd_no_recovery_is_persistent_bad_{suffix} :
+    persistentBadFrontier_{suffix} allOddNoRecoveryCandidate_{suffix} := by
+  native_decide
+""",
+                True,
+                "persistent_bad_counterexample",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Global forcing hunt / equal recovery remains a legal persistent bad frontier.",
+                f"""{base_defs}
+
+theorem equal_recovery_is_still_persistent_bad_{suffix} :
+    persistentBadFrontier_{suffix} equalRecoveryCandidate_{suffix} := by
+  native_decide
+""",
+                True,
+                "equal_recovery_counterexample",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Global forcing hunt / weak scarcity remains insufficient for local progress.",
+                f"""{base_defs}
+
+theorem weak_scarcity_is_not_local_progress_{suffix} :
+    weakForcingScarcity_{suffix} weakScarcityCandidate_{suffix} /\\
+    persistentBadFrontier_{suffix} weakScarcityCandidate_{suffix} := by
+  native_decide
+""",
+                True,
+                "weak_scarcity_counterexample",
+            ),
+            (
+                "bridge_probe",
+                "Global forcing hunt / strong scarcity gives density contraction.",
+                f"""{base_defs}
+
+theorem strong_scarcity_gives_density_contraction_forcing_{suffix}
+    (f : ForcingFrontier_{suffix})
+    (h : strongForcingScarcity_{suffix} f) :
+    densityContractsFromFrontier_{suffix} f := by
+  unfold strongForcingScarcity_{suffix} densityContractsFromFrontier_{suffix} at *
+  omega
+""",
+                True,
+                "scarcity_density_contraction",
+            ),
+            (
+                "closure_probe",
+                "Global forcing hunt / recovery margin wins for any odd debt bounded by horizon.",
+                f"""{base_defs}
+
+theorem recovery_margin_wins_for_bounded_odd_debt_{suffix}
+    (f : ForcingFrontier_{suffix})
+    (hOdd : f.oddDebt <= f.horizon)
+    (hRecovery : f.horizon + 1 <= f.recovery) :
+    forcingRecoveryWins_{suffix} f := by
+  unfold forcingRecoveryWins_{suffix}
+  omega
+""",
+                True,
+                "recovery_margin",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Global forcing hunt / persistent bad frontier decomposes into all three failures.",
+                f"""{base_defs}
+
+theorem persistent_bad_decomposes_into_missing_forcing_{suffix}
+    (f : ForcingFrontier_{suffix})
+    (h : persistentBadFrontier_{suffix} f) :
+    Not (strongForcingScarcity_{suffix} f) /\\
+      Not (forcingRecoveryWins_{suffix} f) /\\
+      Not (survivorObstructionFalls_{suffix} f) := by
+  rcases h with ⟨_hLegal, hNoProgress⟩
+  constructor
+  · intro hStrong
+    exact hNoProgress (Or.inl hStrong)
+  constructor
+  · intro hRecovery
+    exact hNoProgress (Or.inr (Or.inl hRecovery))
+  · intro hSurvivor
+    exact hNoProgress (Or.inr (Or.inr hSurvivor))
+""",
+                True,
+                "persistent_bad_decomposition",
+            ),
+            (
+                "closure_probe",
+                "Global forcing hunt / repaired finite search has no persistent bad frontier.",
+                f"""{base_defs}
+
+theorem repaired_search_has_no_persistent_bad_{suffix} :
+    noPersistentBadInRepairedSearch_{suffix} := by
+  native_decide
+""",
+                True,
+                "finite_search_no_persistent_bad",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Global forcing hunt / named target is counting-only and has no reachability field.",
+                f"""{base_defs}
+
+theorem bounded_global_target_is_counting_shape_{suffix} :
+    boundedGlobalForcingTarget_{suffix} 4 ->
+    strongDepth2Candidate_{suffix}.badChildren = 1 /\\
+      recoveredAllOddCandidate_{suffix}.recovery = 4 /\\
+      survivorDropCandidate_{suffix}.nextObstruction = 3 := by
+  intro _h
+  native_decide
+""",
+                True,
+                "counting_only_target",
+            ),
+            (
+                "bridge_probe",
+                "Global forcing hunt / survivor obstruction drop is a local forcing alternative.",
+                f"""{base_defs}
+
+theorem survivor_drop_is_local_forcing_alternative_{suffix}
+    (f : ForcingFrontier_{suffix})
+    (h : survivorObstructionFalls_{suffix} f) :
+    localForcingProgress_{suffix} f := by
+  exact Or.inr (Or.inr h)
+""",
+                True,
+                "survivor_forcing_alternative",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "global_forcing_hunt_wave": True,
+                "forcing_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Global forcing hunt probe; adversarially test whether bounded "
+                        "Composite Scarcity needs stronger dynamic admissibility."
                     ),
                 )
             )
