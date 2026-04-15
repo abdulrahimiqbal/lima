@@ -660,3 +660,76 @@ every legal bad-pressure split tree eventually satisfies strong scarcity or boun
 
 The next wave should not add new objects. It should attack this global dynamic forcing lemma directly, with adversarial probes for persistent bad frontiers. If a legal persistent bad frontier can avoid strong scarcity, avoid recovery, and avoid survivor descent, this route should pivot.
 ```
+
+### R17. Global Forcing Hunt Separates Dynamic Forcing From Static Legality
+
+These facts come from global-forcing hunt run `GF-87ff21b23e` on world `W-0273193499`, local campaign `C-61b6f8af00b8`, submitted in Aristotle bake `PB-4aac609e41`, and digested in `PD-16997e6eb6`.
+
+This wave was intentionally adversarial. It did not merely ask whether the local progress exits can be stated. It also asked whether legal bad frontiers can persist when the dynamic forcing alternatives are absent.
+
+Verified probe outcomes:
+
+```text
+explicit dynamic alternatives force local progress: proved
+bounded target follows from explicit dynamic alternatives: proved
+repaired finite search candidates all force progress: proved
+all-odd no-recovery candidate is a legal persistent bad frontier: proved
+equal recovery remains a legal persistent bad frontier: proved
+weak scarcity remains insufficient for local progress: proved
+strong scarcity gives density contraction: proved
+recovery margin wins for any odd debt bounded by horizon: proved
+persistent bad frontier decomposes into all three failures: proved
+repaired finite search has no persistent bad frontier: proved
+named target is counting-only and has no reachability field: proved
+survivor obstruction drop is a local forcing alternative: proved
+```
+
+Status:
+
+```text
+12 / 12 global-forcing hunt probes Lean-clean and proved in digest PD-16997e6eb6
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This is a real signal, but it is not a pure "everything works" signal.
+
+The positive side:
+
+- once explicit dynamic alternatives are available, local progress follows;
+- the bounded target follows from those alternatives;
+- repaired finite candidates have no persistent bad frontier;
+- strong scarcity gives density contraction;
+- recovery margin beats odd debt;
+- survivor drop is a legitimate forcing exit.
+
+The warning side:
+
+- static legality alone is too weak;
+- all-odd with no recovery is a legal persistent bad frontier;
+- equal recovery is still a legal persistent bad frontier;
+- weak scarcity is still insufficient.
+
+So the route did not die, but it got narrower. The missing theorem is not merely "legal frontiers progress." That is false. The missing theorem is:
+
+dynamically legal Collatz split trees force one of the explicit dynamic alternatives.
+```
+
+Decision implication:
+
+```text
+Promote the route only under a stricter condition.
+
+Do not run more waves that merely restate local progress. The next proof debt is now exactly the dynamic-admissibility-to-forcing bridge:
+
+Collatz dynamic legality
+-> either strong scarcity, sufficient recovery margin, or survivor obstruction drop.
+
+If this bridge cannot be proved, the static pressure/density formulation is too weak. If it can be proved for bounded horizons and then parameterized, it becomes the first serious route toward the global Composite Scarcity Theorem.
+
+The next wave should therefore encode actual parity/residue-block dynamic admissibility into the forcing alternatives, not just assume the alternatives as hypotheses.
+```
