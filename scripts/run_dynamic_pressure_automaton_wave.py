@@ -33,6 +33,12 @@ def emit(label: str, payload: object) -> None:
     print(json.dumps({label: payload}, indent=2, default=str), flush=True)
 
 
+def value(item: object, key: str) -> object:
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key)
+
+
 def build_service() -> CampaignService:
     api_key = os.environ.get("ARISTOTLE_API_KEY")
     if not api_key:
@@ -257,12 +263,12 @@ def digest(service: CampaignService, campaign_id: str) -> None:
             "reconciled_pending_job_count": result.reconciled_pending_job_count,
             "diagnostics": [
                 {
-                    "probe_id": diagnostic.probe_id,
-                    "source_text": diagnostic.source_text,
-                    "verdict": diagnostic.verdict,
-                    "failure_type": diagnostic.failure_type,
-                    "suggested_repair": diagnostic.suggested_repair,
-                    "artifact_path": diagnostic.artifact_path,
+                    "probe_id": value(diagnostic, "probe_id"),
+                    "source_text": value(diagnostic, "source_text"),
+                    "verdict": value(diagnostic, "verdict"),
+                    "failure_type": value(diagnostic, "failure_type"),
+                    "suggested_repair": value(diagnostic, "suggested_repair"),
+                    "artifact_path": value(diagnostic, "artifact_path"),
                 }
                 for diagnostic in result.diagnostics
             ],

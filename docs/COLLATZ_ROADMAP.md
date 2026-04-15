@@ -21,12 +21,15 @@ confirmed richer structural families are formalizable ->
 pivoted away from local hybrid certificates ->
 proved 2-adic cylinder-pressure language is Lean-clean
 proved pressure-globalization accounting is Lean-clean
+proved dynamic pressure automaton evidence is Lean-clean
+proved pressure-bad recurrence can be separated from height-escaping ghost recurrence
 ```
 
 What it has not done:
 
 ```text
-proved a quantitative scarcity theorem for bad children in legal split trees
+proved that height escape closes the minimal-survivor / density obstruction
+proved the global Composite Scarcity theorem
 ```
 
 ## Flow Diagram
@@ -54,7 +57,11 @@ flowchart TD
     Q -- no --> X5[Reject pressure world]
     Q -- yes --> R[Bad-cylinder mass decay hunt]
     R --> S{Density-zero exceptional family proved?}
-    S -- no --> P
+    S -- no --> T[Dynamic pressure + height automaton]
+    T --> U{Bad recurrence always recovers or height-escapes?}
+    U -- no --> X6[Pivot: pressure world has real bad recurrence]
+    U -- yes --> V[Minimal-survivor / density closure]
+    V --> S
     S -- yes --> M
     L --> M[Prove soundness + pullback]
     M --> N{All critical debt proved?}
@@ -116,8 +123,10 @@ Pivot portfolio wave: completed, density/ecology route selected over inverse-tre
 Composite scarcity viability gate: completed, theorem-shaped route passed 8 / 8 probes
 Composite scarcity theorem local gates: completed, parameterized scarcity/recovery/survivor gates passed 10 / 10 probes
 Global forcing hunt: completed, explicit alternatives force progress but static legality admits persistent bad frontiers
-Current bottleneck: no proof that Collatz dynamic admissibility forces the explicit alternatives
-Next phase: dynamic-admissibility-to-forcing bridge hunt
+Dynamic pressure automaton: completed, pure residue pressure has ghost recurrence
+Height-lifted pressure automaton: completed, checked recurrent bad components height-escape
+Current bottleneck: no proof that height escape closes the minimal-survivor / density obstruction
+Next phase: pressure-plus-height survivor-closure hunt
 ```
 
 ## Next Phase
@@ -129,13 +138,13 @@ current candidate world family:
 - 2-adic cylinder-pressure / density transport / minimal-survivor ecology
 
 next gates:
-- parity/residue-block dynamic admissibility implies strong scarcity or recovery
-- all-odd no-recovery blocks are dynamically impossible or force survivor descent
-- equal-recovery persistent bad frontiers are excluded by true Collatz dynamics
-- bounded-horizon dynamic forcing over actual legal split trees
+- parity/residue-block dynamic admissibility implies pressure recovery or height escape
+- pressure-bad residue recurrences are all height-escaping, not dangerous bounded cycles
+- height escape is incompatible with persistent minimal-survivor obstruction
+- bounded-horizon pressure-plus-height certificates over actual legal split trees
 - density-zero exceptional-family theorem from global composite scarcity
 ```
 
-The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. Success in the next phase therefore means proving the missing dynamic bridge: actual Collatz parity/residue-block admissibility forces strong scarcity, sufficient recovery margin, or survivor obstruction drop. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
+The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. Success in the next phase therefore means proving the pressure-plus-height bridge: actual Collatz parity/residue-block admissibility forces pressure recovery or height escape, and height escape closes the minimal-survivor/density obstruction. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
 
-This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove dynamic-admissibility-to-forcing, then prove global Composite Scarcity, then prove density-zero/no-persistent-survivor, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot connect actual Collatz dynamics to the explicit forcing alternatives, this route should pivot rather than add more local definitions.
+This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove pressure-plus-height survivor closure, then prove global Composite Scarcity / density-zero, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot connect height escape to minimal-survivor closure, this route should pivot rather than add more local definitions.

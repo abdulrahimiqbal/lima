@@ -733,3 +733,78 @@ If this bridge cannot be proved, the static pressure/density formulation is too 
 
 The next wave should therefore encode actual parity/residue-block dynamic admissibility into the forcing alternatives, not just assume the alternatives as hypotheses.
 ```
+
+### R18. Height-Lifted Dynamic Pressure Automaton Separates Ghost Recurrence From Dangerous Recurrence
+
+These facts come from dynamic-pressure automaton run `DP-a6492d7a9e` on world `W-0273193499`, local campaign `C-af92e2e76951`, submitted in Aristotle bake `PB-cb871a4bee`, and digested in `PD-ce1e80a9f6`.
+
+This wave changed the discovery method. Instead of hand-picking local pressure examples, it built a finite residue automaton for actual Collatz residue dynamics. Even steps are modeled soundly with hidden high-bit splitting, so the automaton over-approximates positive integer behavior rather than cheating by using a deterministic low-bit projection.
+
+Local search before Aristotle:
+
+```text
+windows checked locally: 1 through 7
+window 1: acyclic bad subgraph
+window 2: recurrent bad components exist, all height-expanding
+window 3: acyclic bad subgraph
+window 4: recurrent bad components exist, all height-expanding
+window 5: recurrent bad SCC size 997, minimum cycle-mean height drift positive
+window 6: recurrent bad components exist, all height-expanding
+window 7: recurrent bad SCC size 2581, minimum cycle-mean height drift positive
+dangerous nonexpanding recurrent components found: 0
+```
+
+Verified probe outcomes:
+
+```text
+pressure rule separates one-even from two-even recovery: proved
+even residue step must split on the hidden high bit: proved
+acyclic reports carry a finite bad-rank witness: proved
+sound residue relation exposes the 2-adic ghost cycle: proved
+the ghost cycle is bad for the pressure rule: proved
+ghost obstruction is a negative residue-class phenomenon: proved
+height lift removes the first recurrent bad ghost: proved
+pressure-bad and height-expanding are separate exits: proved
+```
+
+Status:
+
+```text
+8 / 8 dynamic-pressure automaton probes Lean-clean and proved in digest PD-ce1e80a9f6
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This is a stronger signal than the previous static pressure waves.
+
+Pure residue pressure is not enough: it sees recurrent bad cycles, including the 2-adic negative ghost cycle -2 <-> -1. That prevents a naive "bad pressure graph is acyclic" theorem.
+
+But the height lift explains the failure rather than merely exposing it. The checked recurrent bad components are pressure-bad but Archimedean-height-expanding. In particular, the bad residue recurrences look like ghosts/escape channels, not bounded positive-integer survivor cycles.
+
+The most important new distinction is:
+
+pressure recovery and height escape are separate exits.
+
+So the route has narrowed again. The missing theorem is no longer just dynamic-admissibility-to-forcing. The sharper target is:
+
+every dynamically admissible persistent bad-pressure recurrence either gets pressure recovery or has positive height escape; height escape is incompatible with a minimal persistent survivor.
+```
+
+Decision implication:
+
+```text
+Promote the pressure route one more level, but only as pressure-plus-height.
+
+Do not chase pure 2-adic pressure as the final invariant. It has real residue ghost recurrences.
+
+The next named theorem gate is now:
+
+pressure-bad recurrence + positive height drift
+-> no persistent minimal survivor / density obstruction closes.
+
+If that gate can be verified locally and then parameterized, this becomes the first genuinely theorem-shaped bridge from the automaton evidence toward Collatz. If height escape cannot be connected to minimal-survivor closure, then this route stalls despite the good automaton signal.
+```
