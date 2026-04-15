@@ -137,6 +137,18 @@ def test_final_collatz_experiment_compiles_decisive_hard_probes(tmp_path: Path) 
     assert brief["final_experiment"]["latest_run_id"] == payload["id"]
     assert brief["final_experiment"]["decisive_probe_count"] >= 1
 
+    bake = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/bake-probes",
+        json={
+            "world_id": payload["world_id"],
+            "max_probes": payload["compiled_probe_count"],
+            "submit_all_at_once": True,
+        },
+    ).json()
+    assert bake["submitted_probe_count"] == payload["compiled_probe_count"]
+    brief_after_bake = client.get(f"/api/campaigns/{campaign_id}/operator-brief").json()
+    assert brief_after_bake["final_experiment"]["submitted_probe_count"] == payload["compiled_probe_count"]
+
 
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
     service = CampaignService(_settings(tmp_path))

@@ -1082,6 +1082,7 @@ class CampaignService:
                 ],
             )
             self._record_probe_bake_run(bake_run)
+            self._mark_final_experiment_submitted(campaign_id, bake_run)
             self.memory.add_event(
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
@@ -1089,6 +1090,48 @@ class CampaignService:
                 payload=bake_run.model_dump(mode="json"),
             )
             return bake_run
+
+    def _mark_final_experiment_submitted(
+        self,
+        campaign_id: str,
+        bake_run: FormalProbeBakeRun,
+    ) -> None:
+        if not bake_run.probe_ids:
+            return
+        nodes = self.memory.list_research_nodes(
+            campaign_id,
+            node_type="FinalCollatzExperimentRun",
+            limit=1,
+        )
+        if not nodes:
+            return
+        node = nodes[0]
+        try:
+            run = FinalCollatzExperimentRun.model_validate(node.payload)
+        except Exception:
+            return
+        submitted_ids = set(bake_run.probe_ids)
+        experiment_ids = set(run.probe_ids)
+        if not submitted_ids & experiment_ids:
+            return
+        updated = run.model_copy(
+            update={
+                "submitted_probe_count": len(submitted_ids & experiment_ids),
+                "decision_status": "inconclusive",
+                "summary": (
+                    f"{run.summary} Submitted {len(submitted_ids & experiment_ids)} final probes to Aristotle."
+                ),
+            }
+        )
+        self.memory.upsert_research_node(
+            campaign_id=campaign_id,
+            node_id=updated.id,
+            node_type="FinalCollatzExperimentRun",
+            title=f"final-collatz-experiment:{updated.world_id}",
+            summary=updated.summary,
+            status=updated.decision_status,
+            payload=updated.model_dump(mode="json"),
+        )
 
     def get_invention_lab(self, campaign_id: str) -> dict:
         _ = self.get_campaign(campaign_id)
