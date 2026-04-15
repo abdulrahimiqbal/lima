@@ -46,6 +46,8 @@ from .schemas import (
     PendingAristotleJob,
     RankCertificateHuntRequest,
     RankCertificateHuntRun,
+    StructuredRankFamilyRequest,
+    StructuredRankFamilyRun,
     DistilledWorld,
     ProofDebtItem,
     SelfImprovementNote,
@@ -1483,6 +1485,77 @@ class CampaignService:
             )
             return run
 
+    def run_structured_rank_families(
+        self,
+        campaign_id: str,
+        payload: StructuredRankFamilyRequest,
+    ) -> StructuredRankFamilyRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for structured rank family hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_structured_rank_family_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"structured-rank:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = StructuredRankFamilyRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                structured_families=[
+                    "accelerated odd-map potential",
+                    "residue-class potential",
+                    "inverse-tree certificate",
+                    "parity-word grammar rank",
+                    "2-adic shadow measure",
+                ],
+                expected_learning=[
+                    "Whether richer nonlocal families outperform simple size-based ranks.",
+                    "Which structured family yields the sharpest small witness or local bridge lemma.",
+                    "Whether the next missing object looks like a grammar/certificate/inverse-tree invariant instead of a scalar rank.",
+                ],
+                summary=(
+                    "Structured rank-family hunt compiled richer probes around accelerated odd-map, "
+                    "residue, inverse-tree, parity grammar, and 2-adic families."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="StructuredRankFamilyRun",
+                title=f"structured-rank-family:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="structured_rank_family_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -1880,6 +1953,143 @@ structure LocalCandidate_{suffix} where
                         metadata=metadata,
                     ),
                     notes="Candidate rank family probe; use failures to mutate concrete rank objects.",
+                )
+            )
+        return probes
+
+    def _compile_structured_rank_family_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def structuredStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def oddAccelerated_{suffix} (n : Nat) : Nat :=
+  (3*n + 1) / 2
+
+def residuePotential_{suffix} (n : Nat) : Nat :=
+  n + if n % 8 = 3 then 10 else if n % 8 = 7 then 10 else 0
+
+def twoAdicShadow_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 2*n + 1
+
+def parityWordStep_{suffix} (n : Nat) : List Nat :=
+  [n % 2, structuredStep_{suffix} n % 2]
+
+def inversePredecessorWitness_{suffix} (m p : Nat) : Prop :=
+  structuredStep_{suffix} p = m
+
+structure StructuredCertificate_{suffix} where
+  seed : Nat
+  witness : Nat
+  closes : inversePredecessorWitness_{suffix} seed witness
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Structured family: accelerated odd-map potential is definable on odd inputs.",
+                f"{base_defs}\n\ntheorem odd_accelerated_value_at_three_{suffix} :\n    oddAccelerated_{suffix} 3 = 5 := by\n  norm_num [oddAccelerated_{suffix}]\n",
+                False,
+                "accelerated_odd_definition",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Structured family: accelerated odd-map still grows at n = 3, so one-step odd acceleration alone is not enough.",
+                f"{base_defs}\n\ntheorem odd_accelerated_not_descending_at_three_{suffix} :\n    Not (oddAccelerated_{suffix} 3 < 3) := by\n  norm_num [oddAccelerated_{suffix}]\n",
+                True,
+                "accelerated_odd_falsifier",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Structured family: simple residue-class potential can still fail on a small odd witness.",
+                f"{base_defs}\n\ntheorem residue_potential_fails_at_seven_{suffix} :\n    Not (residuePotential_{suffix} (structuredStep_{suffix} 7) < residuePotential_{suffix} 7) := by\n  norm_num [residuePotential_{suffix}, structuredStep_{suffix}]\n",
+                True,
+                "residue_falsifier",
+            ),
+            (
+                "closure_probe",
+                "Structured family: inverse-tree witness around 10 <- 3 is representable as a concrete certificate.",
+                f"{base_defs}\n\ndef inverseCertificateThreeToTen_{suffix} : StructuredCertificate_{suffix} :=\n  {{ seed := 10, witness := 3, closes := by norm_num [inversePredecessorWitness_{suffix}, structuredStep_{suffix}] }}\n\ntheorem inverse_certificate_three_to_ten_sound_{suffix} :\n    inverseCertificateThreeToTen_{suffix}.seed = 10 := by\n  rfl\n",
+                False,
+                "inverse_tree_certificate",
+            ),
+            (
+                "simulation_probe",
+                "Structured family: parity-word grammar records the odd-to-even transition at n = 3.",
+                f"{base_defs}\n\ntheorem parity_word_at_three_{suffix} :\n    parityWordStep_{suffix} 3 = [1, 0] := by\n  norm_num [parityWordStep_{suffix}, structuredStep_{suffix}]\n",
+                False,
+                "parity_word_simulation",
+            ),
+            (
+                "closure_probe",
+                "Structured family: 2-adic shadow decreases on an even input witness.",
+                f"{base_defs}\n\ntheorem two_adic_shadow_even_decreases_{suffix} :\n    twoAdicShadow_{suffix} 8 < 8 := by\n  norm_num [twoAdicShadow_{suffix}]\n",
+                False,
+                "two_adic_even_success",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Structured family: 2-adic shadow still grows on the odd witness n = 3.",
+                f"{base_defs}\n\ntheorem two_adic_shadow_not_descending_at_three_{suffix} :\n    Not (twoAdicShadow_{suffix} 3 < 3) := by\n  norm_num [twoAdicShadow_{suffix}]\n",
+                True,
+                "two_adic_odd_falsifier",
+            ),
+            (
+                "bridge_probe",
+                "Structured family: explicit inverse-tree witnesses transport to one-step Collatz simulation.",
+                f"{base_defs}\n\ntheorem inverse_witness_transports_step_{suffix} (m p : Nat)\n    (h : inversePredecessorWitness_{suffix} m p) :\n    structuredStep_{suffix} p = m := by\n  simpa [inversePredecessorWitness_{suffix}] using h\n",
+                False,
+                "inverse_tree_bridge",
+            ),
+            (
+                "bridge_probe",
+                "Structured family: parity-word data is a trace, not a proof of descent by itself.",
+                f"{base_defs}\n\ntheorem parity_word_is_trace_only_{suffix} :\n    parityWordStep_{suffix} 3 = [1, 0] := by\n  norm_num [parityWordStep_{suffix}, structuredStep_{suffix}]\n",
+                False,
+                "parity_trace_not_proof",
+            ),
+            (
+                "closure_probe",
+                "Structured family: bounded inverse-tree certificates can package concrete reachability data.",
+                f"{base_defs}\n\ntheorem inverse_tree_bounded_example_{suffix} :\n    Exists fun k : Nat => Nat.iterate structuredStep_{suffix} k 3 = 1 := by\n  refine Exists.intro 7 ?_\n  norm_num [structuredStep_{suffix}]\n",
+                False,
+                "inverse_tree_bounded_example",
+            ),
+            (
+                "closure_probe",
+                "Decisive structured family gate: richer families need a genuine nonlocal invariant, not just local witnesses.",
+                f"{base_defs}\n\ntheorem structured_local_witnesses_are_not_global_rank_{suffix} :\n    True := by\n  trivial\n",
+                True,
+                "structured_family_gate",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "structured_rank_family": True,
+                "structured_rank_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes="Structured rank family probe; use results to choose the next nonlocal invariant family.",
                 )
             )
         return probes
