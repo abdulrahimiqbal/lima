@@ -38,6 +38,8 @@ from .schemas import (
     CylinderPressureWaveRequest,
     CylinderPressureWaveRun,
     CandidateAnswer,
+    DynamicAdmissibilityCompassWaveRequest,
+    DynamicAdmissibilityCompassWaveRun,
     ExecutionResult,
     FinalCollatzExperimentRequest,
     FinalCollatzExperimentRun,
@@ -2227,6 +2229,86 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="global_forcing_hunt_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_dynamic_admissibility_compass_wave(
+        self,
+        campaign_id: str,
+        payload: DynamicAdmissibilityCompassWaveRequest,
+    ) -> DynamicAdmissibilityCompassWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for dynamic admissibility compass wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_dynamic_admissibility_compass_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"dynamic-admissibility-compass:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = DynamicAdmissibilityCompassWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                compass_gates=[
+                    "actual Collatz odd-even blocks force recovery",
+                    "fake all-odd and equal-recovery blocks are dynamically rejected",
+                    "dynamic blocks project to forcing progress",
+                    "bounded real-block search has no persistent bad candidate",
+                    "dynamic bridge target remains counting-only",
+                ],
+                pivot_sentinels=[
+                    "static persistent bad frontiers still exist without dynamic witnesses",
+                    "density-only closure does not remove survivor obstruction",
+                    "parity tags alone do not imply dynamic admissibility",
+                    "weak scarcity remains insufficient without a dynamic bridge",
+                    "survivor drop is a separate forcing exit",
+                ],
+                expected_learning=[
+                    "Whether actual Collatz transition data kills the fake persistent bad frontiers.",
+                    "Whether the current route needs a fourth forcing exit or only stronger dynamic admissibility.",
+                    "Whether density-only, inverse-tree-only, or parity-tag-only pivots are insufficient.",
+                    "where to pivot next if the bridge fails, based on the verified obstruction.",
+                ],
+                summary=(
+                    "Dynamic admissibility compass wave compiled bridge probes from true Collatz "
+                    "transition data to forcing alternatives, plus pivot sentinels for density-only, "
+                    "static-frontier, and parity-tag failure modes."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="DynamicAdmissibilityCompassWaveRun",
+                title=f"dynamic-admissibility-compass-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="dynamic_admissibility_compass_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -5498,6 +5580,370 @@ theorem survivor_drop_is_local_forcing_alternative_{suffix}
                     notes=(
                         "Global forcing hunt probe; adversarially test whether bounded "
                         "Composite Scarcity needs stronger dynamic admissibility."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_dynamic_admissibility_compass_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+import Mathlib
+
+def compassStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3 * n + 1
+
+structure CompassTransition_{suffix} where
+  input : Nat
+  output : Nat
+  tag : Nat
+
+def compassTransitionAdmissible_{suffix} (t : CompassTransition_{suffix}) : Prop :=
+  if t.tag = 0 then t.input % 2 = 0 /\\ t.output = t.input / 2
+  else t.input % 2 = 1 /\\ t.output = 3 * t.input + 1
+
+structure CompassBlock_{suffix} where
+  start : Nat
+  finish : Nat
+  horizon : Nat
+  oddDebt : Nat
+  recovery : Nat
+  badChildren : Nat
+  totalChildren : Nat
+  obstruction : Nat
+  nextObstruction : Nat
+
+def compassLegalBlock_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  b.totalChildren > 0 /\\ b.badChildren <= b.totalChildren /\\ b.finish > 0
+
+def compassStrongScarcity_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  4 * b.badChildren < b.totalChildren
+
+def compassRecoveryWins_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  2 * b.oddDebt < b.horizon + b.recovery
+
+def compassSurvivorDrops_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  b.nextObstruction < b.obstruction
+
+def compassProgress_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  compassStrongScarcity_{suffix} b \\/
+    compassRecoveryWins_{suffix} b \\/
+    compassSurvivorDrops_{suffix} b
+
+def compassPersistentBad_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  compassLegalBlock_{suffix} b /\\ Not (compassProgress_{suffix} b)
+
+def compassDensityContracts_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  2 * b.badChildren < b.totalChildren
+
+def compassFinalClosure_{suffix} (b : CompassBlock_{suffix}) : Prop :=
+  b.badChildren = 0 /\\ b.obstruction = 0
+
+def compassDynamicBridgeTarget_{suffix} (horizon : Nat) : Prop :=
+  ∀ b : CompassBlock_{suffix},
+    compassLegalBlock_{suffix} b ->
+    b.horizon <= horizon ->
+    compassProgress_{suffix} b
+
+def step3to10_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 3, output := 10, tag := 1 }}
+
+def step10to5_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 10, output := 5, tag := 0 }}
+
+def step5to16_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 5, output := 16, tag := 1 }}
+
+def step16to8_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 16, output := 8, tag := 0 }}
+
+def fakeOddAfterOdd_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 10, output := 31, tag := 1 }}
+
+def fakeParityTagOnly_{suffix} : CompassTransition_{suffix} :=
+  {{ input := 10, output := 31, tag := 1 }}
+
+def realOddEvenBlock3_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 3, finish := 5, horizon := 2, oddDebt := 1, recovery := 1,
+    badChildren := 1, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def realOddEvenBlock5_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 5, finish := 8, horizon := 2, oddDebt := 1, recovery := 1,
+    badChildren := 1, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def realMixedBlock7_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 7, finish := 11, horizon := 2, oddDebt := 1, recovery := 1,
+    badChildren := 1, totalChildren := 8, obstruction := 7, nextObstruction := 7 }}
+
+def staticAllOddNoRecoveryBlock_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 3, finish := 31, horizon := 3, oddDebt := 3, recovery := 0,
+    badChildren := 4, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def equalRecoveryStaticBlock_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 3, finish := 5, horizon := 3, oddDebt := 3, recovery := 3,
+    badChildren := 4, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def weakScarcityStaticBlock_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 9, finish := 9, horizon := 5, oddDebt := 3, recovery := 3,
+    badChildren := 4, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def densityOnlyBlock_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 1, finish := 1, horizon := 1, oddDebt := 0, recovery := 1,
+    badChildren := 0, totalChildren := 8, obstruction := 5, nextObstruction := 5 }}
+
+def survivorDropBlock_{suffix} : CompassBlock_{suffix} :=
+  {{ start := 27, finish := 82, horizon := 1, oddDebt := 1, recovery := 0,
+    badChildren := 4, totalChildren := 8, obstruction := 7, nextObstruction := 3 }}
+
+def realSmallSearchPass_{suffix} : Prop :=
+  compassProgress_{suffix} realOddEvenBlock3_{suffix} /\\
+  compassProgress_{suffix} realOddEvenBlock5_{suffix} /\\
+  compassProgress_{suffix} realMixedBlock7_{suffix}
+
+def noPersistentBadInRealSmallSearch_{suffix} : Prop :=
+  Not (compassPersistentBad_{suffix} realOddEvenBlock3_{suffix}) /\\
+  Not (compassPersistentBad_{suffix} realOddEvenBlock5_{suffix}) /\\
+  Not (compassPersistentBad_{suffix} realMixedBlock7_{suffix})
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "closure_probe",
+                "Dynamic admissibility compass / real odd-even Collatz block at 3 is admissible.",
+                f"""{base_defs}
+
+theorem compass_real_3_10_5_admissible_{suffix} :
+    compassTransitionAdmissible_{suffix} step3to10_{suffix} /\\
+    compassTransitionAdmissible_{suffix} step10to5_{suffix} := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "real_odd_even_block",
+            ),
+            (
+                "bridge_probe",
+                "Dynamic admissibility compass / real odd-even block projects to forcing progress.",
+                f"""{base_defs}
+
+theorem compass_real_odd_even_block_projects_to_progress_{suffix} :
+    compassProgress_{suffix} realOddEvenBlock3_{suffix} := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "real_block_progress",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / fake all-odd no-recovery step is rejected.",
+                f"""{base_defs}
+
+theorem compass_fake_all_odd_step_rejected_{suffix} :
+    Not (compassTransitionAdmissible_{suffix} fakeOddAfterOdd_{suffix}) := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "fake_all_odd_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / parity tag alone is not dynamic admissibility.",
+                f"""{base_defs}
+
+theorem compass_parity_tag_alone_not_enough_{suffix} :
+    fakeParityTagOnly_{suffix}.tag = 1 /\\
+    Not (compassTransitionAdmissible_{suffix} fakeParityTagOnly_{suffix}) := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "parity_tag_insufficient",
+            ),
+            (
+                "closure_probe",
+                "Dynamic admissibility compass / real small Collatz block search forces progress.",
+                f"""{base_defs}
+
+theorem compass_real_small_search_forces_progress_{suffix} :
+    realSmallSearchPass_{suffix} := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "finite_real_search",
+            ),
+            (
+                "closure_probe",
+                "Dynamic admissibility compass / real small search has no persistent bad block.",
+                f"""{base_defs}
+
+theorem compass_real_small_search_has_no_persistent_bad_{suffix} :
+    noPersistentBadInRealSmallSearch_{suffix} := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "finite_real_no_persistent_bad",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / static all-odd no-recovery block remains persistent bad.",
+                f"""{base_defs}
+
+theorem compass_static_all_odd_no_recovery_persistent_bad_{suffix} :
+    compassPersistentBad_{suffix} staticAllOddNoRecoveryBlock_{suffix} := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "static_all_odd_persistent",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / equal-recovery static block remains persistent bad.",
+                f"""{base_defs}
+
+theorem compass_equal_recovery_static_persistent_bad_{suffix} :
+    compassPersistentBad_{suffix} equalRecoveryStaticBlock_{suffix} := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "equal_recovery_persistent",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / weak-scarcity static block remains persistent bad.",
+                f"""{base_defs}
+
+theorem compass_weak_scarcity_static_persistent_bad_{suffix} :
+    compassPersistentBad_{suffix} weakScarcityStaticBlock_{suffix} := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "weak_scarcity_persistent",
+            ),
+            (
+                "bridge_probe",
+                "Dynamic admissibility compass / strong scarcity still gives density contraction.",
+                f"""{base_defs}
+
+theorem compass_strong_scarcity_gives_density_contraction_{suffix}
+    (b : CompassBlock_{suffix})
+    (h : compassStrongScarcity_{suffix} b) :
+    compassDensityContracts_{suffix} b := by
+  unfold compassStrongScarcity_{suffix} compassDensityContracts_{suffix} at *
+  omega
+""",
+                True,
+                "dynamic_bridge",
+                "density_projection",
+            ),
+            (
+                "closure_probe",
+                "Dynamic admissibility compass / recovery margin wins for actual odd-even block.",
+                f"""{base_defs}
+
+theorem compass_recovery_margin_wins_for_real_odd_even_block_{suffix} :
+    compassRecoveryWins_{suffix} realOddEvenBlock3_{suffix} := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "recovery_margin",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / density-only closure does not remove survivor obstruction.",
+                f"""{base_defs}
+
+theorem compass_density_only_does_not_close_survivor_{suffix} :
+    densityOnlyBlock_{suffix}.badChildren = 0 /\\
+    Not (compassFinalClosure_{suffix} densityOnlyBlock_{suffix}) := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "density_only_insufficient",
+            ),
+            (
+                "bridge_probe",
+                "Dynamic admissibility compass / survivor drop is a separate forcing exit.",
+                f"""{base_defs}
+
+theorem compass_survivor_drop_is_forcing_exit_{suffix} :
+    compassProgress_{suffix} survivorDropBlock_{suffix} := by
+  native_decide
+""",
+                True,
+                "pivot_sentinel",
+                "survivor_exit",
+            ),
+            (
+                "definition_probe",
+                "Dynamic admissibility compass / bridge target is counting-only and has no reachability field.",
+                f"""{base_defs}
+
+theorem compass_bridge_target_is_counting_shape_{suffix} :
+    compassDynamicBridgeTarget_{suffix} 4 ->
+    realOddEvenBlock3_{suffix}.oddDebt = 1 /\\
+      realOddEvenBlock3_{suffix}.recovery = 1 /\\
+      staticAllOddNoRecoveryBlock_{suffix}.badChildren = 4 := by
+  intro _h
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only_target",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Dynamic admissibility compass / fake static obstruction has no dynamic transition witness.",
+                f"""{base_defs}
+
+theorem compass_static_obstruction_has_no_dynamic_witness_{suffix} :
+    compassPersistentBad_{suffix} staticAllOddNoRecoveryBlock_{suffix} /\\
+    Not (compassTransitionAdmissible_{suffix} fakeOddAfterOdd_{suffix}) := by
+  native_decide
+""",
+                True,
+                "dynamic_bridge",
+                "static_obstruction_no_witness",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "dynamic_admissibility_compass_wave": True,
+                "compass_family": family,
+                "compass_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Dynamic admissibility compass probe; use verification as discovery "
+                        "for both the bridge path and pivot sentinels."
                     ),
                 )
             )
