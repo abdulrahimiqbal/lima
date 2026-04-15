@@ -29,6 +29,8 @@ from .schemas import (
     CandidateRankFamilyRun,
     CompositionalCertificateFamilyRequest,
     CompositionalCertificateFamilyRun,
+    CoverageNormalizationHuntRequest,
+    CoverageNormalizationHuntRun,
     CandidateAnswer,
     ExecutionResult,
     FinalCollatzExperimentRequest,
@@ -1703,6 +1705,78 @@ class CampaignService:
             )
             return run
 
+    def run_coverage_normalization_hunt(
+        self,
+        campaign_id: str,
+        payload: CoverageNormalizationHuntRequest,
+    ) -> CoverageNormalizationHuntRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for coverage normalization hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_coverage_normalization_hunt_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"coverage-normalization:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CoverageNormalizationHuntRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                coverage_families=[
+                    "admissible parity/residue blocks",
+                    "pruning subblock detection",
+                    "extension closure",
+                    "obstruction families",
+                    "coverage anti-smuggling",
+                    "density-weakened coverage gate",
+                ],
+                expected_learning=[
+                    "Whether the current lineage can state a non-circular global coverage theorem.",
+                    "Whether admissible blocks expose recurring pruning rather than isolated examples.",
+                    "Whether failure should pivot to Tao-informed density, inverse-tree normal forms, or counterexample ecology.",
+                ],
+                summary=(
+                    "Coverage-normalization hunt compiled final decision-gate probes for whether "
+                    "hybrid certificates can support a global coverage/pruning theorem."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CoverageNormalizationHuntRun",
+                title=f"coverage-normalization-hunt:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="coverage_normalization_hunt_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -2794,6 +2868,254 @@ theorem local_measure_type_exists_but_is_not_descent_{suffix} :
                     notes=(
                         "Compositional certificate probe; use results to decide whether "
                         "local hybrid syntax can become a coverage/descent calculus."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_coverage_normalization_hunt_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def coverStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def blockValue_{suffix} (bits : List Nat) : Nat :=
+  bits.foldl (fun acc bit => 2 * acc + bit) 0
+
+def admissibleBlock_{suffix} (bits : List Nat) : Prop :=
+  bits.length > 0 /\\ bits.all (fun bit => bit = 0 || bit = 1)
+
+def blockHasEvenPrune_{suffix} (bits : List Nat) : Prop :=
+  0 ∈ bits
+
+def blockHasOddGrowth_{suffix} (bits : List Nat) : Prop :=
+  1 ∈ bits
+
+def coverageClass_{suffix} (bits : List Nat) : Nat :=
+  if blockHasEvenPrune_{suffix} bits then 0 else 1
+
+def obstructionBlock_{suffix} (bits : List Nat) : Prop :=
+  admissibleBlock_{suffix} bits /\\ ¬ blockHasEvenPrune_{suffix} bits
+
+def extendWithPrune_{suffix} (bits : List Nat) : List Nat :=
+  bits ++ [0]
+
+def blockComplexity_{suffix} (bits : List Nat) : Nat :=
+  bits.length + blockValue_{suffix} bits
+
+def normalizesByPrune_{suffix} (bits : List Nat) : Prop :=
+  blockHasEvenPrune_{suffix} bits
+
+def GlobalCoverageCandidate_{suffix} : Prop :=
+  forall bits : List Nat,
+    admissibleBlock_{suffix} bits ->
+      normalizesByPrune_{suffix} bits \\/ normalizesByPrune_{suffix} (extendWithPrune_{suffix} bits)
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Coverage hunt: admissible parity/residue blocks are definable without reachability.",
+                f"""{base_defs}
+
+theorem admissible_block_101_{suffix} :
+    admissibleBlock_{suffix} [1, 0, 1] := by
+  native_decide
+""",
+                False,
+                "admissible_blocks",
+            ),
+            (
+                "closure_probe",
+                "Coverage hunt: concrete pruning subblock detection works on a mixed block.",
+                f"""{base_defs}
+
+theorem prune_subblock_detects_101_{suffix} :
+    blockHasEvenPrune_{suffix} [1, 0, 1] := by
+  native_decide
+""",
+                False,
+                "pruning_subblock",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Coverage hunt: all-odd blocks are admissible obstructions to immediate pruning.",
+                f"""{base_defs}
+
+theorem all_odd_block_is_obstruction_{suffix} :
+    obstructionBlock_{suffix} [1, 1, 1] := by
+  native_decide
+""",
+                True,
+                "all_odd_obstruction",
+            ),
+            (
+                "closure_probe",
+                "Coverage hunt: appending an even prune bit normalizes a concrete obstruction block.",
+                f"""{base_defs}
+
+theorem extend_all_odd_block_with_prune_{suffix} :
+    normalizesByPrune_{suffix} (extendWithPrune_{suffix} [1, 1, 1]) := by
+  native_decide
+""",
+                False,
+                "extension_prune",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Coverage hunt: trivial extension coverage is too weak because it ignores dynamics.",
+                f"""{base_defs}
+
+theorem trivial_extension_coverage_does_not_use_collatz_{suffix} :
+    GlobalCoverageCandidate_{suffix} := by
+  intro bits hbits
+  by_cases h : normalizesByPrune_{suffix} bits
+  · exact Or.inl h
+  · exact Or.inr (by
+      unfold normalizesByPrune_{suffix} blockHasEvenPrune_{suffix} extendWithPrune_{suffix}
+      simp)
+""",
+                True,
+                "trivial_extension_anti_signal",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Coverage hunt: immediate pruning is false for an admissible all-odd block.",
+                f"""{base_defs}
+
+theorem immediate_pruning_coverage_false_{suffix} :
+    Not (forall bits : List Nat, admissibleBlock_{suffix} bits -> normalizesByPrune_{suffix} bits) := by
+  intro h
+  have hadm : admissibleBlock_{suffix} [1, 1, 1] := by native_decide
+  have hnorm := h [1, 1, 1] hadm
+  native_decide
+""",
+                True,
+                "immediate_coverage_false",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Coverage hunt: short-block coverage still sees the 3 -> 10 -> 5 growth obstruction.",
+                f"""{base_defs}
+
+theorem short_block_growth_obstruction_at_three_{suffix} :
+    Not (Nat.iterate coverStep_{suffix} 2 3 < 3) := by
+  native_decide
+""",
+                True,
+                "short_block_growth",
+            ),
+            (
+                "closure_probe",
+                "Coverage hunt: even-root pruning remains a genuine local descent witness.",
+                f"""{base_defs}
+
+theorem even_root_local_prune_at_ten_{suffix} :
+    coverStep_{suffix} 10 < 10 := by
+  native_decide
+""",
+                False,
+                "even_root_prune",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Coverage hunt: block complexity can increase when extending to find pruning.",
+                f"""{base_defs}
+
+theorem extension_can_increase_block_complexity_{suffix} :
+    blockComplexity_{suffix} [1, 1, 1] <
+      blockComplexity_{suffix} (extendWithPrune_{suffix} [1, 1, 1]) := by
+  native_decide
+""",
+                True,
+                "extension_complexity_gate",
+            ),
+            (
+                "closure_probe",
+                "Coverage hunt: obstruction classes can be stated as a smaller named target.",
+                f"""{base_defs}
+
+def ObstructionClassCovered_{suffix} : Prop :=
+  forall bits : List Nat,
+    obstructionBlock_{suffix} bits -> normalizesByPrune_{suffix} (extendWithPrune_{suffix} bits)
+
+theorem obstruction_class_covered_by_forced_extension_{suffix} :
+    ObstructionClassCovered_{suffix} := by
+  intro bits hobs
+  unfold normalizesByPrune_{suffix} blockHasEvenPrune_{suffix} extendWithPrune_{suffix}
+  simp
+""",
+                True,
+                "obstruction_class_target",
+            ),
+            (
+                "closure_probe",
+                "Coverage hunt: density-weakened coverage can be stated without proving full Collatz.",
+                f"""{base_defs}
+
+def DensityWeakCoverage_{suffix} : Prop :=
+  forall bits : List Nat,
+    admissibleBlock_{suffix} bits -> Exists fun extension : List Nat =>
+      normalizesByPrune_{suffix} (bits ++ extension)
+
+theorem density_weak_coverage_has_trivial_forced_extension_{suffix} :
+    DensityWeakCoverage_{suffix} := by
+  intro bits hbits
+  exact Exists.intro [0] (by
+    unfold normalizesByPrune_{suffix} blockHasEvenPrune_{suffix}
+    simp)
+""",
+                True,
+                "density_weak_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Decisive coverage gate: forced-extension coverage is not enough unless the extension is dynamically admissible.",
+                f"""{base_defs}
+
+def DynamicallyAdmissibleExtension_{suffix} (bits extension : List Nat) : Prop :=
+  extension.length > 0 /\\ admissibleBlock_{suffix} (bits ++ extension)
+
+theorem forced_extension_only_solves_syntax_{suffix} :
+    DynamicallyAdmissibleExtension_{suffix} [1, 1, 1] [0] /\\
+    normalizesByPrune_{suffix} ([1, 1, 1] ++ [0]) := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "dynamic_admissibility_gate",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "coverage_normalization_hunt": True,
+                "coverage_normalization_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Coverage-normalization probe; use results as the final decision gate "
+                        "for the current hybrid certificate lineage."
                     ),
                 )
             )
