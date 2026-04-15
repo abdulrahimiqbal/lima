@@ -269,3 +269,42 @@ Decision implication:
 ```text
 Do not pivot away from structured certificates yet. Pivot away from coarse one-step signatures. The next wave should test whether local hybrid certificates compose: certificate extension, pruning/normal-form rules, block-level parity grammar, and a well-founded complexity measure on certificate transformations. The missing mathematical object is now sharper: a compositional certificate calculus with a coverage theorem, not just a local certificate record.
 ```
+
+### R10. Compositional Certificates Expose The Coverage Gap
+
+These facts come from compositional certificate-family runs `CC-cb23563506` / `CC-1abec63d05` on world `W-0273193499`, digested in `PD-b057ba472c`.
+
+Verified probe outcomes:
+
+```text
+one-step hybrid segment certificates are definable: proved
+adjacent local certificates compose into a two-step certificate: proved
+block parity grammar records the 3 -> 10 -> 5 block: proved
+composed certificates preserve concrete trajectory soundness: proved
+two-step odd-even composition is still not a descent proof: proved
+three primitive steps from 3 still grow, so short blocks are not enough: proved
+even-root pruning has a concrete decreasing example: proved
+certificate complexity decreases only for pruning, not composition: proved
+coarse composition signatures still do not determine descent: proved
+local extension is formalizable but creates a coverage obligation: proved
+```
+
+Status:
+
+```text
+compositional probes Lean-clean in digest PD-b057ba472c
+latest overall digest: 58 proved, 3 blocked, 7 inconclusive across 68 mapped probes
+inconclusive compositional entries were rate-limit/submission artifact gaps; duplicate live probes resolved the same shapes as proved
+```
+
+Interpretation:
+
+```text
+The local certificate calculus is now formalizable beyond one-step records: segments compose, block traces work, and concrete pruning can decrease. But the decisive gates are negative for a near-term solve: two-step and three-step blocks from n = 3 still grow, simple certificate complexity increases under composition, and coarse composition signatures still do not imply descent. The remaining missing object is not syntax, not local soundness, and not bounded examples. It is a global coverage/normalization theorem strong enough to guarantee recurring pruning or descent.
+```
+
+Decision implication:
+
+```text
+This is not the final pre-solution step. It is the last clear decision gate for the current Alien State-Space / hybrid-certificate lineage. Continue only if the next mutation can propose a genuine coverage theorem: every admissible parity/residue block either normalizes, prunes, or extends to a lower-complexity certificate. If the next wave again proves only local examples and small anti-descent facts, pivot to a different world family such as Tao-informed density/measure transport, inverse-tree normal forms, or minimal-counterexample ecology.
+```

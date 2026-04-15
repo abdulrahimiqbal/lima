@@ -99,21 +99,22 @@ Rank/certificate hunt: completed, but direct existence probe blocked
 Candidate scalar rank-family gauntlet: completed, mostly negative
 Structured rank-family wave: completed, mixed but informative
 Hybrid certificate-family wave: completed, positive local syntax / negative coarse signature completeness
-Current bottleneck: make local hybrid certificates compose into global proof compression
-Next phase: compositional certificate calculus and coverage/descent hunt
+Compositional certificate wave: completed, positive local composition / negative short-block descent
+Current bottleneck: prove a global coverage/normalization theorem, not more local certificate examples
+Next phase: either invent a real coverage theorem or pivot world family
 ```
 
 ## Next Phase
 
-The next phase is not more broad invention, not another scalar-potential search, and not another local certificate-record test. The hybrid wave already proved the local language is expressible. The new target is composition:
+The next phase is not more broad invention, not another scalar-potential search, not another local certificate-record test, and not another short-block composition test. The hybrid and compositional waves already proved the local language is expressible. The new target is global coverage:
 
 ```text
-compositional hybrid certificate calculus combining:
-- inverse-tree certificate extension
-- parity-block grammar rather than one-step trace only
-- valuation/residue constraints strong enough to prune branches
-- explicit transport lemmas back to Collatz dynamics
-- a well-founded complexity measure on certificate transformations
+coverage / normalization theorem for the hybrid calculus:
+- every admissible parity/residue block extends, normalizes, or prunes
+- pruning must recur often enough to beat growth
+- the certificate complexity measure must decrease globally, not merely on even-root examples
+- the theorem must avoid being reachability to 1 in disguise
+- failure to state this theorem cleanly should trigger a world-family pivot
 ```
 
-Success means local certificates can be extended, normalized, or pruned in a way that turns global trajectory questions into a smaller coverage theorem. Failure means the current encoding-world path probably lacks enough global leverage and should pivot to a different world family.
+Success means the current world produces a smaller named theorem than Collatz: a coverage/normalization statement over certificate blocks. Failure means the current encoding-world path probably lacks enough global leverage and should pivot to a different world family.
