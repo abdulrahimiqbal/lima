@@ -12,7 +12,10 @@ from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
 
-from .collatz_automaton import analyze_dynamic_pressure_automaton
+from .collatz_automaton import (
+    analyze_dynamic_pressure_automaton,
+    analyze_height_lifted_pressure_automaton,
+)
 from .config import Settings
 from .executor import Executor
 from .frontier import apply_execution_result, seed_frontier
@@ -2335,9 +2338,17 @@ class CampaignService:
                 )
                 for window in range(1, payload.max_window + 1)
             ]
+            height_reports = [
+                analyze_height_lifted_pressure_automaton(
+                    window=window,
+                    modulus_bits=max(2, window + payload.modulus_extra_bits),
+                )
+                for window in range(1, payload.max_window + 1)
+            ]
             probes = self._compile_dynamic_pressure_automaton_wave_probes(
                 world_id=world_id,
                 reports=reports,
+                height_reports=height_reports,
                 max_probes=payload.max_probes,
             )
             for probe in probes:
@@ -2359,6 +2370,38 @@ class CampaignService:
                 )
             else:
                 obstruction_summary = "No bad cycles found in the requested residue over-approximations."
+            dangerous_height = [
+                report
+                for report in height_reports
+                if report["decision"] == "dangerous_nonexpanding_bad_cycle_found"
+            ]
+            unchecked_height = [
+                report
+                for report in height_reports
+                if report["decision"] == "needs_larger_exact_scc_check"
+            ]
+            expanding_height = [
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ]
+            if dangerous_height:
+                height_gate_summary = (
+                    "Height gate found a nonexpanding recurrent bad component; "
+                    "pressure plus height is not enough at the checked horizon."
+                )
+            elif unchecked_height:
+                height_gate_summary = (
+                    "Height gate has unchecked large recurrent components; increase exact SCC bounds "
+                    "before promoting this signal."
+                )
+            elif expanding_height:
+                height_gate_summary = (
+                    "All checked recurrent bad components are height-expanding; pure pressure ghosts "
+                    "now point to a pressure-plus-height bridge."
+                )
+            else:
+                height_gate_summary = "No recurrent bad components survived the pressure gate."
             run = DynamicPressureAutomatonWaveRun(
                 campaign_id=campaign_id,
                 world_id=world_id,
@@ -2366,12 +2409,14 @@ class CampaignService:
                 compiled_probe_count=len(probes),
                 probe_ids=[probe.id for probe in probes],
                 automaton_reports=reports,
+                height_lift_reports=height_reports,
                 automaton_gates=[
                     "sound finite residue relation with hidden high-bit even splits",
                     "integer pressure surrogate 8 * odd < 5 * even",
                     "bad-subgraph cycle search before theorem investment",
                     "acyclic reports produce rank-certificate shape",
                     "cycle reports produce obstruction witnesses",
+                    "height lift classifies recurrent bad components by Archimedean drift",
                 ],
                 decisive_probe_ids=[
                     probe.id
@@ -2385,10 +2430,12 @@ class CampaignService:
                     "Whether the roadmap should chase pressure alone or pressure plus positive-integer height.",
                 ],
                 obstruction_summary=obstruction_summary,
+                height_gate_summary=height_gate_summary,
                 summary=(
                     "Dynamic pressure automaton wave enumerated the sound Collatz residue relation, "
-                    "searched the bad-pressure subgraph for cycles, and compiled Lean probes for the "
-                    "pressure rule plus any discovered residue obstruction."
+                    "searched the bad-pressure subgraph for cycles, classified recurrent components "
+                    "by height drift, and compiled Lean probes for the pressure rule plus discovered "
+                    "residue/height obstructions."
                 ),
             )
             self.memory.upsert_research_node(
@@ -6049,11 +6096,32 @@ theorem compass_static_obstruction_has_no_dynamic_witness_{suffix} :
         *,
         world_id: str,
         reports: list[dict[str, Any]],
+        height_reports: list[dict[str, Any]],
         max_probes: int,
     ) -> list[FormalProbe]:
         suffix = uuid4().hex[:8]
         cycle_report = next((report for report in reports if report["cycle_found"]), None)
         acyclic_report = next((report for report in reports if not report["cycle_found"]), reports[0])
+        expanding_report = next(
+            (
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ),
+            None,
+        )
+        expanding_component = (
+            expanding_report["components"][0]
+            if expanding_report and expanding_report.get("components")
+            else None
+        )
+        expanding_drift = (
+            expanding_component.get("witness_height_drift", {})
+            if expanding_component
+            else {}
+        )
+        expanding_odd = int(expanding_drift.get("cycle_odd_count", 1))
+        expanding_even = int(expanding_drift.get("cycle_even_count", 1))
         modulus = int((cycle_report or reports[0])["modulus"])
         window = int((cycle_report or reports[0])["window"])
         base_defs = f"""
@@ -6066,11 +6134,18 @@ def dpaSuccs_{suffix} (r : Nat) : List Nat :=
 def dpaPositivePressure_{suffix} (evenCount oddCount : Nat) : Prop :=
   8 * oddCount < 5 * evenCount
 
+def dpaHeightExpands_{suffix} (evenCount oddCount : Nat) : Prop :=
+  2 ^ evenCount < 3 ^ oddCount
+
 def dpaGhostEven_{suffix} : Nat := dpaM_{suffix} - 2
 
 def dpaGhostOdd_{suffix} : Nat := dpaM_{suffix} - 1
 
 def dpaWindow_{suffix} : Nat := {window}
+
+def dpaExpandingOddWitness_{suffix} : Nat := {expanding_odd}
+
+def dpaExpandingEvenWitness_{suffix} : Nat := {expanding_even}
 
 def dpaAcyclicRankWitness_{suffix} : Nat :=
   {int(acyclic_report.get("certificate", {}).get("max_rank", 0))}
@@ -6192,6 +6267,44 @@ theorem dpa_one_step_odd_window_not_positive_{suffix} :
                         True,
                         "pressure_rule",
                         "odd_debt_gate",
+                    ),
+                ]
+            )
+        if expanding_report:
+            specs.extend(
+                [
+                    (
+                        "bridge_probe",
+                        "Dynamic pressure automaton / height lift removes the first recurrent bad ghost.",
+                        f"""{base_defs}
+
+theorem dpa_height_lift_removes_recurrent_bad_ghost_{suffix} :
+    dpaHeightExpands_{suffix}
+      dpaExpandingEvenWitness_{suffix}
+      dpaExpandingOddWitness_{suffix} := by
+  native_decide
+""",
+                        True,
+                        "height_lift",
+                        "expanding_bad_component",
+                    ),
+                    (
+                        "bridge_probe",
+                        "Dynamic pressure automaton / pressure-bad and height-expanding are separate exits.",
+                        f"""{base_defs}
+
+theorem dpa_pressure_bad_can_still_height_escape_{suffix} :
+    Not (dpaPositivePressure_{suffix}
+      dpaExpandingEvenWitness_{suffix}
+      dpaExpandingOddWitness_{suffix}) /\\
+    dpaHeightExpands_{suffix}
+      dpaExpandingEvenWitness_{suffix}
+      dpaExpandingOddWitness_{suffix} := by
+  native_decide
+""",
+                        True,
+                        "height_lift",
+                        "pressure_bad_height_escape",
                     ),
                 ]
             )

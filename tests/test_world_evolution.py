@@ -6,7 +6,10 @@ from fastapi.testclient import TestClient
 
 from app.executor import AristotleSdkProofAdapter
 from app.config import Settings
-from app.collatz_automaton import analyze_dynamic_pressure_automaton
+from app.collatz_automaton import (
+    analyze_dynamic_pressure_automaton,
+    analyze_height_lifted_pressure_automaton,
+)
 from app.main import create_app
 from app.schemas import (
     ApprovedExecutionPlan,
@@ -651,6 +654,23 @@ def test_dynamic_pressure_automaton_can_emit_acyclic_rank_certificate() -> None:
     assert report["certificate"]["max_rank"] >= 1
 
 
+def test_height_lifted_pressure_classifies_bad_cycles_as_expanding() -> None:
+    ghost_report = analyze_height_lifted_pressure_automaton(window=2, modulus_bits=6)
+    broad_report = analyze_height_lifted_pressure_automaton(window=5, modulus_bits=9)
+
+    assert ghost_report["decision"] == "all_checked_bad_cycles_height_expanding"
+    assert ghost_report["dangerous_component_count"] == 0
+    assert ghost_report["height_expanding_component_count"] == ghost_report["recurrent_component_count"]
+    assert ghost_report["components"][0]["ghost_family"] == "2-adic negative ghost cycle -2 <-> -1"
+    assert (
+        ghost_report["components"][0]["witness_height_drift"]["comparison"]
+        == "height_expanding"
+    )
+    assert broad_report["decision"] == "all_checked_bad_cycles_height_expanding"
+    assert broad_report["dangerous_component_count"] == 0
+    assert broad_report["components"][0]["min_cycle_mean_log2_height_drift"] > 0
+
+
 def test_dynamic_pressure_automaton_wave_compiles_search_backed_probes(
     tmp_path: Path,
 ) -> None:
@@ -677,18 +697,24 @@ def test_dynamic_pressure_automaton_wave_compiles_search_backed_probes(
         json={
             "max_window": 4,
             "modulus_extra_bits": 2,
-            "max_probes": 6,
+            "max_probes": 8,
             "submit_after_compile": False,
         },
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["compiled_probe_count"] == 6
+    assert payload["compiled_probe_count"] == 8
     assert payload["automaton_reports"][0]["certificate"]["kind"] == "acyclic_bad_subgraph"
     assert any(report["cycle_found"] for report in payload["automaton_reports"])
+    assert any(
+        report["decision"] == "all_checked_bad_cycles_height_expanding"
+        for report in payload["height_lift_reports"]
+    )
     assert "2-adic negative ghost cycle" in payload["obstruction_summary"]
+    assert "height-expanding" in payload["height_gate_summary"]
     assert "bad-subgraph cycle search before theorem investment" in payload["automaton_gates"]
+    assert "height lift classifies recurrent bad components by Archimedean drift" in payload["automaton_gates"]
     assert payload["decisive_probe_ids"]
     assert any("2-adic ghost cycles" in item for item in payload["expected_learning"])
 

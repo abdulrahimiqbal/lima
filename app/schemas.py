@@ -1126,10 +1126,12 @@ class DynamicPressureAutomatonWaveRun(BaseModel):
     submitted_probe_count: int = 0
     probe_ids: list[str] = Field(default_factory=list)
     automaton_reports: list[dict[str, Any]] = Field(default_factory=list)
+    height_lift_reports: list[dict[str, Any]] = Field(default_factory=list)
     automaton_gates: list[str] = Field(default_factory=list)
     decisive_probe_ids: list[str] = Field(default_factory=list)
     expected_learning: list[str] = Field(default_factory=list)
     obstruction_summary: str = ""
+    height_gate_summary: str = ""
     decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
     summary: str = ""
     created_at: datetime = Field(default_factory=_utc_now)

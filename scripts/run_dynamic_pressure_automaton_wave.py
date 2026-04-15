@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.collatz_automaton import analyze_dynamic_pressure_automaton
+from app.collatz_automaton import (
+    analyze_dynamic_pressure_automaton,
+    analyze_height_lifted_pressure_automaton,
+)
 from app.config import Settings
 from app.schemas import (
     CampaignCreate,
@@ -79,6 +82,13 @@ def run_local(*, max_window: int, extra_bits: int) -> None:
         )
         for window in range(1, max_window + 1)
     ]
+    height_reports = [
+        analyze_height_lifted_pressure_automaton(
+            window=window,
+            modulus_bits=max(2, window + extra_bits),
+        )
+        for window in range(1, max_window + 1)
+    ]
     emit(
         "local_reports",
         [
@@ -93,6 +103,25 @@ def run_local(*, max_window: int, extra_bits: int) -> None:
                 "interpretation": report["interpretation"],
             }
             for report in reports
+        ],
+    )
+    emit(
+        "height_lift_reports",
+        [
+            {
+                "window": report["window"],
+                "modulus_bits": report["modulus_bits"],
+                "state_count": report["state_count"],
+                "edge_count": report["edge_count"],
+                "recurrent_component_count": report["recurrent_component_count"],
+                "height_expanding_component_count": report["height_expanding_component_count"],
+                "dangerous_component_count": report["dangerous_component_count"],
+                "unchecked_component_count": report["unchecked_component_count"],
+                "decision": report["decision"],
+                "components": report["components"],
+                "interpretation": report["interpretation"],
+            }
+            for report in height_reports
         ],
     )
 
@@ -133,7 +162,9 @@ def submit(
             "compiled_probe_count": run.compiled_probe_count,
             "decisive_probe_ids": run.decisive_probe_ids,
             "obstruction_summary": run.obstruction_summary,
+            "height_gate_summary": run.height_gate_summary,
             "reports": run.automaton_reports,
+            "height_lift_reports": run.height_lift_reports,
         },
     )
 
