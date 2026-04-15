@@ -445,3 +445,90 @@ Decision implication:
 ```text
 Keep chasing the cylinder-pressure world. The next wave should test quantitative scarcity rather than definability: branching-process bounds, multi-level bad-child counts, recovery-window frequency, and a density-zero theorem schema. The likely smaller named theorem is now: every dynamically admissible bad-pressure frontier has subcritical bad-child branching after bounded recovery windows.
 ```
+
+### R14. Pivot Portfolio Gives A Real Directional Signal, Not A Finished Theorem
+
+These facts come from pivot-portfolio run `PV-10afc4c4b7` on world `W-0273193499`, local campaign `C-c99c9a92c421`, digested in `PD-1d44e80125`.
+
+The run was intentionally broader than the prior pressure-only waves. It tested five possible pivot lanes:
+
+```text
+pressure scarcity
+inverse-tree dynamic admissibility
+minimal-counterexample ecology
+Tao-style density transport
+cross-lane bridge / separation gates
+```
+
+Verified status:
+
+```text
+32 portfolio probes total
+26 proved
+0 blocked
+6 inconclusive
+
+by lane:
+- inverse-tree dynamic admissibility: 8 / 8 proved
+- minimal-counterexample ecology: 8 / 8 proved
+- Tao-style density transport: 6 / 6 proved
+- cross-lane bridge / separation gates: 2 / 2 proved
+- pressure scarcity: 2 / 8 proved, 6 artifact-missing
+
+The remaining 6 are artifact-missing pressure probes, not Lean/math failures.
+```
+
+The proved non-pressure probes include:
+
+```text
+inverse-tree dynamic nodes are definable
+10 <- 3 is dynamically admissible
+fake odd and fake even predecessors are rejected
+admissibility is local equality, not reachesOne
+minimal-counterexample ecology is definable
+dominated candidates can have lower descendant and lower energy
+survivor conditions block dominance
+dominance target is not termination
+exceptional-density states are definable
+good transport improves exceptional mass
+weak transport does not improve exceptional mass
+density bounds are counting data, not reachability
+pressure frontiers project to density data
+inverse admissibility does not force density improvement
+```
+
+Interpretation:
+
+```text
+This is a real signal, but it is not a Collatz proof and not yet the final step before a proof.
+
+The portfolio rules out one blind path: inverse-tree admissibility by itself is too local. It can represent legal parent/child data and reject fake witnesses, but it does not force density improvement. That makes it useful bookkeeping, not the main engine.
+
+The portfolio also rules out another blind path: minimal-counterexample ecology by itself is not termination. It can express domination and survivor obstructions without smuggling reachesOne, but a dominance target alone does not collapse the original theorem.
+
+The positive signal is the cross-lane shape:
+
+pressure frontier -> density data
+density transport -> exceptional mass improvement
+minimal ecology -> survivor obstruction language
+
+That gives a theorem-shaped route rather than a vocabulary-shaped route. The next target is not "invent another world." The next target is a composite scarcity theorem:
+
+every dynamically legal bad-pressure frontier either
+1. enters a density-improving transport step, or
+2. is explained by a minimal-survivor obstruction that can itself be bounded/eliminated.
+```
+
+Decision implication:
+
+```text
+Do not spend more effort merely completing definitional coverage unless it is needed for audit completeness.
+
+Completing the remaining 6 pressure probes is useful, but not required to decide the next direction. They are all in the pressure-scarcity lane and are currently artifact-missing rather than mathematically blocked. The roadmap direction is already selected by the 26 proved probes: pursue a density/ecology theorem powered by pressure scarcity.
+
+The next wave should be smaller and sharper, not broader:
+
+pressure scarcity -> density decay -> no persistent minimal survivor
+
+Continue only if the next wave proves or sharply falsifies a named theorem of this kind. If it only proves more local definability facts, this route should be treated as another blind path and pivoted away from.
+```
