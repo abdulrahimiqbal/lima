@@ -15,13 +15,15 @@ W-0273193499 / Alien State-Space Encoding 1
 What it has done:
 
 ```text
-encoded Collatz states -> compiled Lean probes -> proved scaffolding/simulation/bridge-shape controls
+encoded Collatz states -> proved scaffolding/simulation/bridge-shape controls ->
+completed rank/certificate hunt -> killed naive scalar rank families ->
+confirmed richer structural families are formalizable
 ```
 
 What it has not done:
 
 ```text
-produced a non-circular rank/certificate/invariant that proves global reachability
+produced a non-circular hybrid invariant/certificate system that makes global reachability smaller
 ```
 
 ## Flow Diagram
@@ -92,16 +94,23 @@ World evolution: passed
 Scaffolding probes: passed
 Final break experiment: mostly completed
 Exact Collatz pullback target: blocked
-Rank/certificate existence: still the key bottleneck
-Next phase: Rank/Certificate Hunt
+Rank/certificate hunt: completed, but direct existence probe blocked
+Candidate scalar rank-family gauntlet: completed, mostly negative
+Structured rank-family wave: completed, mixed but informative
+Current bottleneck: invent a hybrid nonlocal invariant, not a scalar rank
+Next phase: Hybrid inverse-tree + parity-grammar + valuation certificate hunt
 ```
 
 ## Next Phase
 
-The next phase is not more broad invention. It is a narrow hunt for the missing miracle object:
+The next phase is not more broad invention and not another scalar-potential search. It is a narrow hunt for the missing miracle object:
 
 ```text
-non-circular rank / descent certificate / inverse-tree certificate / grammar obstruction
+non-circular hybrid certificate system combining:
+- inverse-tree structure
+- parity-word / trace grammar
+- valuation or residue information
+- explicit transport lemmas back to Collatz dynamics
 ```
 
-Success means the object makes Collatz smaller. Failure means the current encoding-world path is probably exhausted.
+Success means the object makes Collatz smaller by turning global trajectory questions into local certified structure. Failure means the current encoding-world path is probably exhausted.

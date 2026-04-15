@@ -194,3 +194,40 @@ Decision implication:
 ```text
 Next mutation wave should stop testing tiny linear penalties and instead generate structured rank/certificate families: accelerated odd-map potentials, residue-class potentials, inverse-tree certificates, parity-word grammar ranks, and 2-adic shadow measures. Each family must come with explicit small falsifiers and one soundness/bridge probe before any global closure attempt.
 ```
+
+### R8. Structured Rank-Family Wave Confirmed Structure Beats Scalar Potentials
+
+These facts come from structured rank-family run `SR-e78685fea7` on world `W-0273193499`, digested in `PD-f8040a6688`.
+
+Verified probe outcomes:
+
+```text
+accelerated odd-map potential is definable: proved
+accelerated odd-map still grows at n = 3: proved
+simple residue-class potential still fails on a small odd witness: proved
+inverse-tree witness 10 <- 3 is representable as a concrete certificate: proved
+parity-word grammar records the odd-to-even transition at n = 3: proved
+2-adic shadow decreases on an even input witness: proved
+2-adic shadow still grows on the odd witness n = 3: proved
+inverse-tree witnesses transport to one-step Collatz simulation: proved
+parity-word data is a trace, not a proof of descent by itself: proved
+bounded inverse-tree certificates can package concrete reachability data: proved
+```
+
+Status:
+
+```text
+10 / 10 structured-rank probes Lean-clean and proved in digest PD-f8040a6688
+```
+
+Interpretation:
+
+```text
+Lima has now verified a sharper picture. Richer structural objects are formalizable, but the scalar versions of those ideas are still too weak. One-step odd acceleration is not enough. Simple residue-class penalties are not enough. Simple 2-adic shadow measures are not enough. The promising ingredients are inverse-tree certificates and parity/trace objects, but they do not yet constitute a global non-circular descent invariant.
+```
+
+Decision implication:
+
+```text
+The next mutation wave should not ask for another single numeric rank. It should search for a hybrid nonlocal object: an inverse-tree/parity-grammar/valuation certificate system with explicit local transport lemmas and a bounded proof-debt story. This is the first wave that gives positive evidence for where new mathematics, if needed, would likely have to live: not in syntax, but in the design of a new structured invariant class.
+```
