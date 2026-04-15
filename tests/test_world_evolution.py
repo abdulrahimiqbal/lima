@@ -435,6 +435,45 @@ def test_pressure_globalization_wave_compiles_mass_decay_targets(tmp_path: Path)
     assert any("mass-decay theorem" in item for item in payload["expected_learning"])
 
 
+def test_pivot_portfolio_wave_compiles_multiple_pivot_families(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 10,
+            "survivors_per_generation": 4,
+            "mutations_per_survivor": 2,
+            "wildness": "extreme",
+            "max_formal_probes_per_generation": 4,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/pivot-portfolio-wave",
+        json={
+            "max_probes": 32,
+            "submit_after_compile": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["compiled_probe_count"] >= 32
+    assert "pressure scarcity" in payload["pivot_families"]
+    assert "inverse-tree dynamic admissibility" in payload["pivot_families"]
+    assert "minimal-counterexample ecology" in payload["pivot_families"]
+    assert "Tao-style density transport" in payload["pivot_families"]
+    assert "cross-lane bridge / separation gates" in payload["pivot_families"]
+    assert payload["decisive_probe_ids"]
+    assert any("smallest non-circular theorem target" in item for item in payload["expected_learning"])
+
+
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
     service = CampaignService(_settings(tmp_path))
     world_evolution = WorldEvolutionService(service.memory, service.settings, service.invention)

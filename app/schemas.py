@@ -998,6 +998,28 @@ class PressureGlobalizationWaveRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class PivotPortfolioWaveRequest(BaseModel):
+    world_id: str | None = None
+    max_probes: int = Field(default=32, ge=16, le=64)
+    submit_after_compile: bool = False
+
+
+class PivotPortfolioWaveRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"PV-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    pivot_families: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

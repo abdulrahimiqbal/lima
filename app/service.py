@@ -52,6 +52,8 @@ from .schemas import (
     ManagerDecision,
     MemoryState,
     PendingAristotleJob,
+    PivotPortfolioWaveRequest,
+    PivotPortfolioWaveRun,
     PressureGlobalizationWaveRequest,
     PressureGlobalizationWaveRun,
     RankCertificateHuntRequest,
@@ -1924,6 +1926,79 @@ class CampaignService:
             )
             return run
 
+    def run_pivot_portfolio_wave(
+        self,
+        campaign_id: str,
+        payload: PivotPortfolioWaveRequest,
+    ) -> PivotPortfolioWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pivot portfolio wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pivot_portfolio_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pivot-portfolio:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PivotPortfolioWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                pivot_families=[
+                    "pressure scarcity",
+                    "inverse-tree dynamic admissibility",
+                    "minimal-counterexample ecology",
+                    "Tao-style density transport",
+                    "cross-lane bridge / separation gates",
+                ],
+                expected_learning=[
+                    "Which pivot family exposes the smallest non-circular theorem target.",
+                    "Whether pressure scarcity still dominates once compared against other global mechanisms.",
+                    "Whether any alternative family produces sharper anti-smuggling or falsifier gates.",
+                    "Whether the strongest lanes bridge into one shared theorem or remain separate pivots.",
+                ],
+                summary=(
+                    "Pivot portfolio wave compiled verification-first decision probes across "
+                    "pressure scarcity, inverse-tree admissibility, minimal-counterexample ecology, "
+                    "Tao-style density transport, and cross-lane bridge/separation gates."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PivotPortfolioWaveRun",
+                title=f"pivot-portfolio-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pivot_portfolio_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -3759,6 +3834,593 @@ theorem one_legal_split_does_not_imply_decay_{suffix} :
                     notes=(
                         "Pressure globalization probe; use results to decide whether legal "
                         "2-adic refinement can support bad-cylinder mass decay."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pivot_portfolio_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+structure PortfolioCylinder_{suffix} where
+  level : Nat
+  residue : Nat
+
+def portfolioMod_{suffix} (c : PortfolioCylinder_{suffix}) : Nat :=
+  2 ^ c.level
+
+def portfolioHigh_{suffix} (c : PortfolioCylinder_{suffix}) : PortfolioCylinder_{suffix} :=
+  {{ level := c.level + 1, residue := c.residue + 2 ^ c.level }}
+
+def oddDebtPortfolio_{suffix} (bits : List Nat) : Nat :=
+  bits.foldl (fun acc bit => acc + bit) 0
+
+def positivePortfolioPressure_{suffix} (bits : List Nat) : Prop :=
+  2 * oddDebtPortfolio_{suffix} bits < bits.length
+
+structure BadBranchFrontier_{suffix} where
+  level : Nat
+  badChildren : Nat
+  totalChildren : Nat
+
+def subcriticalBadBranch_{suffix} (f : BadBranchFrontier_{suffix}) : Prop :=
+  2 * f.badChildren < f.totalChildren
+
+def pressureRecoveryWindow_{suffix} (bad recovery : List Nat) : Prop :=
+  positivePortfolioPressure_{suffix} (bad ++ recovery)
+
+structure InverseTreeNode_{suffix} where
+  value : Nat
+  parent : Nat
+  parityTag : Nat
+
+def inverseOddParentLegal_{suffix} (child parent : Nat) : Prop :=
+  child = 3 * parent + 1
+
+def inverseEvenParentLegal_{suffix} (child parent : Nat) : Prop :=
+  child = parent / 2
+
+def dynamicInverseAdmissible_{suffix} (node : InverseTreeNode_{suffix}) : Prop :=
+  if node.parityTag = 1 then inverseOddParentLegal_{suffix} node.value node.parent
+  else inverseEvenParentLegal_{suffix} node.value node.parent
+
+structure MinimalEcology_{suffix} where
+  candidate : Nat
+  descendant : Nat
+  energy : Nat
+
+def ecologyDominates_{suffix} (e : MinimalEcology_{suffix}) : Prop :=
+  e.descendant < e.candidate /\\ e.energy < e.candidate
+
+def minimalCounterexampleSurvives_{suffix} (e : MinimalEcology_{suffix}) : Prop :=
+  e.candidate <= e.descendant
+
+structure DensityTransport_{suffix} where
+  level : Nat
+  exceptional : Nat
+  total : Nat
+
+def densityImproves_{suffix} (before after : DensityTransport_{suffix}) : Prop :=
+  after.level = before.level + 1 /\\ 2 * after.exceptional < before.exceptional
+
+def densityBounded_{suffix} (d : DensityTransport_{suffix}) : Prop :=
+  d.exceptional <= d.total
+
+def pressureFrontierGood_{suffix} : BadBranchFrontier_{suffix} :=
+  {{ level := 4, badChildren := 1, totalChildren := 4 }}
+
+def pressureFrontierBad_{suffix} : BadBranchFrontier_{suffix} :=
+  {{ level := 4, badChildren := 2, totalChildren := 4 }}
+
+def inverseOddExample_{suffix} : InverseTreeNode_{suffix} :=
+  {{ value := 10, parent := 3, parityTag := 1 }}
+
+def inverseFakeExample_{suffix} : InverseTreeNode_{suffix} :=
+  {{ value := 10, parent := 4, parityTag := 1 }}
+
+def ecologyGoodExample_{suffix} : MinimalEcology_{suffix} :=
+  {{ candidate := 9, descendant := 4, energy := 3 }}
+
+def ecologyBadExample_{suffix} : MinimalEcology_{suffix} :=
+  {{ candidate := 9, descendant := 10, energy := 8 }}
+
+def densityBefore_{suffix} : DensityTransport_{suffix} :=
+  {{ level := 3, exceptional := 3, total := 8 }}
+
+def densityAfterGood_{suffix} : DensityTransport_{suffix} :=
+  {{ level := 4, exceptional := 1, total := 16 }}
+
+def densityAfterBad_{suffix} : DensityTransport_{suffix} :=
+  {{ level := 4, exceptional := 2, total := 16 }}
+
+def pressureFrontierTinyGood_{suffix} : BadBranchFrontier_{suffix} :=
+  {{ level := 5, badChildren := 1, totalChildren := 8 }}
+
+def pressureFrontierNeutral_{suffix} : BadBranchFrontier_{suffix} :=
+  {{ level := 5, badChildren := 4, totalChildren := 8 }}
+
+def inverseEvenExample_{suffix} : InverseTreeNode_{suffix} :=
+  {{ value := 5, parent := 10, parityTag := 0 }}
+
+def inverseFakeEvenExample_{suffix} : InverseTreeNode_{suffix} :=
+  {{ value := 5, parent := 12, parityTag := 0 }}
+
+def ecologyStrongExample_{suffix} : MinimalEcology_{suffix} :=
+  {{ candidate := 27, descendant := 13, energy := 5 }}
+
+def ecologyEnergyTrap_{suffix} : MinimalEcology_{suffix} :=
+  {{ candidate := 27, descendant := 13, energy := 30 }}
+
+def densityAfterTinyGood_{suffix} : DensityTransport_{suffix} :=
+  {{ level := 5, exceptional := 0, total := 32 }}
+
+def densityAfterNeutral_{suffix} : DensityTransport_{suffix} :=
+  {{ level := 4, exceptional := 3, total := 16 }}
+
+def pressureToDensity_{suffix} (f : BadBranchFrontier_{suffix}) : DensityTransport_{suffix} :=
+  {{ level := f.level, exceptional := f.badChildren, total := f.totalChildren }}
+
+def ecologyToDensity_{suffix} (e : MinimalEcology_{suffix}) : DensityTransport_{suffix} :=
+  {{ level := e.energy, exceptional := e.descendant, total := e.candidate }}
+
+def inverseCarriesOddBit_{suffix} (node : InverseTreeNode_{suffix}) : Prop :=
+  node.parityTag = 1
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "closure_probe",
+                "Pivot portfolio / pressure scarcity: subcritical bad branching is expressible.",
+                f"""{base_defs}
+
+theorem pressure_subcritical_branching_example_{suffix} :
+    subcriticalBadBranch_{suffix} pressureFrontierGood_{suffix} := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "subcritical_branching",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / pressure scarcity: half-bad branching is not subcritical.",
+                f"""{base_defs}
+
+theorem pressure_half_bad_branching_not_subcritical_{suffix} :
+    Not (subcriticalBadBranch_{suffix} pressureFrontierBad_{suffix}) := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "bad_branching_gate",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / pressure scarcity: bad all-odd window can recover after four evens.",
+                f"""{base_defs}
+
+theorem pressure_recovery_window_example_{suffix} :
+    pressureRecoveryWindow_{suffix} [1, 1, 1] [0, 0, 0, 0] := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "recovery_window",
+            ),
+            (
+                "bridge_probe",
+                "Pivot portfolio / pressure scarcity: cylinder high child remains concrete.",
+                f"""{base_defs}
+
+theorem portfolio_high_child_residue_{suffix} :
+    (portfolioHigh_{suffix} {{ level := 2, residue := 3 }}).residue = 7 := by
+  native_decide
+""",
+                False,
+                "pressure_scarcity",
+                "cylinder_refinement",
+            ),
+            (
+                "definition_probe",
+                "Pivot portfolio / inverse tree: dynamic inverse nodes are definable.",
+                f"""{base_defs}
+
+theorem inverse_node_example_value_{suffix} :
+    inverseOddExample_{suffix}.value = 10 := by
+  native_decide
+""",
+                False,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_definition",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / inverse tree: 10 <- 3 is dynamically admissible.",
+                f"""{base_defs}
+
+theorem inverse_odd_example_admissible_{suffix} :
+    dynamicInverseAdmissible_{suffix} inverseOddExample_{suffix} := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_admissible",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / inverse tree: fake odd predecessor is rejected.",
+                f"""{base_defs}
+
+theorem inverse_fake_odd_parent_rejected_{suffix} :
+    Not (dynamicInverseAdmissible_{suffix} inverseFakeExample_{suffix}) := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_fake_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / inverse tree: admissibility is local equality, not reachesOne.",
+                f"""{base_defs}
+
+theorem inverse_admissibility_local_equality_{suffix} :
+    inverseOddParentLegal_{suffix} 10 3 := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_no_reachability",
+            ),
+            (
+                "definition_probe",
+                "Pivot portfolio / minimal ecology: dominance ecology is definable.",
+                f"""{base_defs}
+
+theorem ecology_good_candidate_value_{suffix} :
+    ecologyGoodExample_{suffix}.candidate = 9 := by
+  native_decide
+""",
+                False,
+                "minimal_counterexample_ecology",
+                "ecology_definition",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / minimal ecology: dominated candidate has lower descendant and energy.",
+                f"""{base_defs}
+
+theorem ecology_good_dominates_{suffix} :
+    ecologyDominates_{suffix} ecologyGoodExample_{suffix} := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_dominance",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / minimal ecology: survivor condition blocks dominance.",
+                f"""{base_defs}
+
+theorem ecology_bad_survives_but_does_not_dominate_{suffix} :
+    minimalCounterexampleSurvives_{suffix} ecologyBadExample_{suffix} /\\
+    Not (ecologyDominates_{suffix} ecologyBadExample_{suffix}) := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_survivor_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / minimal ecology: dominance target is not termination.",
+                f"""{base_defs}
+
+theorem ecology_dominance_is_local_inequality_{suffix} :
+    ecologyGoodExample_{suffix}.descendant < ecologyGoodExample_{suffix}.candidate := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_no_termination",
+            ),
+            (
+                "definition_probe",
+                "Pivot portfolio / density transport: exceptional-density states are definable.",
+                f"""{base_defs}
+
+theorem density_before_is_bounded_{suffix} :
+    densityBounded_{suffix} densityBefore_{suffix} := by
+  native_decide
+""",
+                False,
+                "tao_style_density_transport",
+                "density_definition",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / density transport: good transport improves exceptional mass.",
+                f"""{base_defs}
+
+theorem density_good_transport_improves_{suffix} :
+    densityImproves_{suffix} densityBefore_{suffix} densityAfterGood_{suffix} := by
+  native_decide
+""",
+                True,
+                "tao_style_density_transport",
+                "density_improvement",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / density transport: weak transport does not improve exceptional mass.",
+                f"""{base_defs}
+
+theorem density_bad_transport_not_improving_{suffix} :
+    Not (densityImproves_{suffix} densityBefore_{suffix} densityAfterBad_{suffix}) := by
+  native_decide
+""",
+                True,
+                "tao_style_density_transport",
+                "density_weak_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / density transport: density bound is counting data, not reachability.",
+                f"""{base_defs}
+
+theorem density_after_good_is_bounded_counting_data_{suffix} :
+    densityBounded_{suffix} densityAfterGood_{suffix} /\\ densityAfterGood_{suffix}.total = 16 := by
+  native_decide
+""",
+                True,
+                "tao_style_density_transport",
+                "density_no_reachability",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / pressure scarcity: tiny bad frontier is strongly subcritical.",
+                f"""{base_defs}
+
+theorem pressure_tiny_frontier_subcritical_{suffix} :
+    subcriticalBadBranch_{suffix} pressureFrontierTinyGood_{suffix} := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "strong_subcritical_branching",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / pressure scarcity: neutral bad frontier is not enough.",
+                f"""{base_defs}
+
+theorem pressure_neutral_frontier_not_subcritical_{suffix} :
+    Not (subcriticalBadBranch_{suffix} pressureFrontierNeutral_{suffix}) := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "neutral_branching_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / pressure scarcity: three-even recovery is still insufficient.",
+                f"""{base_defs}
+
+theorem pressure_three_even_recovery_insufficient_{suffix} :
+    Not (pressureRecoveryWindow_{suffix} [1, 1, 1] [0, 0, 0]) := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "bounded_recovery_lower_gate",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / pressure scarcity: five-even recovery has slack.",
+                f"""{base_defs}
+
+theorem pressure_five_even_recovery_has_slack_{suffix} :
+    pressureRecoveryWindow_{suffix} [1, 1, 1] [0, 0, 0, 0, 0] := by
+  native_decide
+""",
+                True,
+                "pressure_scarcity",
+                "bounded_recovery_upper_gate",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / inverse tree: even inverse node is dynamically admissible.",
+                f"""{base_defs}
+
+theorem inverse_even_example_admissible_{suffix} :
+    dynamicInverseAdmissible_{suffix} inverseEvenExample_{suffix} := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_even_admissible",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / inverse tree: fake even predecessor is rejected.",
+                f"""{base_defs}
+
+theorem inverse_fake_even_parent_rejected_{suffix} :
+    Not (dynamicInverseAdmissible_{suffix} inverseFakeEvenExample_{suffix}) := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_fake_even_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / inverse tree: parity tag alone is not admissibility.",
+                f"""{base_defs}
+
+theorem inverse_odd_tag_alone_not_enough_{suffix} :
+    inverseCarriesOddBit_{suffix} inverseFakeExample_{suffix} /\\
+    Not (dynamicInverseAdmissible_{suffix} inverseFakeExample_{suffix}) := by
+  native_decide
+""",
+                True,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_parity_tag_gate",
+            ),
+            (
+                "bridge_probe",
+                "Pivot portfolio / inverse tree: inverse data remains local parent data.",
+                f"""{base_defs}
+
+theorem inverse_even_data_is_local_parent_data_{suffix} :
+    inverseEvenExample_{suffix}.parent = 10 /\\ inverseEvenExample_{suffix}.value = 5 := by
+  native_decide
+""",
+                False,
+                "inverse_tree_dynamic_admissibility",
+                "inverse_local_data",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / minimal ecology: strong example is dominated.",
+                f"""{base_defs}
+
+theorem ecology_strong_example_dominates_{suffix} :
+    ecologyDominates_{suffix} ecologyStrongExample_{suffix} := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_strong_dominance",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / minimal ecology: lower descendant alone is not dominance.",
+                f"""{base_defs}
+
+theorem ecology_energy_trap_not_dominated_{suffix} :
+    ecologyEnergyTrap_{suffix}.descendant < ecologyEnergyTrap_{suffix}.candidate /\\
+    Not (ecologyDominates_{suffix} ecologyEnergyTrap_{suffix}) := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_energy_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / minimal ecology: survivor obstruction is explicit.",
+                f"""{base_defs}
+
+theorem ecology_survivor_obstruction_explicit_{suffix} :
+    minimalCounterexampleSurvives_{suffix} ecologyBadExample_{suffix} := by
+  native_decide
+""",
+                True,
+                "minimal_counterexample_ecology",
+                "ecology_survivor_obstruction",
+            ),
+            (
+                "bridge_probe",
+                "Pivot portfolio / minimal ecology: ecology projects to bounded counting data.",
+                f"""{base_defs}
+
+theorem ecology_to_density_is_bounded_counting_data_{suffix} :
+    densityBounded_{suffix} (ecologyToDensity_{suffix} ecologyStrongExample_{suffix}) := by
+  native_decide
+""",
+                False,
+                "minimal_counterexample_ecology",
+                "ecology_density_projection",
+            ),
+            (
+                "closure_probe",
+                "Pivot portfolio / density transport: second-stage good transport reaches zero exceptions.",
+                f"""{base_defs}
+
+theorem density_second_stage_reaches_zero_exceptions_{suffix} :
+    densityImproves_{suffix} densityAfterGood_{suffix} densityAfterTinyGood_{suffix} := by
+  native_decide
+""",
+                True,
+                "tao_style_density_transport",
+                "density_second_stage_improvement",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / density transport: boundedness alone is not improvement.",
+                f"""{base_defs}
+
+theorem density_bounded_neutral_not_improving_{suffix} :
+    densityBounded_{suffix} densityAfterNeutral_{suffix} /\\
+    Not (densityImproves_{suffix} densityBefore_{suffix} densityAfterNeutral_{suffix}) := by
+  native_decide
+""",
+                True,
+                "tao_style_density_transport",
+                "density_boundedness_gate",
+            ),
+            (
+                "bridge_probe",
+                "Pivot portfolio / cross-lane: pressure frontier projects to density data.",
+                f"""{base_defs}
+
+theorem pressure_frontier_projects_to_density_data_{suffix} :
+    densityBounded_{suffix} (pressureToDensity_{suffix} pressureFrontierGood_{suffix}) /\\
+    (pressureToDensity_{suffix} pressureFrontierGood_{suffix}).exceptional = 1 := by
+  native_decide
+""",
+                True,
+                "cross_lane_bridge_separation",
+                "pressure_density_projection",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pivot portfolio / cross-lane: inverse admissibility does not force density improvement.",
+                f"""{base_defs}
+
+theorem inverse_admissibility_separate_from_density_improvement_{suffix} :
+    dynamicInverseAdmissible_{suffix} inverseOddExample_{suffix} /\\
+    Not (densityImproves_{suffix} densityBefore_{suffix} densityAfterBad_{suffix}) := by
+  native_decide
+""",
+                True,
+                "cross_lane_bridge_separation",
+                "inverse_density_separation",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pivot_portfolio_wave": True,
+                "pivot_family": family,
+                "pivot_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Pivot portfolio probe; compare families by verified decision gates "
+                        "rather than narrative plausibility."
                     ),
                 )
             )
