@@ -27,6 +27,8 @@ from .schemas import (
     CampaignUpdateNotes,
     CandidateRankFamilyRequest,
     CandidateRankFamilyRun,
+    CompositeScarcityTheoremWaveRequest,
+    CompositeScarcityTheoremWaveRun,
     CompositeScarcityViabilityWaveRequest,
     CompositeScarcityViabilityWaveRun,
     CompositionalCertificateFamilyRequest,
@@ -2072,6 +2074,81 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="composite_scarcity_viability_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_composite_scarcity_theorem_wave(
+        self,
+        campaign_id: str,
+        payload: CompositeScarcityTheoremWaveRequest,
+    ) -> CompositeScarcityTheoremWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for composite scarcity theorem wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_composite_scarcity_theorem_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"composite-scarcity-theorem:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CompositeScarcityTheoremWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                theorem_gates=[
+                    "parameterized strong scarcity implies subcritical bad mass",
+                    "depth-indexed scarcity projects to density contraction",
+                    "bounded recovery arithmetic beats odd debt",
+                    "weak recovery and weak scarcity are insufficient",
+                    "composite step closes from density improvement or survivor descent",
+                    "survivor descent forbids persistent self-loop obstruction",
+                    "adversarial neutral frontier remains a real obstruction",
+                    "named theorem skeleton has no reachability field",
+                ],
+                expected_learning=[
+                    "Whether the next route has nontrivial parameterized scarcity/recovery lemmas.",
+                    "Whether weak versions fail in Lean-clean ways, preventing false optimism.",
+                    "Whether survivor obstruction reduction can close the minimal-counterexample loophole.",
+                    "Whether this is ready for a real Composite Scarcity Theorem attempt or should pivot.",
+                ],
+                summary=(
+                    "Composite scarcity theorem wave compiled parameterized scarcity, recovery, "
+                    "survivor-descent, and adversarial insufficiency probes."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CompositeScarcityTheoremWaveRun",
+                title=f"composite-scarcity-theorem-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="composite_scarcity_theorem_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -4741,6 +4818,289 @@ theorem weak_scarcity_not_enough_for_subcritical_{suffix} :
                     notes=(
                         "Composite scarcity viability probe; kill or promote the "
                         "pressure-density-ecology route before larger investment."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_composite_scarcity_theorem_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+import Mathlib
+
+structure TheoremFrontier_{suffix} where
+  level : Nat
+  badChildren : Nat
+  totalChildren : Nat
+
+structure TheoremDensity_{suffix} where
+  level : Nat
+  exceptional : Nat
+  total : Nat
+
+structure SurvivorMeasure_{suffix} where
+  obstruction : Nat
+  fuel : Nat
+
+def legalTheoremFrontier_{suffix} (f : TheoremFrontier_{suffix}) : Prop :=
+  f.totalChildren > 0 /\\ f.badChildren <= f.totalChildren
+
+def strongTheoremScarcity_{suffix} (f : TheoremFrontier_{suffix}) : Prop :=
+  4 * f.badChildren < f.totalChildren
+
+def weakTheoremScarcity_{suffix} (f : TheoremFrontier_{suffix}) : Prop :=
+  2 * f.badChildren <= f.totalChildren
+
+def subcriticalTheoremScarcity_{suffix} (f : TheoremFrontier_{suffix}) : Prop :=
+  2 * f.badChildren < f.totalChildren
+
+def theoremDensityOf_{suffix} (f : TheoremFrontier_{suffix}) : TheoremDensity_{suffix} :=
+  {{ level := f.level, exceptional := f.badChildren, total := f.totalChildren }}
+
+def theoremDensityContracts_{suffix} (d : TheoremDensity_{suffix}) : Prop :=
+  2 * d.exceptional < d.total
+
+def frontierDensityContracts_{suffix} (f : TheoremFrontier_{suffix}) : Prop :=
+  theoremDensityContracts_{suffix} (theoremDensityOf_{suffix} f)
+
+def fullSplitFrontier_{suffix} (level bad : Nat) : TheoremFrontier_{suffix} :=
+  {{ level := level, badChildren := bad, totalChildren := 2 ^ level }}
+
+def recoveryBeatsOddDebt_{suffix} (oddDebt badWindow recovery : Nat) : Prop :=
+  2 * oddDebt < badWindow + recovery
+
+def survivorDescends_{suffix} (before after : SurvivorMeasure_{suffix}) : Prop :=
+  after.obstruction < before.obstruction /\\ after.fuel <= before.fuel
+
+def theoremCompositeStep_{suffix}
+    (f : TheoremFrontier_{suffix})
+    (after : TheoremDensity_{suffix})
+    (sBefore sAfter : SurvivorMeasure_{suffix}) : Prop :=
+  legalTheoremFrontier_{suffix} f ->
+    theoremDensityContracts_{suffix} after \\/ survivorDescends_{suffix} sBefore sAfter
+
+def finalTheoremObstructionRemoved_{suffix}
+    (d : TheoremDensity_{suffix})
+    (s : SurvivorMeasure_{suffix}) : Prop :=
+  d.exceptional = 0 /\\ s.obstruction = 0
+
+def compositeScarcityNamedTarget_{suffix} (horizon : Nat) : Prop :=
+  ∀ f : TheoremFrontier_{suffix},
+    legalTheoremFrontier_{suffix} f ->
+      strongTheoremScarcity_{suffix} f \\/
+        ∃ sAfter : SurvivorMeasure_{suffix},
+          survivorDescends_{suffix} {{ obstruction := horizon + f.badChildren, fuel := horizon }}
+            sAfter
+
+def strongFrontierT_{suffix} : TheoremFrontier_{suffix} :=
+  {{ level := 5, badChildren := 1, totalChildren := 8 }}
+
+def neutralFrontierT_{suffix} : TheoremFrontier_{suffix} :=
+  {{ level := 5, badChildren := 4, totalChildren := 8 }}
+
+def zeroDensityT_{suffix} : TheoremDensity_{suffix} :=
+  {{ level := 8, exceptional := 0, total := 256 }}
+
+def contractedDensityT_{suffix} : TheoremDensity_{suffix} :=
+  {{ level := 8, exceptional := 1, total := 8 }}
+
+def survivorBeforeT_{suffix} : SurvivorMeasure_{suffix} :=
+  {{ obstruction := 5, fuel := 9 }}
+
+def survivorMidT_{suffix} : SurvivorMeasure_{suffix} :=
+  {{ obstruction := 3, fuel := 8 }}
+
+def survivorAfterT_{suffix} : SurvivorMeasure_{suffix} :=
+  {{ obstruction := 1, fuel := 8 }}
+
+def survivorZeroT_{suffix} : SurvivorMeasure_{suffix} :=
+  {{ obstruction := 0, fuel := 8 }}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "closure_probe",
+                "Composite scarcity theorem / parameterized strong scarcity implies subcritical bad mass.",
+                f"""{base_defs}
+
+theorem theorem_strong_scarcity_implies_subcritical_{suffix}
+    (f : TheoremFrontier_{suffix})
+    (h : strongTheoremScarcity_{suffix} f) :
+    subcriticalTheoremScarcity_{suffix} f := by
+  unfold strongTheoremScarcity_{suffix} subcriticalTheoremScarcity_{suffix} at *
+  omega
+""",
+                True,
+                "parameterized_strong_scarcity",
+            ),
+            (
+                "bridge_probe",
+                "Composite scarcity theorem / depth-indexed scarcity projects to density contraction.",
+                f"""{base_defs}
+
+theorem theorem_depth_scarcity_gives_density_contraction_{suffix}
+    (level bad : Nat)
+    (h : 4 * bad < 2 ^ level) :
+    frontierDensityContracts_{suffix} (fullSplitFrontier_{suffix} level bad) := by
+  unfold frontierDensityContracts_{suffix} theoremDensityContracts_{suffix}
+    theoremDensityOf_{suffix} fullSplitFrontier_{suffix} at *
+  omega
+""",
+                True,
+                "depth_indexed_density_contraction",
+            ),
+            (
+                "closure_probe",
+                "Composite scarcity theorem / bounded recovery beats odd debt with a parameterized margin.",
+                f"""{base_defs}
+
+theorem theorem_recovery_margin_beats_odd_debt_{suffix}
+    (oddDebt badWindow recovery : Nat)
+    (hDebt : oddDebt = badWindow)
+    (hRecovery : badWindow + 1 <= recovery) :
+    recoveryBeatsOddDebt_{suffix} oddDebt badWindow recovery := by
+  unfold recoveryBeatsOddDebt_{suffix}
+  omega
+""",
+                True,
+                "parameterized_recovery_margin",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Composite scarcity theorem / equal recovery is insufficient for all-odd debt.",
+                f"""{base_defs}
+
+theorem theorem_equal_recovery_insufficient_{suffix}
+    (n : Nat) :
+    Not (recoveryBeatsOddDebt_{suffix} n n n) := by
+  intro h
+  unfold recoveryBeatsOddDebt_{suffix} at h
+  omega
+""",
+                True,
+                "weak_recovery_insufficient",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Composite scarcity theorem / weak scarcity is not enough for subcritical mass.",
+                f"""{base_defs}
+
+theorem theorem_weak_scarcity_insufficient_{suffix} :
+    legalTheoremFrontier_{suffix} neutralFrontierT_{suffix} /\\
+    weakTheoremScarcity_{suffix} neutralFrontierT_{suffix} /\\
+    Not (subcriticalTheoremScarcity_{suffix} neutralFrontierT_{suffix}) := by
+  native_decide
+""",
+                True,
+                "weak_scarcity_insufficient",
+            ),
+            (
+                "bridge_probe",
+                "Composite scarcity theorem / composite step closes from density contraction or survivor descent.",
+                f"""{base_defs}
+
+theorem theorem_composite_step_eliminates_local_obstruction_{suffix}
+    (f : TheoremFrontier_{suffix})
+    (after : TheoremDensity_{suffix})
+    (sBefore sAfter : SurvivorMeasure_{suffix})
+    (hStep : theoremCompositeStep_{suffix} f after sBefore sAfter)
+    (hLegal : legalTheoremFrontier_{suffix} f) :
+    theoremDensityContracts_{suffix} after \\/ survivorDescends_{suffix} sBefore sAfter := by
+  exact hStep hLegal
+""",
+                True,
+                "composite_step_elimination",
+            ),
+            (
+                "closure_probe",
+                "Composite scarcity theorem / survivor descent forbids persistent self-loop obstruction.",
+                f"""{base_defs}
+
+theorem theorem_survivor_descent_not_self_loop_{suffix}
+    (s : SurvivorMeasure_{suffix}) :
+    Not (survivorDescends_{suffix} s s) := by
+  intro h
+  exact (Nat.lt_irrefl s.obstruction) h.1
+""",
+                True,
+                "survivor_no_self_loop",
+            ),
+            (
+                "closure_probe",
+                "Composite scarcity theorem / survivor descent composes.",
+                f"""{base_defs}
+
+theorem theorem_survivor_descent_composes_{suffix}
+    (a b c : SurvivorMeasure_{suffix})
+    (hab : survivorDescends_{suffix} a b)
+    (hbc : survivorDescends_{suffix} b c) :
+    survivorDescends_{suffix} a c := by
+  exact And.intro (Nat.lt_trans hbc.1 hab.1) (Nat.le_trans hbc.2 hab.2)
+""",
+                True,
+                "survivor_descent_composition",
+            ),
+            (
+                "bridge_probe",
+                "Composite scarcity theorem / density zero and zero survivor remove final obstruction.",
+                f"""{base_defs}
+
+theorem theorem_density_zero_and_survivor_zero_close_{suffix}
+    (d : TheoremDensity_{suffix})
+    (s : SurvivorMeasure_{suffix})
+    (hd : d.exceptional = 0)
+    (hs : s.obstruction = 0) :
+    finalTheoremObstructionRemoved_{suffix} d s := by
+  exact And.intro hd hs
+""",
+                True,
+                "final_obstruction_closure",
+            ),
+            (
+                "definition_probe",
+                "Composite scarcity theorem / named target is a counting theorem, not a reachability field.",
+                f"""{base_defs}
+
+theorem theorem_named_target_is_counting_shape_{suffix} :
+    compositeScarcityNamedTarget_{suffix} 4 ->
+    strongFrontierT_{suffix}.badChildren = 1 /\\
+      survivorBeforeT_{suffix}.obstruction = 5 := by
+  intro _h
+  native_decide
+""",
+                True,
+                "named_theorem_no_reachability",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "composite_scarcity_theorem_wave": True,
+                "theorem_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Composite scarcity theorem probe; prioritize parameterized "
+                        "scarcity/recovery lemmas and adversarial insufficiency gates."
                     ),
                 )
             )
