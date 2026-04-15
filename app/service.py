@@ -25,6 +25,8 @@ from .schemas import (
     CampaignEventRecord,
     CampaignRecord,
     CampaignUpdateNotes,
+    CandidateRankFamilyRequest,
+    CandidateRankFamilyRun,
     CandidateAnswer,
     ExecutionResult,
     FinalCollatzExperimentRequest,
@@ -1408,6 +1410,72 @@ class CampaignService:
             )
             return run
 
+    def run_candidate_rank_families(
+        self,
+        campaign_id: str,
+        payload: CandidateRankFamilyRequest,
+    ) -> CandidateRankFamilyRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for candidate rank family hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_candidate_rank_family_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"candidate-rank:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CandidateRankFamilyRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                candidate_families=[
+                    "identity rank",
+                    "two-step identity rank",
+                    "linear parity penalty rank",
+                    "bounded certificate",
+                    "local certificate transformer with base preconditions",
+                ],
+                expected_learning=[
+                    "Which simple rank families fail by explicit small witnesses.",
+                    "Whether bounded certificates remain sound when separated from global reachability.",
+                    "What preconditions a local certificate transformer needs before it is non-vacuous.",
+                ],
+                summary=(
+                    "Candidate rank-family gauntlet compiled concrete probes that should either "
+                    "prove local soundness or fail with small counterexamples."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CandidateRankFamilyRun",
+                title=f"candidate-rank-family:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="candidate_rank_family_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -1692,6 +1760,119 @@ structure BoundedCertificate_{suffix} (n : Nat) where
                         metadata=metadata,
                     ),
                     notes="Rank/certificate hunt probe; use results to choose pursue/pivot.",
+                )
+            )
+        return probes
+
+    def _compile_candidate_rank_family_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def candidateStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def candidateReachesOne_{suffix} (n : Nat) : Prop :=
+  Exists fun k : Nat => Nat.iterate candidateStep_{suffix} k n = 1
+
+def twoStep_{suffix} (n : Nat) : Nat :=
+  candidateStep_{suffix} (candidateStep_{suffix} n)
+
+def identityRank_{suffix} (n : Nat) : Nat := n
+def parityPenaltyRank_{suffix} (n : Nat) : Nat := 2*n + (n % 2)
+
+structure BoundedCertificateCandidate_{suffix} (n : Nat) where
+  steps : Nat
+  reaches : Nat.iterate candidateStep_{suffix} steps n = 1
+
+structure LocalCandidate_{suffix} where
+  value : Nat
+  measure : Nat
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "anti_smuggling_probe",
+                "Candidate rank: identity rank fails on the odd branch at n = 3.",
+                f"{base_defs}\n\ntheorem identity_rank_fails_at_three_{suffix} :\n    Not (candidateStep_{suffix} 3 < 3) := by\n  norm_num [candidateStep_{suffix}]\n",
+                False,
+                "identity_rank_falsifier",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Candidate rank: two-step identity rank still fails at n = 3.",
+                f"{base_defs}\n\ntheorem two_step_identity_rank_fails_at_three_{suffix} :\n    Not (twoStep_{suffix} 3 < 3) := by\n  norm_num [twoStep_{suffix}, candidateStep_{suffix}]\n",
+                False,
+                "two_step_identity_falsifier",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Candidate rank: simple parity-penalty linear rank fails at n = 3.",
+                f"{base_defs}\n\ntheorem parity_penalty_rank_fails_at_three_{suffix} :\n    Not (parityPenaltyRank_{suffix} (candidateStep_{suffix} 3) < parityPenaltyRank_{suffix} 3) := by\n  norm_num [parityPenaltyRank_{suffix}, candidateStep_{suffix}]\n",
+                False,
+                "linear_parity_falsifier",
+            ),
+            (
+                "closure_probe",
+                "Candidate rank: identity rank does decrease on even positive inputs.",
+                f"{base_defs}\n\ntheorem identity_rank_even_branch_decreases_{suffix} (n : Nat) (hEven : n % 2 = 0) (hPos : n > 1) :\n    identityRank_{suffix} (candidateStep_{suffix} n) < identityRank_{suffix} n := by\n  unfold identityRank_{suffix} candidateStep_{suffix}\n  grind\n",
+                False,
+                "identity_even_success",
+            ),
+            (
+                "closure_probe",
+                "Candidate certificate: bounded certificate soundness remains trivial and useful.",
+                f"{base_defs}\n\ntheorem candidate_bounded_certificate_sound_{suffix} (n : Nat) (cert : BoundedCertificateCandidate_{suffix} n) :\n    candidateReachesOne_{suffix} n := by\n  exact Exists.intro cert.steps cert.reaches\n",
+                False,
+                "bounded_certificate_soundness",
+            ),
+            (
+                "closure_probe",
+                "Candidate certificate: explicit bounded certificate for n = 3.",
+                f"{base_defs}\n\ntheorem bounded_certificate_three_{suffix} : candidateReachesOne_{suffix} 3 := by\n  refine Exists.intro 7 ?_\n  norm_num [candidateStep_{suffix}]\n",
+                False,
+                "bounded_certificate_example",
+            ),
+            (
+                "closure_probe",
+                "Candidate transformer: positive measure precondition avoids the zero-measure impossibility.",
+                f"{base_defs}\n\ndef decreaseMeasure_{suffix} (c : LocalCandidate_{suffix}) : LocalCandidate_{suffix} :=\n  {{ value := c.value, measure := c.measure - 1 }}\n\ntheorem local_transformer_decreases_with_measure_{suffix} (c : LocalCandidate_{suffix}) (h : c.measure > 0) :\n    (decreaseMeasure_{suffix} c).measure < c.measure := by\n  cases c with\n  | mk value measure =>\n    simp [decreaseMeasure_{suffix}] at h\n    omega\n",
+                False,
+                "local_transformer_precondition",
+            ),
+            (
+                "closure_probe",
+                "Candidate rank: inventing a useful non-circular rank cannot be replaced by small linear penalties.",
+                f"{base_defs}\n\ntheorem small_linear_penalties_are_not_enough_{suffix} :\n    Not (parityPenaltyRank_{suffix} (candidateStep_{suffix} 3) < parityPenaltyRank_{suffix} 3) := by\n  norm_num [parityPenaltyRank_{suffix}, candidateStep_{suffix}]\n",
+                True,
+                "candidate_family_obstruction",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "candidate_rank_family": True,
+                "candidate_rank_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes="Candidate rank family probe; use failures to mutate concrete rank objects.",
                 )
             )
         return probes
