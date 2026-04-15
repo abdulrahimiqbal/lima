@@ -404,6 +404,64 @@ def test_digest_formal_probe_results_accepts_inline_aristotle_text(tmp_path: Pat
     assert digest.diagnostics[0]["lean_error_excerpt"]
 
 
+def test_digest_formal_probe_results_can_recover_by_project_id(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Recover digest",
+            problem_statement="Recover old Aristotle artifact by project id.",
+            auto_run=False,
+        )
+    )
+    probe = FormalProbe(
+        world_id="W-recover",
+        probe_type="definition_probe",
+        source_text="Can missing artifacts be recovered?",
+        formal_obligation=FormalObligationSpec(
+            source_text="Can missing artifacts be recovered?",
+            lean_declaration="theorem recover_probe : True := by\n  trivial\n",
+        ),
+        status="blocked",
+        result_status="blocked",
+        failure_type="partial_proof",
+    )
+    service.memory.upsert_research_node(
+        campaign_id=campaign.id,
+        node_id=probe.id,
+        node_type="FormalProbe",
+        title="probe",
+        summary=probe.source_text,
+        status=probe.status,
+        payload=probe.model_dump(mode="json"),
+    )
+    service.memory.add_event(
+        campaign_id=campaign.id,
+        tick=0,
+        event_type="aristotle_job_completed",
+        payload={
+            "project_id": "project-recover",
+            "debt_id": probe.id,
+            "artifacts": [],
+        },
+    )
+
+    service.executor.download_aristotle_result_artifacts = lambda project_id: [
+        "--- Main.lean ---\n-- error: unknown module prefix 'Mathlib.Experimental'\n"
+    ]
+
+    digest = service.digest_formal_probe_results(
+        campaign.id,
+        payload=FormalProbeDigestRequest(
+            max_artifacts=10,
+            redownload_missing_artifacts=True,
+        ),
+    )
+
+    assert digest.probe_count == 1
+    assert "missing_import_or_dependency" in digest.top_failure_modes
+    assert "imports" in " ".join(digest.repair_instructions).lower()
+
+
 def test_aristotle_status_conversion_normalizes_uppercase_complete_with_errors() -> None:
     result = AristotleSdkProofAdapter(
         Settings(executor_backend="aristotle", aristotle_api_key="fake")

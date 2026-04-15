@@ -352,6 +352,14 @@ class AristotleSdkProofAdapter:
             "limitations": "Probe checks reachability/auth path, not a full theorem verification run.",
         }
 
+    def download_result_artifacts(self, project_id: str) -> list[str]:
+        """Best-effort recovery for terminal Aristotle projects already known by ID."""
+        status, result_tar_path = self._poll_aristotle_sync(project_id, "")
+        artifacts = self._aristotle_result_artifacts(result_tar_path)
+        if not artifacts:
+            return [f"aristotle_project_status:{project_id}:{status}"]
+        return artifacts
+
     def _submit_to_aristotle_sync(
         self,
         lean_code: str,
@@ -885,6 +893,11 @@ class Executor:
 
     def check_connectivity(self, *, strict_live_probe: bool = False) -> dict[str, Any]:
         return self._proof_adapter.check_connectivity(strict_live_probe=strict_live_probe)
+
+    def download_aristotle_result_artifacts(self, project_id: str) -> list[str]:
+        if isinstance(self._proof_adapter, AristotleSdkProofAdapter):
+            return self._proof_adapter.download_result_artifacts(project_id)
+        return []
 
     def _run_computational_evidence(
         self,

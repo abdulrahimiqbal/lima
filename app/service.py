@@ -1111,7 +1111,11 @@ class CampaignService:
                     continue
                 probes.append(probe)
 
-            artifacts_by_probe = self._artifacts_by_probe(campaign_id, probes)
+            artifacts_by_probe = self._artifacts_by_probe(
+                campaign_id,
+                probes,
+                include_project_refs=payload.redownload_missing_artifacts,
+            )
             unmapped_artifacts = self._unmapped_aristotle_artifacts(campaign_id, payload.max_artifacts)
             diagnostics: list[dict] = []
             failure_modes: Counter[str] = Counter()
@@ -1124,7 +1128,11 @@ class CampaignService:
                 ]))
                 if not paths:
                     continue
-                diagnostic = self._diagnose_probe_artifacts(probe, paths)
+                diagnostic = self._diagnose_probe_artifacts(
+                    probe,
+                    paths,
+                    redownload_missing_artifacts=payload.redownload_missing_artifacts,
+                )
                 diagnostics.append(diagnostic)
                 failure_modes[diagnostic["failure_type"]] += 1
                 if diagnostic.get("repair_instruction"):
@@ -1154,7 +1162,10 @@ class CampaignService:
                 for path in unmapped_artifacts:
                     if len(diagnostics) >= payload.max_artifacts:
                         break
-                    diagnostic = self._diagnose_unmapped_artifact(path)
+                    diagnostic = self._diagnose_unmapped_artifact(
+                        path,
+                        redownload_missing_artifacts=payload.redownload_missing_artifacts,
+                    )
                     diagnostics.append(diagnostic)
                     failure_modes[diagnostic["failure_type"]] += 1
                     if diagnostic.get("repair_instruction"):
@@ -1372,6 +1383,8 @@ class CampaignService:
         self,
         campaign_id: str,
         probes: list[FormalProbe],
+        *,
+        include_project_refs: bool = False,
     ) -> dict[str, list[str]]:
         probe_ids = {probe.id for probe in probes}
         artifacts_by_probe: dict[str, list[str]] = {probe_id: [] for probe_id in probe_ids}
@@ -1384,6 +1397,10 @@ class CampaignService:
             for artifact in event.payload.get("artifacts") or []:
                 if _looks_like_aristotle_artifact(artifact):
                     artifacts_by_probe[probe_id].append(artifact)
+            if include_project_refs and event.payload.get("project_id"):
+                artifacts_by_probe[probe_id].append(
+                    f"aristotle_project_id:{event.payload['project_id']}"
+                )
         return artifacts_by_probe
 
     def _unmapped_aristotle_artifacts(
@@ -1411,8 +1428,13 @@ class CampaignService:
         self,
         probe: FormalProbe,
         artifact_paths: list[str],
+        *,
+        redownload_missing_artifacts: bool = False,
     ) -> dict[str, Any]:
-        base = self._diagnose_artifact_paths(artifact_paths)
+        base = self._diagnose_artifact_paths(
+            artifact_paths,
+            redownload_missing_artifacts=redownload_missing_artifacts,
+        )
         result_status = probe.result_status or base["result_status"]
         probe_status = base["probe_status"]
         if probe.status == "proved" and base["failure_type"] == "no_error_detected":
@@ -1426,20 +1448,48 @@ class CampaignService:
             "result_status": result_status,
         }
 
-    def _diagnose_unmapped_artifact(self, artifact_path: str) -> dict[str, Any]:
+    def _diagnose_unmapped_artifact(
+        self,
+        artifact_path: str,
+        *,
+        redownload_missing_artifacts: bool = False,
+    ) -> dict[str, Any]:
         return {
-            **self._diagnose_artifact_paths([artifact_path]),
+            **self._diagnose_artifact_paths(
+                [artifact_path],
+                redownload_missing_artifacts=redownload_missing_artifacts,
+            ),
             "probe_id": None,
             "world_id": None,
             "probe_type": "unmapped",
             "source_text": "Unmapped Aristotle result artifact.",
         }
 
-    def _diagnose_artifact_paths(self, artifact_paths: list[str]) -> dict[str, Any]:
+    def _diagnose_artifact_paths(
+        self,
+        artifact_paths: list[str],
+        *,
+        redownload_missing_artifacts: bool = False,
+    ) -> dict[str, Any]:
         snippets: list[str] = []
         tar_members: list[str] = []
         missing_paths: list[str] = []
         for artifact_path in artifact_paths:
+            if artifact_path.startswith("aristotle_project_id:"):
+                project_id = artifact_path.split(":", 1)[1]
+                if redownload_missing_artifacts:
+                    recovered = self.executor.download_aristotle_result_artifacts(project_id)
+                    if recovered:
+                        recovered_base = self._diagnose_artifact_paths(
+                            recovered,
+                            redownload_missing_artifacts=False,
+                        )
+                        snippets.append(recovered_base.get("lean_error_excerpt") or recovered_base.get("summary") or "")
+                        tar_members.extend(recovered_base.get("tar_members", []))
+                        missing_paths.extend(recovered_base.get("missing_artifact_paths", []))
+                    else:
+                        missing_paths.append(artifact_path)
+                continue
             if not _looks_like_aristotle_tar_path(artifact_path):
                 if artifact_path.strip():
                     snippets.append(artifact_path[:12000])

@@ -776,6 +776,7 @@ class FormalProbeDigestRequest(BaseModel):
     world_id: str | None = None
     max_artifacts: int = Field(default=100, ge=1, le=500)
     attach_unmapped_artifacts: bool = True
+    redownload_missing_artifacts: bool = False
 
 
 class FormalProbeDigestRun(BaseModel):
