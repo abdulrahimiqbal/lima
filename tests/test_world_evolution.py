@@ -460,6 +460,7 @@ def test_digest_formal_probe_results_can_recover_by_project_id(tmp_path: Path) -
     assert digest.probe_count == 1
     assert "missing_import_or_dependency" in digest.top_failure_modes
     assert "imports" in " ".join(digest.repair_instructions).lower()
+    assert digest.diagnostics[0]["result_status"] == "blocked"
 
 
 def test_digest_does_not_mark_submission_failed_project_as_proved(tmp_path: Path) -> None:

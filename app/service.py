@@ -1441,10 +1441,12 @@ class CampaignService:
             artifact_paths,
             redownload_missing_artifacts=redownload_missing_artifacts,
         )
-        result_status = probe.result_status or base["result_status"]
         probe_status = base["probe_status"]
         if probe.status == "proved" and base["failure_type"] == "no_error_detected":
             probe_status = "proved"
+        result_status = base["result_status"]
+        if probe_status != "proved" and probe.result_status:
+            result_status = probe.result_status
         return {
             **base,
             "probe_id": probe.id,
