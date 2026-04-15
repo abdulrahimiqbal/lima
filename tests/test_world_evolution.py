@@ -462,6 +462,60 @@ def test_digest_formal_probe_results_can_recover_by_project_id(tmp_path: Path) -
     assert "imports" in " ".join(digest.repair_instructions).lower()
 
 
+def test_digest_does_not_mark_submission_failed_project_as_proved(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Submission failed digest",
+            problem_statement="Do not recover fake submission ids as proof.",
+            auto_run=False,
+        )
+    )
+    probe = FormalProbe(
+        world_id="W-failed-submit",
+        probe_type="definition_probe",
+        source_text="Submission never reached Aristotle.",
+        formal_obligation=FormalObligationSpec(
+            source_text="Submission never reached Aristotle.",
+            lean_declaration="theorem failed_submit_probe : True := by\n  trivial\n",
+        ),
+        status="inconclusive",
+        result_status="inconclusive",
+        failure_type="sdk_error",
+    )
+    service.memory.upsert_research_node(
+        campaign_id=campaign.id,
+        node_id=probe.id,
+        node_type="FormalProbe",
+        title="probe",
+        summary=probe.source_text,
+        status=probe.status,
+        payload=probe.model_dump(mode="json"),
+    )
+    service.memory.add_event(
+        campaign_id=campaign.id,
+        tick=0,
+        event_type="aristotle_job_completed",
+        payload={
+            "project_id": "submission-failed-C-test-0",
+            "debt_id": probe.id,
+            "artifacts": [],
+        },
+    )
+
+    digest = service.digest_formal_probe_results(
+        campaign.id,
+        payload=FormalProbeDigestRequest(
+            max_artifacts=10,
+            redownload_missing_artifacts=True,
+        ),
+    )
+
+    assert digest.proved_count == 0
+    assert digest.inconclusive_count == 1
+    assert "artifact_missing" in digest.top_failure_modes
+
+
 def test_aristotle_status_conversion_normalizes_uppercase_complete_with_errors() -> None:
     result = AristotleSdkProofAdapter(
         Settings(executor_backend="aristotle", aristotle_api_key="fake")

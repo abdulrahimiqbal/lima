@@ -1176,9 +1176,15 @@ class CampaignService:
                 world_id=payload.world_id or campaign.active_world_id,
                 artifact_count=sum(len(d.get("artifact_paths", [])) for d in diagnostics),
                 probe_count=len([d for d in diagnostics if d.get("probe_id")]),
-                proved_count=sum(1 for d in diagnostics if d.get("probe_status") == "proved"),
-                blocked_count=sum(1 for d in diagnostics if d.get("probe_status") == "blocked"),
-                inconclusive_count=sum(1 for d in diagnostics if d.get("probe_status") == "inconclusive"),
+                proved_count=sum(
+                    1 for d in diagnostics if d.get("probe_id") and d.get("probe_status") == "proved"
+                ),
+                blocked_count=sum(
+                    1 for d in diagnostics if d.get("probe_id") and d.get("probe_status") == "blocked"
+                ),
+                inconclusive_count=sum(
+                    1 for d in diagnostics if d.get("probe_id") and d.get("probe_status") == "inconclusive"
+                ),
                 top_failure_modes=[mode for mode, _ in failure_modes.most_common(8)],
                 repair_instructions=list(dict.fromkeys(repair_instructions))[:20],
                 diagnostics=diagnostics[:payload.max_artifacts],
@@ -1477,6 +1483,9 @@ class CampaignService:
         for artifact_path in artifact_paths:
             if artifact_path.startswith("aristotle_project_id:"):
                 project_id = artifact_path.split(":", 1)[1]
+                if project_id.startswith("submission-failed"):
+                    missing_paths.append(artifact_path)
+                    continue
                 if redownload_missing_artifacts:
                     recovered = self.executor.download_aristotle_result_artifacts(project_id)
                     if recovered:
@@ -1835,6 +1844,8 @@ def _extract_texts_from_tar(path: Path) -> dict[str, str]:
 
 def _classify_aristotle_text(text: str, missing_paths: list[str]) -> str:
     lower = text.lower()
+    if "aristotle_project_status:" in lower and ":failed" in lower:
+        return "artifact_missing"
     if not text.strip():
         return "artifact_missing" if missing_paths else "artifact_empty"
     if "unknown package" in lower or "unknown module" in lower or "no such file or directory" in lower:
