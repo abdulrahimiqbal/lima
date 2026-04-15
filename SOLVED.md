@@ -231,3 +231,41 @@ Decision implication:
 ```text
 The next mutation wave should not ask for another single numeric rank. It should search for a hybrid nonlocal object: an inverse-tree/parity-grammar/valuation certificate system with explicit local transport lemmas and a bounded proof-debt story. This is the first wave that gives positive evidence for where new mathematics, if needed, would likely have to live: not in syntax, but in the design of a new structured invariant class.
 ```
+
+### R9. Hybrid Certificate Wave Promoted Local Syntax, Not Global Compression
+
+These facts come from hybrid certificate-family run `HC-b28fc66d40` on world `W-0273193499`, digested in `PD-9a8e910233`.
+
+Verified probe outcomes:
+
+```text
+inverse-tree + parity + valuation certificate is definable around 10 <- 3: proved
+inverse-tree witness transport recovers the one-step Collatz move: proved
+valuation data is available on the even root of the local certificate: proved
+coarse parity/residue/valuation signatures can collide: proved
+the same coarse signature does not determine the next state: proved
+bounded hybrid certificates can package concrete reachability for n = 3: proved
+bounded hybrid certificates still imply ordinary reachability: proved
+parity grammar remains trace data, not descent proof by itself: proved
+inverse-tree, trace, and valuation data can coexist in one certificate object: proved
+the certificate stores the odd-to-even trace for 3 -> 10: proved
+```
+
+Status:
+
+```text
+10 / 10 hybrid-certificate probes Lean-clean and proved in digest PD-9a8e910233
+overall latest digest: 45 proved, 3 blocked, 0 inconclusive across 48 mapped probes
+```
+
+Interpretation:
+
+```text
+The hybrid language is real: inverse-tree data, parity traces, residue tags, valuation witnesses, bounded reachability, and local transport can all coexist without smuggling the full Collatz theorem. But the wave also proved that coarse finite signatures are not complete: they collide while failing to determine the next state. The object is therefore a valid local certificate language, not yet a global invariant or descent mechanism.
+```
+
+Decision implication:
+
+```text
+Do not pivot away from structured certificates yet. Pivot away from coarse one-step signatures. The next wave should test whether local hybrid certificates compose: certificate extension, pruning/normal-form rules, block-level parity grammar, and a well-founded complexity measure on certificate transformations. The missing mathematical object is now sharper: a compositional certificate calculus with a coverage theorem, not just a local certificate record.
+```

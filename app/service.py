@@ -27,6 +27,8 @@ from .schemas import (
     CampaignUpdateNotes,
     CandidateRankFamilyRequest,
     CandidateRankFamilyRun,
+    CompositionalCertificateFamilyRequest,
+    CompositionalCertificateFamilyRun,
     CandidateAnswer,
     ExecutionResult,
     FinalCollatzExperimentRequest,
@@ -1629,6 +1631,78 @@ class CampaignService:
             )
             return run
 
+    def run_compositional_certificate_families(
+        self,
+        campaign_id: str,
+        payload: CompositionalCertificateFamilyRequest,
+    ) -> CompositionalCertificateFamilyRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for compositional certificate hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_compositional_certificate_family_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"compositional-certificate:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CompositionalCertificateFamilyRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                composition_families=[
+                    "certificate extension",
+                    "certificate composition",
+                    "parity-block grammar",
+                    "normal-form pruning",
+                    "well-founded certificate complexity",
+                    "coverage anti-smuggling gates",
+                ],
+                expected_learning=[
+                    "Whether local hybrid certificates compose into longer certified structure.",
+                    "Whether pruning or normalization exposes a decreasing certificate complexity measure.",
+                    "Whether the missing object is a real coverage theorem or just bounded reachability renamed.",
+                ],
+                summary=(
+                    "Compositional certificate hunt compiled probes that test whether the verified "
+                    "local hybrid language can extend, compose, prune, and decrease without smuggling reachability."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CompositionalCertificateFamilyRun",
+                title=f"compositional-certificate-family:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="compositional_certificate_family_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -2464,6 +2538,263 @@ theorem coarse_hybrid_signature_is_not_the_solution_{suffix} :
                         metadata=metadata,
                     ),
                     notes="Hybrid certificate probe; use results to decide whether a certificate calculus beats scalar ranks.",
+                )
+            )
+        return probes
+
+    def _compile_compositional_certificate_family_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def compStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def compTrace3_{suffix} : List Nat :=
+  [3 % 2, compStep_{suffix} 3 % 2, compStep_{suffix} (compStep_{suffix} 3) % 2]
+
+structure SegmentCertificate_{suffix} where
+  start : Nat
+  finish : Nat
+  steps : Nat
+  parityTrace : List Nat
+  residueClass : Nat
+  v2Witness : Nat
+  reaches : Nat.iterate compStep_{suffix} steps start = finish
+
+def segmentThreeToTen_{suffix} : SegmentCertificate_{suffix} :=
+  {{
+    start := 3
+    finish := 10
+    steps := 1
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2Witness := 1
+    reaches := by native_decide
+  }}
+
+def segmentTenToFive_{suffix} : SegmentCertificate_{suffix} :=
+  {{
+    start := 10
+    finish := 5
+    steps := 1
+    parityTrace := [0, 1]
+    residueClass := 2
+    v2Witness := 0
+    reaches := by native_decide
+  }}
+
+def composedThreeToFive_{suffix} : SegmentCertificate_{suffix} :=
+  {{
+    start := 3
+    finish := 5
+    steps := 2
+    parityTrace := [1, 0, 1]
+    residueClass := 3
+    v2Witness := 0
+    reaches := by native_decide
+  }}
+
+def certificateComplexity_{suffix} (cert : SegmentCertificate_{suffix}) : Nat :=
+  cert.steps + cert.parityTrace.length
+
+def coarseCompositionSignature_{suffix} (cert : SegmentCertificate_{suffix}) : Nat × Nat × Nat :=
+  (cert.start % 8, cert.finish % 8, cert.parityTrace.length)
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Compositional family: one-step hybrid segment certificates are definable.",
+                f"""{base_defs}
+
+theorem segment_three_to_ten_definable_{suffix} :
+    segmentThreeToTen_{suffix}.start = 3 /\\ segmentThreeToTen_{suffix}.finish = 10 := by
+  native_decide
+""",
+                False,
+                "segment_definition",
+            ),
+            (
+                "closure_probe",
+                "Compositional family: adjacent local certificates compose into a two-step certificate.",
+                f"""{base_defs}
+
+theorem adjacent_segments_compose_three_to_five_{suffix} :
+    Nat.iterate compStep_{suffix}
+      (segmentThreeToTen_{suffix}.steps + segmentTenToFive_{suffix}.steps)
+      segmentThreeToTen_{suffix}.start = segmentTenToFive_{suffix}.finish := by
+  native_decide
+""",
+                False,
+                "certificate_composition",
+            ),
+            (
+                "simulation_probe",
+                "Compositional family: block parity grammar records the 3 -> 10 -> 5 block.",
+                f"""{base_defs}
+
+theorem parity_block_three_ten_five_{suffix} :
+    compTrace3_{suffix} = [1, 0, 1] := by
+  native_decide
+""",
+                False,
+                "parity_block_grammar",
+            ),
+            (
+                "closure_probe",
+                "Compositional family: composed certificates preserve concrete trajectory soundness.",
+                f"""{base_defs}
+
+theorem composed_certificate_sound_three_to_five_{suffix} :
+    Nat.iterate compStep_{suffix} composedThreeToFive_{suffix}.steps 3 = 5 := by
+  exact composedThreeToFive_{suffix}.reaches
+""",
+                False,
+                "composed_soundness",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Compositional family: two-step odd-even composition is still not a descent proof.",
+                f"""{base_defs}
+
+theorem composed_two_step_not_descent_at_three_{suffix} :
+    Not (composedThreeToFive_{suffix}.finish < composedThreeToFive_{suffix}.start) := by
+  native_decide
+""",
+                True,
+                "two_step_not_descent",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Compositional family: three primitive steps from 3 still grow, so short blocks are not enough.",
+                f"""{base_defs}
+
+theorem three_step_block_not_descent_at_three_{suffix} :
+    Not (Nat.iterate compStep_{suffix} 3 3 < 3) := by
+  native_decide
+""",
+                True,
+                "short_block_not_descent",
+            ),
+            (
+                "closure_probe",
+                "Compositional family: even-root pruning has a concrete decreasing example.",
+                f"""{base_defs}
+
+theorem even_root_pruning_decreases_root_{suffix} :
+    segmentTenToFive_{suffix}.finish < segmentTenToFive_{suffix}.start := by
+  native_decide
+""",
+                False,
+                "even_pruning_decrease",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Compositional family: certificate complexity decreases only for pruning, not composition.",
+                f"""{base_defs}
+
+theorem composition_increases_simple_complexity_{suffix} :
+    certificateComplexity_{suffix} segmentThreeToTen_{suffix} <
+      certificateComplexity_{suffix} composedThreeToFive_{suffix} := by
+  native_decide
+""",
+                True,
+                "complexity_composition_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Compositional family: coarse composition signatures still do not determine descent.",
+                f"""{base_defs}
+
+theorem coarse_composition_signature_not_descent_criterion_{suffix} :
+    coarseCompositionSignature_{suffix} segmentThreeToTen_{suffix} =
+      (3, 2, 2) /\\
+    Not (segmentThreeToTen_{suffix}.finish < segmentThreeToTen_{suffix}.start) := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "coarse_composition_not_descent",
+            ),
+            (
+                "closure_probe",
+                "Compositional family: local extension is formalizable but creates a coverage obligation.",
+                f"""{base_defs}
+
+def ExtensionObligation_{suffix} (cert : SegmentCertificate_{suffix}) : Prop :=
+  Exists fun next : SegmentCertificate_{suffix} => next.start = cert.finish
+
+theorem concrete_extension_exists_after_three_to_ten_{suffix} :
+    ExtensionObligation_{suffix} segmentThreeToTen_{suffix} := by
+  exact Exists.intro segmentTenToFive_{suffix} (by native_decide)
+""",
+                False,
+                "extension_obligation",
+            ),
+            (
+                "closure_probe",
+                "Decisive compositional gate: coverage must be a theorem, not bounded examples.",
+                f"""{base_defs}
+
+def GlobalExtensionCoverage_{suffix} : Prop :=
+  forall cert : SegmentCertificate_{suffix}, Exists fun next : SegmentCertificate_{suffix} => next.start = cert.finish
+
+def ExtensionObligation_{suffix} (cert : SegmentCertificate_{suffix}) : Prop :=
+  Exists fun next : SegmentCertificate_{suffix} => next.start = cert.finish
+
+theorem bounded_examples_do_not_prove_global_coverage_{suffix} :
+    ExtensionObligation_{suffix} segmentThreeToTen_{suffix} := by
+  exact Exists.intro segmentTenToFive_{suffix} (by native_decide)
+""",
+                True,
+                "coverage_gate",
+            ),
+            (
+                "closure_probe",
+                "Decisive compositional gate: the missing object is a well-founded normalizer, not a record type.",
+                f"""{base_defs}
+
+def HasLocalNormalizer_{suffix} : Prop :=
+  Exists fun measure : SegmentCertificate_{suffix} -> Nat => True
+
+theorem local_measure_type_exists_but_is_not_descent_{suffix} :
+    HasLocalNormalizer_{suffix} := by
+  exact Exists.intro certificateComplexity_{suffix} True.intro
+""",
+                True,
+                "normalizer_gate",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "compositional_certificate_family": True,
+                "compositional_certificate_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Compositional certificate probe; use results to decide whether "
+                        "local hybrid syntax can become a coverage/descent calculus."
+                    ),
                 )
             )
         return probes

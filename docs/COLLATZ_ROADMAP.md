@@ -17,13 +17,14 @@ What it has done:
 ```text
 encoded Collatz states -> proved scaffolding/simulation/bridge-shape controls ->
 completed rank/certificate hunt -> killed naive scalar rank families ->
-confirmed richer structural families are formalizable
+confirmed richer structural families are formalizable ->
+proved local hybrid certificate language is Lean-clean
 ```
 
 What it has not done:
 
 ```text
-produced a non-circular hybrid invariant/certificate system that makes global reachability smaller
+proved that the local hybrid certificates compose into a global coverage/descent theorem
 ```
 
 ## Flow Diagram
@@ -97,20 +98,22 @@ Exact Collatz pullback target: blocked
 Rank/certificate hunt: completed, but direct existence probe blocked
 Candidate scalar rank-family gauntlet: completed, mostly negative
 Structured rank-family wave: completed, mixed but informative
-Current bottleneck: invent a hybrid nonlocal invariant, not a scalar rank
-Next phase: Hybrid inverse-tree + parity-grammar + valuation certificate hunt
+Hybrid certificate-family wave: completed, positive local syntax / negative coarse signature completeness
+Current bottleneck: make local hybrid certificates compose into global proof compression
+Next phase: compositional certificate calculus and coverage/descent hunt
 ```
 
 ## Next Phase
 
-The next phase is not more broad invention and not another scalar-potential search. It is a narrow hunt for the missing miracle object:
+The next phase is not more broad invention, not another scalar-potential search, and not another local certificate-record test. The hybrid wave already proved the local language is expressible. The new target is composition:
 
 ```text
-non-circular hybrid certificate system combining:
-- inverse-tree structure
-- parity-word / trace grammar
-- valuation or residue information
+compositional hybrid certificate calculus combining:
+- inverse-tree certificate extension
+- parity-block grammar rather than one-step trace only
+- valuation/residue constraints strong enough to prune branches
 - explicit transport lemmas back to Collatz dynamics
+- a well-founded complexity measure on certificate transformations
 ```
 
-Success means the object makes Collatz smaller by turning global trajectory questions into local certified structure. Failure means the current encoding-world path is probably exhausted.
+Success means local certificates can be extended, normalized, or pruned in a way that turns global trajectory questions into a smaller coverage theorem. Failure means the current encoding-world path probably lacks enough global leverage and should pivot to a different world family.
