@@ -390,3 +390,58 @@ Decision implication:
 ```text
 There is something worth chasing here. The next wave should not return to certificates as the main object. It should test cylinder-pressure globalization: legal split trees, bad-cylinder mass decay, pressure recovery after bad blocks, and a density-zero exceptional-family theorem. This is not the final step before Collatz is solved; it is the first serious post-pivot candidate for a smaller named theorem than Collatz.
 ```
+
+### R13. Pressure Globalization Identifies The Real Scarcity Theorem
+
+These facts come from pressure-globalization run `PG-f09bdcc253` on world `W-0273193499`, submitted to Aristotle in three local 4-probe batches because Railway deployment upload was timing out, and digested in `PD-f3ea2f0362`.
+
+Verified probe outcomes:
+
+```text
+legal split-tree cylinders are definable: proved
+high child gives the expected mod-eight residue: proved
+split refinement doubles mass denominator: proved
+bad-frontier state has no reachability field: proved
+all-odd bad block recovers after four legal even refinements: proved
+all-odd extension remains a bad-pressure obstruction: proved
+one bad child is not strict mass decay: proved
+zero bad children give strict mass decay: proved
+density-zero frontier is a formal target: proved
+two-level zero-bad frontier has denominator four: proved
+pressure recovery target can package horizon and bad frontier: proved
+bad-mass decay is stronger than one legal split: proved
+```
+
+Status:
+
+```text
+12 / 12 pressure-globalization probes Lean-clean and proved in digest PD-f3ea2f0362
+local run campaign: C-2342eb43dbc9
+Aristotle project ids:
+- b8f484a6-00cd-4259-b94f-53a0bcd9dc0b
+- e528aafa-c59c-4135-97f2-011942025e03
+- 5439ca79-a278-4e4b-a788-36e5e9375eec
+- 6e38d8d4-2a08-40e0-9158-8cca52835e5f
+- b2a21307-3058-4bf7-ba43-8ec0f8522eef
+- 2eac17a5-da3c-406d-a508-d26493ec8a47
+- 58a09984-611b-4d6d-b202-16b0167d2996
+- 63b9c88e-b825-47f3-bd0d-fe39b64aea26
+- 9f7a1082-1189-45e3-a863-bfe25725d778
+- d7452f88-bfa1-45f5-8c61-c584e465f1ef
+- 5b27fa9d-798f-458c-baea-956bb37acc53
+- a59ac272-a21b-43a5-b2a4-08fa4d57b864
+```
+
+Interpretation:
+
+```text
+The pressure world is no longer only a local formalism. It now has a clean global accounting language: split-tree cylinders, bad-frontier counts, mass denominators, strict mass decay, density-zero targets, and pressure-recovery packages can all be expressed without a reachability field.
+
+The decisive mathematical signal is mixed in the useful way. Zero bad children give strict mass decay, and all-odd bad blocks can recover after four even refinements. But one bad child is not strict mass decay, and one legal split alone does not imply decay. Therefore the next missing theorem is not "refinement decreases bad mass." That is false as a general principle. The missing theorem is a scarcity theorem: along dynamically legal split trees, bad children must be rare enough, or pressure recovery must occur often enough, that the bad-frontier mass tends to zero.
+```
+
+Decision implication:
+
+```text
+Keep chasing the cylinder-pressure world. The next wave should test quantitative scarcity rather than definability: branching-process bounds, multi-level bad-child counts, recovery-window frequency, and a density-zero theorem schema. The likely smaller named theorem is now: every dynamically admissible bad-pressure frontier has subcritical bad-child branching after bounded recovery windows.
+```

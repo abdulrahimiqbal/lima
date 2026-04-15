@@ -20,12 +20,13 @@ completed rank/certificate hunt -> killed naive scalar rank families ->
 confirmed richer structural families are formalizable ->
 pivoted away from local hybrid certificates ->
 proved 2-adic cylinder-pressure language is Lean-clean
+proved pressure-globalization accounting is Lean-clean
 ```
 
 What it has not done:
 
 ```text
-proved that bad-pressure cylinder families shrink to density zero under legal refinement
+proved a quantitative scarcity theorem for bad children in legal split trees
 ```
 
 ## Flow Diagram
@@ -110,25 +111,26 @@ Hybrid certificate-family wave: completed, positive local syntax / negative coar
 Compositional certificate wave: completed, positive local composition / negative short-block descent
 Coverage-normalization hunt: completed, coverage statements formalized but syntactic/forced-extension mechanism rejected
 Cylinder-pressure wave: completed, dynamic admissibility and anti-smuggling gates passed
-Current bottleneck: no bad-cylinder mass-decay or density-zero theorem yet
-Next phase: cylinder-pressure globalization
+Pressure-globalization wave: completed, split-tree accounting and density-zero targets passed
+Current bottleneck: no quantitative bad-child scarcity theorem yet
+Next phase: pressure scarcity / recovery-frequency hunt
 ```
 
 ## Next Phase
 
-The pivot away from the current Alien State-Space / hybrid-certificate lineage has started. The first cylinder-pressure wave proved that 2-adic residue cylinders, dynamic parity admissibility, affine block transport, pressure accounting, legal refinement, and density-style bad-cylinder gates can be stated without directly assuming reachability.
+The pivot away from the current Alien State-Space / hybrid-certificate lineage has started. The cylinder-pressure and pressure-globalization waves proved that 2-adic residue cylinders, dynamic parity admissibility, affine block transport, pressure accounting, legal refinement, split-tree bad-frontier accounting, and density-zero targets can be stated without directly assuming reachability.
 
 ```text
 current candidate world family:
 - 2-adic cylinder-pressure / density transport
 
 next gates:
-- legal split trees for dynamically admissible cylinders
-- bad-cylinder mass decay under refinement
-- pressure recovery after bad all-odd blocks
-- density-zero exceptional-family theorem
+- multi-level bad-child branching bounds
+- pressure recovery frequency after bad all-odd windows
+- subcritical bad-frontier branching theorem
+- density-zero exceptional-family theorem from scarcity
 ```
 
-Success in the next phase means this family produces a smaller named theorem than Collatz: roughly, that the dynamically admissible bad-pressure cylinders have vanishing density or must eventually refine into positive-pressure descendants. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs it as subordinate bookkeeping.
+Success in the next phase means this family produces a smaller named theorem than Collatz: roughly, that every dynamically admissible bad-pressure frontier has subcritical bad-child branching after bounded recovery windows. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs it as subordinate bookkeeping.
 
-This is not the final step before Collatz is solved. It is the first serious post-pivot route to a possible final-step theorem.
+This is still not the final step before Collatz is solved. It is a serious post-pivot route toward a possible final-step theorem: a density-zero or subcritical-branching result that would then need a sound pullback to ordinary Collatz termination.
