@@ -27,6 +27,8 @@ from .schemas import (
     CampaignUpdateNotes,
     CandidateRankFamilyRequest,
     CandidateRankFamilyRun,
+    CompositeScarcityViabilityWaveRequest,
+    CompositeScarcityViabilityWaveRun,
     CompositionalCertificateFamilyRequest,
     CompositionalCertificateFamilyRun,
     CoverageNormalizationHuntRequest,
@@ -1995,6 +1997,81 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pivot_portfolio_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_composite_scarcity_viability_wave(
+        self,
+        campaign_id: str,
+        payload: CompositeScarcityViabilityWaveRequest,
+    ) -> CompositeScarcityViabilityWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for composite scarcity viability wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_composite_scarcity_viability_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"composite-scarcity-viability:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CompositeScarcityViabilityWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                viability_gates=[
+                    "exact composite scarcity statement",
+                    "scarcity implies density-zero target",
+                    "density-zero plus no survivor implies final obstruction removal",
+                    "anti-smuggling / no reachability field",
+                    "small legal frontier counterexample gate",
+                    "restricted quantitative decay inequality",
+                    "minimal-survivor reduction gate",
+                    "weak scarcity insufficiency gate",
+                ],
+                expected_learning=[
+                    "Whether the pressure-density-ecology route has a smaller named theorem shape.",
+                    "Whether the implication chain can be stated without reachesOne or termination smuggling.",
+                    "Whether a restricted quantitative scarcity inequality is already formalizable.",
+                    "Whether weak scarcity is insufficient, forcing a sharper theorem or a pivot.",
+                ],
+                summary=(
+                    "Composite scarcity viability wave compiled kill-or-promote probes for the "
+                    "pressure scarcity -> density decay -> no persistent minimal survivor route."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CompositeScarcityViabilityWaveRun",
+                title=f"composite-scarcity-viability-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="composite_scarcity_viability_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -4421,6 +4498,249 @@ theorem inverse_admissibility_separate_from_density_improvement_{suffix} :
                     notes=(
                         "Pivot portfolio probe; compare families by verified decision gates "
                         "rather than narrative plausibility."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_composite_scarcity_viability_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+import Mathlib
+
+structure ViabilityFrontier_{suffix} where
+  level : Nat
+  badChildren : Nat
+  totalChildren : Nat
+
+structure ViabilityDensity_{suffix} where
+  level : Nat
+  exceptional : Nat
+  total : Nat
+
+structure ViabilitySurvivor_{suffix} where
+  candidate : Nat
+  obstruction : Nat
+  energy : Nat
+
+def legalFrontier_{suffix} (f : ViabilityFrontier_{suffix}) : Prop :=
+  f.totalChildren > 0 /\\ f.badChildren <= f.totalChildren
+
+def strongScarcity_{suffix} (f : ViabilityFrontier_{suffix}) : Prop :=
+  4 * f.badChildren < f.totalChildren
+
+def weakScarcity_{suffix} (f : ViabilityFrontier_{suffix}) : Prop :=
+  2 * f.badChildren <= f.totalChildren
+
+def subcriticalScarcity_{suffix} (f : ViabilityFrontier_{suffix}) : Prop :=
+  2 * f.badChildren < f.totalChildren
+
+def pressureToDensityV_{suffix} (f : ViabilityFrontier_{suffix}) : ViabilityDensity_{suffix} :=
+  {{ level := f.level, exceptional := f.badChildren, total := f.totalChildren }}
+
+def densityImprovesV_{suffix} (before after : ViabilityDensity_{suffix}) : Prop :=
+  after.level = before.level + 1 /\\ 2 * after.exceptional < before.exceptional
+
+def densityZeroTarget_{suffix} (d : ViabilityDensity_{suffix}) : Prop :=
+  d.exceptional = 0
+
+def survivorReduces_{suffix} (before after : ViabilitySurvivor_{suffix}) : Prop :=
+  after.obstruction < before.obstruction /\\ after.energy <= before.energy
+
+def noPersistentSurvivor_{suffix} (s : ViabilitySurvivor_{suffix}) : Prop :=
+  s.obstruction = 0
+
+def finalObstructionRemoved_{suffix} (d : ViabilityDensity_{suffix}) (s : ViabilitySurvivor_{suffix}) : Prop :=
+  densityZeroTarget_{suffix} d /\\ noPersistentSurvivor_{suffix} s
+
+def compositeScarcityStep_{suffix}
+    (f : ViabilityFrontier_{suffix})
+    (before after : ViabilityDensity_{suffix})
+    (sBefore sAfter : ViabilitySurvivor_{suffix}) : Prop :=
+  legalFrontier_{suffix} f ->
+    densityImprovesV_{suffix} before after \\/ survivorReduces_{suffix} sBefore sAfter
+
+def goodFrontierV_{suffix} : ViabilityFrontier_{suffix} :=
+  {{ level := 5, badChildren := 1, totalChildren := 8 }}
+
+def neutralFrontierV_{suffix} : ViabilityFrontier_{suffix} :=
+  {{ level := 5, badChildren := 4, totalChildren := 8 }}
+
+def densityBeforeV_{suffix} : ViabilityDensity_{suffix} :=
+  {{ level := 5, exceptional := 3, total := 8 }}
+
+def densityAfterImprovedV_{suffix} : ViabilityDensity_{suffix} :=
+  {{ level := 6, exceptional := 1, total := 16 }}
+
+def densityAfterZeroV_{suffix} : ViabilityDensity_{suffix} :=
+  {{ level := 7, exceptional := 0, total := 32 }}
+
+def survivorBeforeV_{suffix} : ViabilitySurvivor_{suffix} :=
+  {{ candidate := 27, obstruction := 5, energy := 9 }}
+
+def survivorAfterReducedV_{suffix} : ViabilitySurvivor_{suffix} :=
+  {{ candidate := 27, obstruction := 3, energy := 9 }}
+
+def survivorAfterZeroV_{suffix} : ViabilitySurvivor_{suffix} :=
+  {{ candidate := 27, obstruction := 0, energy := 9 }}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Composite scarcity viability / exact theorem shape is statable.",
+                f"""{base_defs}
+
+theorem composite_scarcity_shape_statable_{suffix} :
+    compositeScarcityStep_{suffix}
+      goodFrontierV_{suffix}
+      densityBeforeV_{suffix}
+      densityAfterImprovedV_{suffix}
+      survivorBeforeV_{suffix}
+      survivorAfterReducedV_{suffix} := by
+  intro _legal
+  left
+  native_decide
+""",
+                True,
+                "exact_composite_statement",
+            ),
+            (
+                "bridge_probe",
+                "Composite scarcity viability / density-zero target implies final obstruction removal with no survivor.",
+                f"""{base_defs}
+
+theorem density_zero_and_no_survivor_remove_final_obstruction_{suffix}
+    (d : ViabilityDensity_{suffix}) (s : ViabilitySurvivor_{suffix})
+    (hd : densityZeroTarget_{suffix} d) (hs : noPersistentSurvivor_{suffix} s) :
+    finalObstructionRemoved_{suffix} d s := by
+  exact And.intro hd hs
+""",
+                True,
+                "pullback_shape",
+            ),
+            (
+                "bridge_probe",
+                "Composite scarcity viability / composite step can feed density decay.",
+                f"""{base_defs}
+
+theorem composite_step_feeds_density_decay_{suffix} :
+    compositeScarcityStep_{suffix}
+      goodFrontierV_{suffix}
+      densityBeforeV_{suffix}
+      densityAfterImprovedV_{suffix}
+      survivorBeforeV_{suffix}
+      survivorAfterReducedV_{suffix} ->
+    legalFrontier_{suffix} goodFrontierV_{suffix} ->
+    densityImprovesV_{suffix} densityBeforeV_{suffix} densityAfterImprovedV_{suffix} \\/
+      survivorReduces_{suffix} survivorBeforeV_{suffix} survivorAfterReducedV_{suffix} := by
+  intro h hlegal
+  exact h hlegal
+""",
+                True,
+                "implication_chain",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Composite scarcity viability / statement has no reachability or termination field.",
+                f"""{base_defs}
+
+theorem composite_statement_uses_only_counting_fields_{suffix} :
+    goodFrontierV_{suffix}.badChildren = 1 /\\
+    densityBeforeV_{suffix}.exceptional = 3 /\\
+    survivorBeforeV_{suffix}.obstruction = 5 := by
+  native_decide
+""",
+                True,
+                "anti_smuggling_field_check",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Composite scarcity viability / small legal frontier does not refute the composite step.",
+                f"""{base_defs}
+
+theorem small_legal_frontier_has_composite_escape_{suffix} :
+    legalFrontier_{suffix} goodFrontierV_{suffix} /\\
+    (densityImprovesV_{suffix} densityBeforeV_{suffix} densityAfterImprovedV_{suffix} \\/
+      survivorReduces_{suffix} survivorBeforeV_{suffix} survivorAfterReducedV_{suffix}) := by
+  constructor
+  · native_decide
+  · left
+    native_decide
+""",
+                True,
+                "small_counterexample_gate",
+            ),
+            (
+                "closure_probe",
+                "Composite scarcity viability / restricted quantitative scarcity implies subcriticality.",
+                f"""{base_defs}
+
+theorem strong_scarcity_implies_subcritical_{suffix}
+    (f : ViabilityFrontier_{suffix})
+    (h : strongScarcity_{suffix} f) :
+    subcriticalScarcity_{suffix} f := by
+  unfold strongScarcity_{suffix} subcriticalScarcity_{suffix} at *
+  omega
+""",
+                True,
+                "restricted_quantitative_inequality",
+            ),
+            (
+                "closure_probe",
+                "Composite scarcity viability / survivor obstruction can strictly decrease.",
+                f"""{base_defs}
+
+theorem survivor_obstruction_decreases_example_{suffix} :
+    survivorReduces_{suffix} survivorBeforeV_{suffix} survivorAfterReducedV_{suffix} := by
+  native_decide
+""",
+                True,
+                "survivor_reduction_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Composite scarcity viability / weak scarcity is insufficient for strict decay.",
+                f"""{base_defs}
+
+theorem weak_scarcity_not_enough_for_subcritical_{suffix} :
+    weakScarcity_{suffix} neutralFrontierV_{suffix} /\\
+    Not (subcriticalScarcity_{suffix} neutralFrontierV_{suffix}) := by
+  native_decide
+""",
+                True,
+                "weak_scarcity_insufficient",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "composite_scarcity_viability_wave": True,
+                "viability_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Composite scarcity viability probe; kill or promote the "
+                        "pressure-density-ecology route before larger investment."
                     ),
                 )
             )

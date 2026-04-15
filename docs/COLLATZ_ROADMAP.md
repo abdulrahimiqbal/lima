@@ -112,8 +112,10 @@ Compositional certificate wave: completed, positive local composition / negative
 Coverage-normalization hunt: completed, coverage statements formalized but syntactic/forced-extension mechanism rejected
 Cylinder-pressure wave: completed, dynamic admissibility and anti-smuggling gates passed
 Pressure-globalization wave: completed, split-tree accounting and density-zero targets passed
-Current bottleneck: no quantitative bad-child scarcity theorem yet
-Next phase: pressure scarcity / recovery-frequency hunt
+Pivot portfolio wave: completed, density/ecology route selected over inverse-tree as main engine
+Composite scarcity viability gate: completed, theorem-shaped route passed 8 / 8 probes
+Current bottleneck: no nontrivial parameterized bad-child scarcity / recovery-frequency theorem yet
+Next phase: Composite Scarcity Theorem hunt
 ```
 
 ## Next Phase
@@ -122,15 +124,16 @@ The pivot away from the current Alien State-Space / hybrid-certificate lineage h
 
 ```text
 current candidate world family:
-- 2-adic cylinder-pressure / density transport
+- 2-adic cylinder-pressure / density transport / minimal-survivor ecology
 
 next gates:
-- multi-level bad-child branching bounds
+- parameterized multi-level bad-child branching bounds
 - pressure recovery frequency after bad all-odd windows
-- subcritical bad-frontier branching theorem
-- density-zero exceptional-family theorem from scarcity
+- density-improving transport from strong scarcity
+- minimal-survivor obstruction reduction
+- density-zero exceptional-family theorem from composite scarcity
 ```
 
-Success in the next phase means this family produces a smaller named theorem than Collatz: roughly, that every dynamically admissible bad-pressure frontier has subcritical bad-child branching after bounded recovery windows. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs it as subordinate bookkeeping.
+Success in the next phase means this family proves a smaller named theorem than Collatz: roughly, that every dynamically legal bad-pressure split tree either enters a density-improving transport step within a bounded window or maps to a minimal-survivor obstruction whose obstruction measure strictly decreases. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
 
-This is still not the final step before Collatz is solved. It is a serious post-pivot route toward a possible final-step theorem: a density-zero or subcritical-branching result that would then need a sound pullback to ordinary Collatz termination.
+This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove Composite Scarcity, then prove density-zero/no-persistent-survivor, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot produce a nontrivial parameterized scarcity or recovery lemma, this route should be pivoted rather than extended with more local definitions.

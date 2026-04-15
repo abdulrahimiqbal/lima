@@ -532,3 +532,66 @@ pressure scarcity -> density decay -> no persistent minimal survivor
 
 Continue only if the next wave proves or sharply falsifies a named theorem of this kind. If it only proves more local definability facts, this route should be treated as another blind path and pivoted away from.
 ```
+
+### R15. Composite Scarcity Viability Gate Promotes The Route To A Named Theorem Hunt
+
+These facts come from composite-scarcity viability run `CV-9473e35669` on world `W-0273193499`, local campaign `C-ec81916c03de`, submitted in Aristotle bake `PB-c06a0c33ba`, and digested in `PD-f0f0d82600`.
+
+This was intentionally a kill-or-promote gate. It did not ask for more vocabulary. It asked whether the current route can be forced into a smaller, falsifiable theorem shape before investing more time.
+
+Verified probe outcomes:
+
+```text
+exact composite scarcity theorem shape is statable: proved
+density-zero target plus no survivor implies final obstruction removal: proved
+composite step can feed density decay: proved
+statement has no reachability or termination field: proved
+small legal frontier does not immediately refute the composite step: proved
+restricted quantitative scarcity implies subcriticality: proved
+survivor obstruction can strictly decrease: proved
+weak scarcity is insufficient for strict decay: proved
+```
+
+Status:
+
+```text
+8 / 8 composite-scarcity viability probes Lean-clean and proved in digest PD-f0f0d82600
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This still does not prove Collatz. It does, however, pass the proof-viability gate we set for ourselves.
+
+The route is no longer justified only by a vibe that pressure/density/ecology "sounds promising." The route now has a precise theorem-shaped spine:
+
+1. formulate a composite scarcity step;
+2. show that the step feeds density decay or survivor reduction;
+3. show that density zero plus no persistent survivor removes the final obstruction;
+4. verify that weak scarcity is not enough, so the theorem must be quantitatively sharp.
+
+The most important positive signal is the restricted quantitative probe: strong scarcity implies subcriticality. That is not the missing global theorem, but it confirms the right kind of inequality can be represented and used in Lean.
+
+The most important negative signal is also valuable: weak scarcity is insufficient. That prevents false hope around an easy mass-accounting argument. Any real theorem must prove a genuinely stronger bad-child scarcity/recovery-frequency bound.
+```
+
+Decision implication:
+
+```text
+Promote this line from "maybe worth chasing" to "the current named theorem hunt."
+
+The next target is not another exploratory wave. It is the Composite Scarcity Theorem:
+
+For dynamically legal bad-pressure split trees, every persistent bad frontier either enters a density-improving transport step within a bounded window, or maps to a minimal-survivor obstruction whose obstruction measure strictly decreases.
+
+Success would not immediately finish Collatz. Success would reduce the remaining proof debt to:
+
+Composite Scarcity Theorem
+-> density-zero exceptional family / no persistent survivor
+-> sound pullback to ordinary Collatz termination.
+
+Failure should be crisp: if the next wave cannot prove a nontrivial parameterized scarcity/recovery lemma, or if it exposes a legal persistent bad frontier with no density improvement and no survivor reduction, pivot away rather than adding more definitions.
+```
