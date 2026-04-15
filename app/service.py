@@ -38,6 +38,8 @@ from .schemas import (
     FormalProbeDigestRequest,
     FormalProbeDigestRun,
     FrontierNode,
+    HybridCertificateFamilyRequest,
+    HybridCertificateFamilyRun,
     InventionBatch,
     InventionBatchCreate,
     ManagerContext,
@@ -1556,6 +1558,77 @@ class CampaignService:
             )
             return run
 
+    def run_hybrid_certificate_families(
+        self,
+        campaign_id: str,
+        payload: HybridCertificateFamilyRequest,
+    ) -> HybridCertificateFamilyRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for hybrid certificate hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_hybrid_certificate_family_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"hybrid-certificate:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = HybridCertificateFamilyRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                hybrid_families=[
+                    "inverse-tree witness transport",
+                    "parity-word trace grammar",
+                    "residue and valuation tags",
+                    "bounded hybrid certificates",
+                    "coarse hybrid signature collision tests",
+                ],
+                expected_learning=[
+                    "Whether hybrid structural certificates carry more leverage than scalar or single-family summaries.",
+                    "Whether coarse inverse-tree/parity/residue summaries still collapse distinct dynamics.",
+                    "Whether the next missing object should be a certificate calculus instead of a numeric rank.",
+                ],
+                summary=(
+                    "Hybrid certificate hunt compiled probes that combine inverse-tree structure, "
+                    "parity traces, and residue/valuation tags into one candidate certificate language."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="HybridCertificateFamilyRun",
+                title=f"hybrid-certificate-family:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="hybrid_certificate_family_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -2090,6 +2163,307 @@ structure StructuredCertificate_{suffix} where
                         metadata=metadata,
                     ),
                     notes="Structured rank family probe; use results to choose the next nonlocal invariant family.",
+                )
+            )
+        return probes
+
+    def _compile_hybrid_certificate_family_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def hybridStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def coarseHybridSignature_{suffix} (n : Nat) : Nat × List Nat × Nat :=
+  (n % 8, [n % 2, hybridStep_{suffix} n % 2], if hybridStep_{suffix} n % 2 = 0 then 1 else 0)
+
+def inverseWitness_{suffix} (m p : Nat) : Prop :=
+  hybridStep_{suffix} p = m
+
+structure HybridCertificate_{suffix} where
+  root : Nat
+  predecessor : Nat
+  parityTrace : List Nat
+  residueClass : Nat
+  v2LowerBound : Nat
+  predecessor_step : inverseWitness_{suffix} root predecessor
+  trace_matches : parityTrace = [predecessor % 2, root % 2]
+  residue_matches : residueClass = predecessor % 8
+  valuation_matches : 2 ^ v2LowerBound ∣ root
+
+structure HybridBoundedCertificate_{suffix} (n : Nat) where
+  local : HybridCertificate_{suffix}
+  steps : Nat
+  reaches : Nat.iterate hybridStep_{suffix} steps n = 1
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Hybrid family: inverse-tree + parity + valuation certificate is definable around 10 <- 3.",
+                f"""{base_defs}
+
+def hybridCertificateThreeToTen_{suffix} : HybridCertificate_{suffix} :=
+  {{
+    root := 10
+    predecessor := 3
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2LowerBound := 1
+    predecessor_step := by
+      norm_num [inverseWitness_{suffix}, hybridStep_{suffix}]
+    trace_matches := by
+      norm_num
+    residue_matches := by
+      norm_num
+    valuation_matches := by
+      norm_num
+  }}
+
+theorem hybrid_certificate_three_to_ten_definable_{suffix} :
+    hybridCertificateThreeToTen_{suffix}.root = 10 := by
+  rfl
+""",
+                False,
+                "hybrid_definition",
+            ),
+            (
+                "bridge_probe",
+                "Hybrid family: inverse-tree witness transport recovers the one-step Collatz move.",
+                f"""{base_defs}
+
+theorem hybrid_inverse_transport_{suffix} (m p : Nat)
+    (h : inverseWitness_{suffix} m p) :
+    hybridStep_{suffix} p = m := by
+  simpa [inverseWitness_{suffix}] using h
+""",
+                False,
+                "inverse_transport",
+            ),
+            (
+                "bridge_probe",
+                "Hybrid family: the certificate stores the odd-to-even trace for 3 -> 10.",
+                f"""{base_defs}
+
+def hybridCertificateThreeToTen_{suffix} : HybridCertificate_{suffix} :=
+  {{
+    root := 10
+    predecessor := 3
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2LowerBound := 1
+    predecessor_step := by
+      norm_num [inverseWitness_{suffix}, hybridStep_{suffix}]
+    trace_matches := by
+      norm_num
+    residue_matches := by
+      norm_num
+    valuation_matches := by
+      norm_num
+  }}
+
+theorem hybrid_trace_bridge_{suffix} :
+    hybridCertificateThreeToTen_{suffix}.parityTrace = [1, 0] := by
+  exact hybridCertificateThreeToTen_{suffix}.trace_matches
+""",
+                False,
+                "trace_bridge",
+            ),
+            (
+                "closure_probe",
+                "Hybrid family: valuation data is available on the even root of the local certificate.",
+                f"""{base_defs}
+
+def hybridCertificateThreeToTen_{suffix} : HybridCertificate_{suffix} :=
+  {{
+    root := 10
+    predecessor := 3
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2LowerBound := 1
+    predecessor_step := by
+      norm_num [inverseWitness_{suffix}, hybridStep_{suffix}]
+    trace_matches := by
+      norm_num
+    residue_matches := by
+      norm_num
+    valuation_matches := by
+      norm_num
+  }}
+
+theorem hybrid_valuation_bridge_{suffix} :
+    2 ^ hybridCertificateThreeToTen_{suffix}.v2LowerBound ∣ hybridCertificateThreeToTen_{suffix}.root := by
+  exact hybridCertificateThreeToTen_{suffix}.valuation_matches
+""",
+                False,
+                "valuation_bridge",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Hybrid family: a coarse parity/residue/valuation signature collides on 3 and 11.",
+                f"""{base_defs}
+
+theorem coarse_hybrid_signature_collision_{suffix} :
+    coarseHybridSignature_{suffix} 3 = coarseHybridSignature_{suffix} 11 := by
+  native_decide
+""",
+                True,
+                "coarse_signature_collision",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Hybrid family: the same coarse hybrid signature does not determine the next state.",
+                f"""{base_defs}
+
+theorem coarse_hybrid_signature_not_complete_{suffix} :
+    coarseHybridSignature_{suffix} 3 = coarseHybridSignature_{suffix} 11 /\\
+    hybridStep_{suffix} 3 ≠ hybridStep_{suffix} 11 := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "coarse_signature_not_complete",
+            ),
+            (
+                "closure_probe",
+                "Hybrid family: a bounded hybrid certificate can package concrete reachability for n = 3.",
+                f"""{base_defs}
+
+def hybridCertificateThreeToTen_{suffix} : HybridCertificate_{suffix} :=
+  {{
+    root := 10
+    predecessor := 3
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2LowerBound := 1
+    predecessor_step := by
+      norm_num [inverseWitness_{suffix}, hybridStep_{suffix}]
+    trace_matches := by
+      norm_num
+    residue_matches := by
+      norm_num
+    valuation_matches := by
+      norm_num
+  }}
+
+def hybridBoundedThree_{suffix} : HybridBoundedCertificate_{suffix} 3 :=
+  {{
+    local := hybridCertificateThreeToTen_{suffix}
+    steps := 7
+    reaches := by
+      norm_num [hybridStep_{suffix}]
+  }}
+
+theorem hybrid_bounded_three_exists_{suffix} :
+    Nat.iterate hybridStep_{suffix} hybridBoundedThree_{suffix}.steps 3 = 1 := by
+  exact hybridBoundedThree_{suffix}.reaches
+""",
+                False,
+                "bounded_hybrid_example",
+            ),
+            (
+                "closure_probe",
+                "Hybrid family: bounded hybrid certificates still imply ordinary reachability.",
+                f"""{base_defs}
+
+def hybridReachesOne_{suffix} (n : Nat) : Prop :=
+  Exists fun k : Nat => Nat.iterate hybridStep_{suffix} k n = 1
+
+theorem hybrid_bounded_certificate_sound_{suffix} (n : Nat)
+    (cert : HybridBoundedCertificate_{suffix} n) :
+    hybridReachesOne_{suffix} n := by
+  exact Exists.intro cert.steps cert.reaches
+""",
+                False,
+                "bounded_hybrid_soundness",
+            ),
+            (
+                "simulation_probe",
+                "Hybrid family: parity grammar is trace data rather than a descent proof by itself.",
+                f"""{base_defs}
+
+theorem hybrid_trace_at_three_{suffix} :
+    ([3 % 2, hybridStep_{suffix} 3 % 2] : List Nat) = [1, 0] := by
+  norm_num [hybridStep_{suffix}]
+""",
+                False,
+                "trace_only",
+            ),
+            (
+                "closure_probe",
+                "Hybrid family: inverse-tree, trace, and valuation data can coexist in one certificate object.",
+                f"""{base_defs}
+
+def hybridCertificateThreeToTen_{suffix} : HybridCertificate_{suffix} :=
+  {{
+    root := 10
+    predecessor := 3
+    parityTrace := [1, 0]
+    residueClass := 3
+    v2LowerBound := 1
+    predecessor_step := by
+      norm_num [inverseWitness_{suffix}, hybridStep_{suffix}]
+    trace_matches := by
+      norm_num
+    residue_matches := by
+      norm_num
+    valuation_matches := by
+      norm_num
+  }}
+
+theorem hybrid_certificate_components_cohere_{suffix} :
+    hybridCertificateThreeToTen_{suffix}.residueClass = 3 /\\
+    hybridCertificateThreeToTen_{suffix}.parityTrace = [1, 0] := by
+  constructor
+  · exact hybridCertificateThreeToTen_{suffix}.residue_matches
+  · exact hybridCertificateThreeToTen_{suffix}.trace_matches
+""",
+                False,
+                "hybrid_component_coherence",
+            ),
+            (
+                "closure_probe",
+                "Decisive hybrid family gate: the next object must be richer than a coarse hybrid signature.",
+                f"""{base_defs}
+
+theorem coarse_hybrid_signature_is_not_the_solution_{suffix} :
+    coarseHybridSignature_{suffix} 3 = coarseHybridSignature_{suffix} 11 /\\
+    hybridStep_{suffix} 3 ≠ hybridStep_{suffix} 11 := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "hybrid_family_gate",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "hybrid_certificate_family": True,
+                "hybrid_certificate_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes="Hybrid certificate probe; use results to decide whether a certificate calculus beats scalar ranks.",
                 )
             )
         return probes
