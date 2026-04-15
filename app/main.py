@@ -24,6 +24,7 @@ from .schemas import (
     FormalProbeDigestRequest,
     HybridCertificateFamilyRequest,
     InventionBatchCreate,
+    PressureGlobalizationWaveRequest,
     PromoteWorldRequest,
     RankCertificateHuntRequest,
     StructuredRankFamilyRequest,
@@ -440,6 +441,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.run_cylinder_pressure_wave(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/pressure-globalization-wave")
+    def run_pressure_globalization_wave(
+        campaign_id: str,
+        payload: PressureGlobalizationWaveRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_pressure_globalization_wave(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

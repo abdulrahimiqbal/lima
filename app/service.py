@@ -52,6 +52,8 @@ from .schemas import (
     ManagerDecision,
     MemoryState,
     PendingAristotleJob,
+    PressureGlobalizationWaveRequest,
+    PressureGlobalizationWaveRun,
     RankCertificateHuntRequest,
     RankCertificateHuntRun,
     StructuredRankFamilyRequest,
@@ -1851,6 +1853,77 @@ class CampaignService:
             )
             return run
 
+    def run_pressure_globalization_wave(
+        self,
+        campaign_id: str,
+        payload: PressureGlobalizationWaveRequest,
+    ) -> PressureGlobalizationWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure globalization wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_globalization_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-globalization:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureGlobalizationWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                globalization_families=[
+                    "legal split trees",
+                    "bad-cylinder mass accounting",
+                    "pressure recovery blocks",
+                    "bad descendant scarcity gates",
+                    "density-zero target statements",
+                ],
+                expected_learning=[
+                    "Whether cylinder pressure has a real mass-decay theorem shape.",
+                    "Whether bad all-odd blocks can recover pressure after legal even refinements.",
+                    "Whether the next target is density-zero scarcity rather than pointwise descent.",
+                ],
+                summary=(
+                    "Pressure globalization wave compiled probes for legal split trees, bad-cylinder "
+                    "mass accounting, pressure recovery, and density-zero exceptional-family targets."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureGlobalizationWaveRun",
+                title=f"pressure-globalization-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_globalization_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -3436,6 +3509,256 @@ theorem pressure_state_example_has_neutral_surplus_{suffix} :
                     notes=(
                         "Cylinder pressure probe; use results to decide whether dynamic 2-adic "
                         "admissibility gives a new world beyond local certificates."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_globalization_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+structure GlobalCylinder_{suffix} where
+  k : Nat
+  r : Nat
+
+def globalMod_{suffix} (c : GlobalCylinder_{suffix}) : Nat :=
+  2 ^ c.k
+
+def globalLow_{suffix} (c : GlobalCylinder_{suffix}) : GlobalCylinder_{suffix} :=
+  {{ k := c.k + 1, r := c.r }}
+
+def globalHigh_{suffix} (c : GlobalCylinder_{suffix}) : GlobalCylinder_{suffix} :=
+  {{ k := c.k + 1, r := c.r + 2 ^ c.k }}
+
+def globalIn_{suffix} (n : Nat) (c : GlobalCylinder_{suffix}) : Prop :=
+  n % globalMod_{suffix} c = c.r % globalMod_{suffix} c
+
+def globalFirstBitLegal_{suffix} (c : GlobalCylinder_{suffix}) (bit : Nat) : Prop :=
+  c.r % 2 = bit
+
+def globalOddDebt_{suffix} (bits : List Nat) : Nat :=
+  bits.foldl (fun acc bit => acc + bit) 0
+
+def globalPositivePressure_{suffix} (bits : List Nat) : Prop :=
+  2 * globalOddDebt_{suffix} bits < bits.length
+
+def globalBadBlock_{suffix} (bits : List Nat) : Prop :=
+  ¬ globalPositivePressure_{suffix} bits
+
+def pressureRecovered_{suffix} (prefix suffixBits : List Nat) : Prop :=
+  globalPositivePressure_{suffix} (prefix ++ suffixBits)
+
+structure BadFrontier_{suffix} where
+  level : Nat
+  badCount : Nat
+
+def badMassDenom_{suffix} (f : BadFrontier_{suffix}) : Nat :=
+  2 ^ f.level
+
+def StrictMassDecay_{suffix} (parent child : BadFrontier_{suffix}) : Prop :=
+  child.level = parent.level + 1 /\\ 2 * child.badCount < parent.badCount
+
+def DensityZeroAt_{suffix} (f : BadFrontier_{suffix}) : Prop :=
+  f.badCount = 0
+
+structure PressureGlobalTarget_{suffix} where
+  horizon : Nat
+  bad : BadFrontier_{suffix}
+  recovered : Prop
+
+def threeModFourGlobal_{suffix} : GlobalCylinder_{suffix} := {{ k := 2, r := 3 }}
+def oneBadParent_{suffix} : BadFrontier_{suffix} := {{ level := 0, badCount := 1 }}
+def oneBadChild_{suffix} : BadFrontier_{suffix} := {{ level := 1, badCount := 1 }}
+def zeroBadChild_{suffix} : BadFrontier_{suffix} := {{ level := 1, badCount := 0 }}
+def twoLevelZeroBad_{suffix} : BadFrontier_{suffix} := {{ level := 2, badCount := 0 }}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Pressure globalization: legal split-tree cylinders are definable.",
+                f"""{base_defs}
+
+theorem split_tree_low_level_advances_{suffix} :
+    (globalLow_{suffix} threeModFourGlobal_{suffix}).k = 3 := by
+  native_decide
+""",
+                False,
+                "split_tree_definition",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: high child gives the expected mod-eight residue.",
+                f"""{base_defs}
+
+theorem split_tree_high_residue_{suffix} :
+    (globalHigh_{suffix} threeModFourGlobal_{suffix}).r = 7 /\\
+    globalMod_{suffix} (globalHigh_{suffix} threeModFourGlobal_{suffix}) = 8 := by
+  native_decide
+""",
+                False,
+                "split_tree_high_child",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: split refinement doubles mass denominator.",
+                f"""{base_defs}
+
+theorem split_refinement_doubles_mass_denominator_{suffix} :
+    badMassDenom_{suffix} oneBadChild_{suffix} =
+      2 * badMassDenom_{suffix} oneBadParent_{suffix} := by
+  native_decide
+""",
+                False,
+                "mass_denominator",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure globalization: bad-frontier state has no reachability field.",
+                f"""{base_defs}
+
+def badFrontierExample_{suffix} : BadFrontier_{suffix} :=
+  {{ level := 3, badCount := 2 }}
+
+theorem bad_frontier_example_is_pure_counting_data_{suffix} :
+    badFrontierExample_{suffix}.level = 3 /\\ badFrontierExample_{suffix}.badCount = 2 := by
+  native_decide
+""",
+                True,
+                "frontier_no_reachability",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: all-odd bad block recovers after four legal even refinements.",
+                f"""{base_defs}
+
+theorem all_odd_block_recovers_after_four_evens_{suffix} :
+    pressureRecovered_{suffix} [1, 1, 1] [0, 0, 0, 0] := by
+  native_decide
+""",
+                True,
+                "pressure_recovery",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure globalization: all-odd extension remains a bad-pressure obstruction.",
+                f"""{base_defs}
+
+theorem all_odd_extension_still_bad_{suffix} :
+    globalBadBlock_{suffix} [1, 1, 1, 1] := by
+  native_decide
+""",
+                True,
+                "all_odd_obstruction",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure globalization: one bad child is not strict mass decay.",
+                f"""{base_defs}
+
+theorem one_bad_child_not_strict_mass_decay_{suffix} :
+    Not (StrictMassDecay_{suffix} oneBadParent_{suffix} oneBadChild_{suffix}) := by
+  native_decide
+""",
+                True,
+                "one_bad_child_no_decay",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: zero bad children give strict mass decay.",
+                f"""{base_defs}
+
+theorem zero_bad_child_is_strict_mass_decay_{suffix} :
+    StrictMassDecay_{suffix} oneBadParent_{suffix} zeroBadChild_{suffix} := by
+  native_decide
+""",
+                True,
+                "zero_bad_child_decay",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: density-zero frontier is a formal target.",
+                f"""{base_defs}
+
+theorem zero_bad_child_is_density_zero_target_{suffix} :
+    DensityZeroAt_{suffix} zeroBadChild_{suffix} := by
+  native_decide
+""",
+                False,
+                "density_zero_target",
+            ),
+            (
+                "closure_probe",
+                "Pressure globalization: two-level zero-bad frontier has denominator four.",
+                f"""{base_defs}
+
+theorem two_level_zero_bad_denominator_four_{suffix} :
+    badMassDenom_{suffix} twoLevelZeroBad_{suffix} = 4 := by
+  native_decide
+""",
+                False,
+                "two_level_frontier",
+            ),
+            (
+                "bridge_probe",
+                "Pressure globalization: pressure recovery target can package horizon and bad frontier.",
+                f"""{base_defs}
+
+def pressureGlobalTargetExample_{suffix} : PressureGlobalTarget_{suffix} :=
+  {{ horizon := 7, bad := zeroBadChild_{suffix}, recovered := pressureRecovered_{suffix} [1, 1, 1] [0, 0, 0, 0] }}
+
+theorem pressure_global_target_example_horizon_{suffix} :
+    pressureGlobalTargetExample_{suffix}.horizon = 7 := by
+  native_decide
+""",
+                False,
+                "global_target_packaging",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Decisive pressure-globalization gate: bad-mass decay is stronger than one legal split.",
+                f"""{base_defs}
+
+theorem one_legal_split_does_not_imply_decay_{suffix} :
+    globalFirstBitLegal_{suffix} threeModFourGlobal_{suffix} 1 /\\
+    Not (StrictMassDecay_{suffix} oneBadParent_{suffix} oneBadChild_{suffix}) := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "decay_stronger_than_split",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "pressure_globalization_wave": True,
+                "pressure_globalization_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Pressure globalization probe; use results to decide whether legal "
+                        "2-adic refinement can support bad-cylinder mass decay."
                     ),
                 )
             )
