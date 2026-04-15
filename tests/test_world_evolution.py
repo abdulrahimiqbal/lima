@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 import tarfile
 
@@ -15,6 +16,7 @@ from app.schemas import (
     FormalObligationSpec,
     FormalProbe,
     InventionBatchCreate,
+    PendingAristotleJob,
     ProofDebtItem,
     RawWorldInvention,
     WorldObjectDefinition,
@@ -584,6 +586,73 @@ def test_digest_formal_probe_results_can_recover_by_project_id(tmp_path: Path) -
     assert "missing_import_or_dependency" in digest.top_failure_modes
     assert "imports" in " ".join(digest.repair_instructions).lower()
     assert digest.diagnostics[0]["result_status"] == "blocked"
+
+
+def test_digest_reconciles_pending_probe_jobs_by_project_id(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Pending digest",
+            problem_statement="Recover pending Aristotle artifact by project id.",
+            auto_run=False,
+        )
+    )
+    probe = FormalProbe(
+        world_id="W-pending",
+        probe_type="definition_probe",
+        source_text="Can pending project refs be digested?",
+        formal_obligation=FormalObligationSpec(
+            source_text="Can pending project refs be digested?",
+            lean_declaration="theorem pending_probe : True := by\n  trivial\n",
+        ),
+        status="submitted",
+        result_status="running",
+    )
+    service.memory.upsert_research_node(
+        campaign_id=campaign.id,
+        node_id=probe.id,
+        node_type="FormalProbe",
+        title="probe",
+        summary=probe.source_text,
+        status=probe.status,
+        payload=probe.model_dump(mode="json"),
+    )
+    pending = PendingAristotleJob(
+        project_id="project-pending",
+        target_frontier_node=f"probe:{probe.id}",
+        world_family="bridge",
+        bounded_claim=probe.source_text,
+        debt_id=probe.id,
+        obligation_text=probe.source_text,
+        submitted_at=datetime.now(timezone.utc),
+        status="running",
+        decision_snapshot={},
+        plan_snapshot=ApprovedExecutionPlan(
+            approved_proof_jobs=[probe.source_text],
+        ).model_dump(mode="json"),
+        lean_code=probe.formal_obligation.lean_declaration,
+    )
+    service._set_pending_jobs(campaign, [pending])
+    service._persist_campaign(campaign)
+    service.executor.download_aristotle_result_artifacts = lambda project_id: [
+        "--- Main.lean ---\ntheorem pending_probe : True := by\n  trivial\n"
+    ]
+
+    digest = service.digest_formal_probe_results(
+        campaign.id,
+        payload=FormalProbeDigestRequest(
+            max_artifacts=10,
+            redownload_missing_artifacts=True,
+        ),
+    )
+
+    assert digest.proved_count == 1
+    assert digest.reconciled_pending_job_count == 1
+    updated_campaign = service.get_campaign(campaign.id)
+    assert updated_campaign.pending_aristotle_jobs == []
+    updated_probe = service.memory.get_research_node(campaign.id, probe.id)
+    assert updated_probe is not None
+    assert updated_probe.status == "proved"
 
 
 def test_digest_does_not_mark_submission_failed_project_as_proved(tmp_path: Path) -> None:

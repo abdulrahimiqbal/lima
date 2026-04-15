@@ -788,6 +788,7 @@ class FormalProbeDigestRun(BaseModel):
     proved_count: int = 0
     blocked_count: int = 0
     inconclusive_count: int = 0
+    reconciled_pending_job_count: int = 0
     top_failure_modes: list[str] = Field(default_factory=list)
     repair_instructions: list[str] = Field(default_factory=list)
     diagnostics: list[dict[str, Any]] = Field(default_factory=list)

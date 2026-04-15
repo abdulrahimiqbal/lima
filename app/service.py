@@ -1166,6 +1166,7 @@ class CampaignService:
             artifacts_by_probe = self._artifacts_by_probe(
                 campaign_id,
                 probes,
+                campaign=campaign,
                 include_project_refs=payload.redownload_missing_artifacts,
             )
             unmapped_artifacts = self._unmapped_aristotle_artifacts(campaign_id, payload.max_artifacts)
@@ -1210,6 +1211,11 @@ class CampaignService:
                     payload=updated.model_dump(mode="json"),
                 )
 
+            reconciled_count = self._reconcile_pending_jobs_from_probe_diagnostics(
+                campaign,
+                diagnostics,
+            )
+
             if payload.attach_unmapped_artifacts:
                 for path in unmapped_artifacts:
                     if len(diagnostics) >= payload.max_artifacts:
@@ -1237,6 +1243,7 @@ class CampaignService:
                 inconclusive_count=sum(
                     1 for d in diagnostics if d.get("probe_id") and d.get("probe_status") == "inconclusive"
                 ),
+                reconciled_pending_job_count=reconciled_count,
                 top_failure_modes=[mode for mode, _ in failure_modes.most_common(8)],
                 repair_instructions=list(dict.fromkeys(repair_instructions))[:20],
                 diagnostics=diagnostics[:payload.max_artifacts],
@@ -1930,6 +1937,10 @@ structure LocalCandidate_{suffix} where
             update={
                 "status": "submitted",
                 "result_status": job.status,
+                "artifact_paths": list(dict.fromkeys([
+                    *probe.artifact_paths,
+                    f"aristotle_project_id:{job.project_id}",
+                ])),
                 "notes": f"{probe.notes} Submitted to Aristotle project {job.project_id}.",
             }
         )
@@ -2062,6 +2073,7 @@ structure LocalCandidate_{suffix} where
         campaign_id: str,
         probes: list[FormalProbe],
         *,
+        campaign: CampaignRecord | None = None,
         include_project_refs: bool = False,
     ) -> dict[str, list[str]]:
         probe_ids = {probe.id for probe in probes}
@@ -2079,7 +2091,112 @@ structure LocalCandidate_{suffix} where
                 artifacts_by_probe[probe_id].append(
                     f"aristotle_project_id:{event.payload['project_id']}"
                 )
+        if include_project_refs:
+            try:
+                campaign = campaign or self.get_campaign(campaign_id)
+                pending_jobs = self._pending_jobs(campaign)
+            except Exception:
+                logger.exception("Unable to include pending Aristotle project refs for digest.")
+                pending_jobs = []
+            for job in pending_jobs:
+                if job.debt_id in probe_ids:
+                    artifacts_by_probe[job.debt_id].append(
+                        f"aristotle_project_id:{job.project_id}"
+                    )
         return artifacts_by_probe
+
+    def _reconcile_pending_jobs_from_probe_diagnostics(
+        self,
+        campaign: CampaignRecord,
+        diagnostics: list[dict[str, Any]],
+    ) -> int:
+        """Clear pending proof jobs when digest recovered a terminal probe artifact."""
+        pending_jobs = self._pending_jobs(campaign)
+        if not pending_jobs:
+            return 0
+
+        terminal_by_probe: dict[str, dict[str, Any]] = {}
+        for diagnostic in diagnostics:
+            probe_id = diagnostic.get("probe_id")
+            probe_status = diagnostic.get("probe_status")
+            if not probe_id or probe_status == "inconclusive":
+                continue
+            terminal_by_probe[probe_id] = diagnostic
+
+        if not terminal_by_probe:
+            return 0
+
+        completed_project_ids = {
+            event.payload.get("project_id")
+            for event in self.memory.list_events(campaign.id, limit=1000)
+            if event.event_type == "aristotle_job_completed"
+        }
+        updated = campaign.model_copy(deep=True)
+        still_pending: list[PendingAristotleJob] = []
+        reconciled_count = 0
+
+        for job in pending_jobs:
+            diagnostic = terminal_by_probe.get(job.debt_id or "")
+            if not diagnostic:
+                still_pending.append(job)
+                continue
+
+            reconciled_count += 1
+            result_status = diagnostic.get("result_status") or diagnostic.get("probe_status")
+            failure_type = diagnostic.get("failure_type")
+            artifact_paths = diagnostic.get("artifact_paths") or []
+            tar_paths = [
+                path for path in artifact_paths if isinstance(path, str) and _looks_like_aristotle_tar_path(path)
+            ]
+
+            if job.project_id not in completed_project_ids:
+                self.memory.add_event(
+                    campaign_id=campaign.id,
+                    tick=campaign.tick_count,
+                    event_type="aristotle_job_completed",
+                    payload={
+                        "project_id": job.project_id,
+                        "poll_count": job.poll_count,
+                        "status": result_status,
+                        "debt_id": job.debt_id,
+                        "result_status": result_status,
+                        "failure_type": failure_type,
+                        "artifacts": artifact_paths,
+                        "source": "formal_probe_digest_reconciliation",
+                    },
+                )
+
+            for debt in updated.proof_debt_ledger:
+                if debt.get("id") != job.debt_id:
+                    continue
+                debt["status"] = diagnostic.get("probe_status")
+                debt["failure_type"] = failure_type
+                debt["result_status"] = result_status
+                debt["artifact_paths"] = artifact_paths
+
+            if updated.last_execution_result is None:
+                updated.last_execution_result = {
+                    "status": result_status,
+                    "failure_type": failure_type,
+                    "notes": (
+                        f"Formal probe digest reconciled Aristotle project {job.project_id} "
+                        f"for {job.debt_id}."
+                    ),
+                    "artifacts": artifact_paths,
+                    "executor_backend": "aristotle",
+                }
+            if tar_paths:
+                job.result_tar_path = tar_paths[0]
+            job.status = result_status
+            job.notes.append(
+                f"Reconciled by formal probe digest as {result_status}/{failure_type or 'ok'}."
+            )
+
+        if reconciled_count:
+            self._set_pending_jobs(updated, still_pending)
+            self._recompute_resolved_debt_ids(updated)
+            self._persist_campaign(updated)
+        return reconciled_count
 
     def _unmapped_aristotle_artifacts(
         self,
