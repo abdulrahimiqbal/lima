@@ -348,3 +348,45 @@ Decision implication:
 ```text
 Pivot away from the current Alien State-Space / hybrid-certificate lineage. Do not spend another wave on local certificate syntax, local composition, forced extension, or short-block pruning. The next serious path should change world family: Tao-informed density/measure transport, inverse-tree normal forms with dynamic admissibility, or minimal-counterexample ecology. If certificates return, they should be subordinate to one of those global mechanisms rather than the main object.
 ```
+
+### R12. Cylinder-Pressure World Repairs Forced Extension And Produces A Real Pressure Signal
+
+These facts come from cylinder-pressure run `CP-59d4e94bf0` on world `W-0273193499`, submitted to Aristotle in three 4-probe batches including bake runs `PB-1b0594da51` / `PB-25478b5e0c`, and digested in `PD-feec629f25`.
+
+Verified probe outcomes:
+
+```text
+2-adic residue cylinders are definable: proved
+cylinder membership is residue equality, not reachability: proved
+dynamic first-bit admissibility accepts the odd cylinder: proved
+forced even extension is rejected on the odd cylinder: proved
+the odd-even block has concrete affine transport at n = 3: proved
+the short odd-even block is pressure-neutral, not positive: proved
+a two-even-after-odd block has positive pressure: proved
+all-odd blocks are bad-pressure cylinders: proved
+legal cylinder refinement splits mass denominator by two: proved
+high child still refines to a concrete residue cylinder: proved
+density-style bad bounds are statable without reachesOne: proved
+pressure language has no reachability field: proved
+```
+
+Status:
+
+```text
+12 / 12 cylinder-pressure probes Lean-clean and proved in digest PD-feec629f25
+latest overall digest: 82 proved, 3 blocked, 7 inconclusive across 92 mapped probes
+```
+
+Interpretation:
+
+```text
+This is the first post-pivot wave with a genuinely new global object rather than another local certificate language. The object is a 2-adic residue cylinder carrying dynamic parity admissibility, affine block transport, pressure accounting, legal refinement, and density-style bad-cylinder gates. It fixes the previous forced-extension flaw: syntactically appending an even bit is rejected unless it is dynamically legal. It also avoids reachability smuggling: cylinders and density bounds can be stated without a reachesOne field.
+
+The mathematical signal is positive but not yet decisive. Short odd-even motion is pressure-neutral, so pressure is not a trivial scalar descent. But the two-even-after-odd block has positive pressure, and all-odd blocks are isolated as bad-pressure cylinders. That gives a plausible nonlocal target: prove that bad-pressure cylinder families shrink under legal refinement or have density zero, rather than proving pointwise descent at every step.
+```
+
+Decision implication:
+
+```text
+There is something worth chasing here. The next wave should not return to certificates as the main object. It should test cylinder-pressure globalization: legal split trees, bad-cylinder mass decay, pressure recovery after bad blocks, and a density-zero exceptional-family theorem. This is not the final step before Collatz is solved; it is the first serious post-pivot candidate for a smaller named theorem than Collatz.
+```

@@ -9,7 +9,7 @@ Lima has already shown that invented worlds can make formal contact with Lean/Ar
 Current best world:
 
 ```text
-W-0273193499 / Alien State-Space Encoding 1
+W-0273193499 / Cylinder-Pressure Extension
 ```
 
 What it has done:
@@ -18,13 +18,14 @@ What it has done:
 encoded Collatz states -> proved scaffolding/simulation/bridge-shape controls ->
 completed rank/certificate hunt -> killed naive scalar rank families ->
 confirmed richer structural families are formalizable ->
-proved local hybrid certificate language is Lean-clean
+pivoted away from local hybrid certificates ->
+proved 2-adic cylinder-pressure language is Lean-clean
 ```
 
 What it has not done:
 
 ```text
-proved that the local hybrid certificates compose into a global coverage/descent theorem
+proved that bad-pressure cylinder families shrink to density zero under legal refinement
 ```
 
 ## Flow Diagram
@@ -47,6 +48,13 @@ flowchart TD
     J --> K{Non-circular rank or certificate object found?}
     K -- no --> X4[Pivot world family]
     K -- yes --> L[Mutate around discovered object]
+    X4 --> P[Pressure/density world family]
+    P --> Q{Dynamic admissibility + anti-smuggling gates pass?}
+    Q -- no --> X5[Reject pressure world]
+    Q -- yes --> R[Bad-cylinder mass decay hunt]
+    R --> S{Density-zero exceptional family proved?}
+    S -- no --> P
+    S -- yes --> M
     L --> M[Prove soundness + pullback]
     M --> N{All critical debt proved?}
     N -- no --> L
@@ -101,19 +109,26 @@ Structured rank-family wave: completed, mixed but informative
 Hybrid certificate-family wave: completed, positive local syntax / negative coarse signature completeness
 Compositional certificate wave: completed, positive local composition / negative short-block descent
 Coverage-normalization hunt: completed, coverage statements formalized but syntactic/forced-extension mechanism rejected
-Current bottleneck: current hybrid-certificate lineage lacks a dynamic global mechanism
-Next phase: pivot world family
+Cylinder-pressure wave: completed, dynamic admissibility and anti-smuggling gates passed
+Current bottleneck: no bad-cylinder mass-decay or density-zero theorem yet
+Next phase: cylinder-pressure globalization
 ```
 
 ## Next Phase
 
-The next phase should pivot away from the current Alien State-Space / hybrid-certificate lineage. The hybrid, compositional, and coverage-normalization waves proved the local language is expressible, but also showed that the available coverage mechanism is syntactic rather than dynamic.
+The pivot away from the current Alien State-Space / hybrid-certificate lineage has started. The first cylinder-pressure wave proved that 2-adic residue cylinders, dynamic parity admissibility, affine block transport, pressure accounting, legal refinement, and density-style bad-cylinder gates can be stated without directly assuming reachability.
 
 ```text
-next candidate world families:
-- Tao-informed density / measure transport
-- inverse-tree normal forms with dynamic admissibility constraints
-- minimal-counterexample ecology with dominance pressure
+current candidate world family:
+- 2-adic cylinder-pressure / density transport
+
+next gates:
+- legal split trees for dynamically admissible cylinders
+- bad-cylinder mass decay under refinement
+- pressure recovery after bad all-odd blocks
+- density-zero exceptional-family theorem
 ```
 
-Success in the next phase means one of these families produces a smaller named theorem than Collatz. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless a new global mechanism revives it.
+Success in the next phase means this family produces a smaller named theorem than Collatz: roughly, that the dynamically admissible bad-pressure cylinders have vanishing density or must eventually refine into positive-pressure descendants. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs it as subordinate bookkeeping.
+
+This is not the final step before Collatz is solved. It is the first serious post-pivot route to a possible final-step theorem.
