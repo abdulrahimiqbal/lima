@@ -1111,7 +1111,7 @@ class CampaignService:
                     continue
                 probes.append(probe)
 
-            artifact_paths_by_probe = self._artifact_paths_by_probe(campaign_id, probes)
+            artifacts_by_probe = self._artifacts_by_probe(campaign_id, probes)
             unmapped_artifacts = self._unmapped_aristotle_artifacts(campaign_id, payload.max_artifacts)
             diagnostics: list[dict] = []
             failure_modes: Counter[str] = Counter()
@@ -1120,7 +1120,7 @@ class CampaignService:
             for probe in probes:
                 paths = list(dict.fromkeys([
                     *probe.artifact_paths,
-                    *artifact_paths_by_probe.get(probe.id, []),
+                    *artifacts_by_probe.get(probe.id, []),
                 ]))
                 if not paths:
                     continue
@@ -1368,13 +1368,13 @@ class CampaignService:
             "repair_instructions": payload.get("repair_instructions", [])[:5],
         }
 
-    def _artifact_paths_by_probe(
+    def _artifacts_by_probe(
         self,
         campaign_id: str,
         probes: list[FormalProbe],
     ) -> dict[str, list[str]]:
         probe_ids = {probe.id for probe in probes}
-        paths_by_probe: dict[str, list[str]] = {probe_id: [] for probe_id in probe_ids}
+        artifacts_by_probe: dict[str, list[str]] = {probe_id: [] for probe_id in probe_ids}
         for event in self.memory.list_events(campaign_id, limit=1000):
             if event.event_type != "aristotle_job_completed":
                 continue
@@ -1382,9 +1382,9 @@ class CampaignService:
             if probe_id not in probe_ids:
                 continue
             for artifact in event.payload.get("artifacts") or []:
-                if _looks_like_aristotle_tar_path(artifact):
-                    paths_by_probe[probe_id].append(artifact)
-        return paths_by_probe
+                if _looks_like_aristotle_artifact(artifact):
+                    artifacts_by_probe[probe_id].append(artifact)
+        return artifacts_by_probe
 
     def _unmapped_aristotle_artifacts(
         self,
@@ -1403,7 +1403,7 @@ class CampaignService:
         paths: list[str] = []
         for artifact in artifacts:
             text = artifact.content_text or ""
-            if _looks_like_aristotle_tar_path(text):
+            if _looks_like_aristotle_artifact(text):
                 paths.append(text)
         return list(dict.fromkeys(paths))
 
@@ -1440,6 +1440,10 @@ class CampaignService:
         tar_members: list[str] = []
         missing_paths: list[str] = []
         for artifact_path in artifact_paths:
+            if not _looks_like_aristotle_tar_path(artifact_path):
+                if artifact_path.strip():
+                    snippets.append(artifact_path[:12000])
+                continue
             path = Path(artifact_path)
             if not path.exists():
                 missing_paths.append(artifact_path)
@@ -1738,6 +1742,25 @@ class CampaignService:
 
 def _looks_like_aristotle_tar_path(value: str) -> bool:
     return value.endswith(".tar.gz") and "aristotle_results" in value
+
+
+def _looks_like_aristotle_artifact(value: str) -> bool:
+    if _looks_like_aristotle_tar_path(value):
+        return True
+    lower = value.lower()
+    return any(
+        marker in lower
+        for marker in (
+            "error:",
+            "unsolved goals",
+            "unknown module",
+            "unknown package",
+            "complete_with_errors",
+            "with errors",
+            "--- ",
+            ".lean",
+        )
+    )
 
 
 def _extract_texts_from_tar(path: Path) -> dict[str, str]:

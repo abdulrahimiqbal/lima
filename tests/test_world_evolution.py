@@ -361,6 +361,49 @@ def test_digest_formal_probe_results_extracts_repair_instruction(tmp_path: Path)
     assert updated.payload["diagnostics"]["failure_type"] == "lean_compile_error"
 
 
+def test_digest_formal_probe_results_accepts_inline_aristotle_text(tmp_path: Path) -> None:
+    service = CampaignService(_settings(tmp_path))
+    campaign = service.create_campaign(
+        CampaignCreate(
+            title="Inline digest",
+            problem_statement="Digest inline Aristotle diagnostics.",
+            auto_run=False,
+        )
+    )
+    probe = FormalProbe(
+        world_id="W-inline",
+        probe_type="definition_probe",
+        source_text="Can inline diagnostics be represented?",
+        formal_obligation=FormalObligationSpec(
+            source_text="Can inline diagnostics be represented?",
+            lean_declaration="theorem inline_probe : True := by\n  trivial\n",
+        ),
+        status="blocked",
+        result_status="blocked",
+        failure_type="partial_proof",
+        artifact_paths=["--- Main.lean ---\n-- error: unknown identifier 'stateGlyph'\n"],
+    )
+    service.memory.upsert_research_node(
+        campaign_id=campaign.id,
+        node_id=probe.id,
+        node_type="FormalProbe",
+        title="probe",
+        summary=probe.source_text,
+        status=probe.status,
+        payload=probe.model_dump(mode="json"),
+    )
+
+    digest = service.digest_formal_probe_results(
+        campaign.id,
+        payload=FormalProbeDigestRequest(max_artifacts=10),
+    )
+
+    assert digest.artifact_count == 1
+    assert digest.probe_count == 1
+    assert "lean_compile_error" in digest.top_failure_modes
+    assert digest.diagnostics[0]["lean_error_excerpt"]
+
+
 def test_aristotle_status_conversion_normalizes_uppercase_complete_with_errors() -> None:
     result = AristotleSdkProofAdapter(
         Settings(executor_backend="aristotle", aristotle_api_key="fake")
@@ -373,3 +416,24 @@ def test_aristotle_status_conversion_normalizes_uppercase_complete_with_errors()
 
     assert result.status == "blocked"
     assert result.failure_type == "partial_proof"
+
+
+def test_aristotle_complete_with_errors_persists_diagnostic_text(tmp_path: Path) -> None:
+    lean_file = tmp_path / "Main.lean"
+    lean_file.write_text("-- error: application type mismatch\n", encoding="utf-8")
+    tar_path = tmp_path / "result.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        tar.add(lean_file, arcname="Main.lean")
+
+    result = AristotleSdkProofAdapter(
+        Settings(executor_backend="aristotle", aristotle_api_key="fake")
+    )._convert_terminal_status_to_result(
+        "COMPLETE_WITH_ERRORS",
+        "project-1",
+        str(tar_path),
+        plan=ApprovedExecutionPlan(),
+    )
+
+    assert result.status == "blocked"
+    assert str(tar_path) in result.artifacts
+    assert any("application type mismatch" in artifact for artifact in result.artifacts)

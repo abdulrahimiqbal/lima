@@ -575,48 +575,64 @@ class AristotleSdkProofAdapter:
             )
         
         if normalized_status == "complete_with_errors":
+            artifacts = self._aristotle_result_artifacts(result_tar_path)
             return ExecutionResult(
                 status="blocked",
                 failure_type="partial_proof",
                 notes=f"Aristotle completed project {project_id} with errors.",
-                artifacts=[str(result_tar_path)] if result_tar_path else [],
+                artifacts=artifacts,
                 executor_backend="aristotle",
             )
         
         if normalized_status == "out_of_budget":
+            artifacts = self._aristotle_result_artifacts(result_tar_path)
             return ExecutionResult(
                 status="inconclusive",
                 failure_type="budget_exhausted",
                 notes=f"Aristotle project {project_id} ran out of budget.",
-                artifacts=[str(result_tar_path)] if result_tar_path else [],
+                artifacts=artifacts,
                 executor_backend="aristotle",
             )
         
         if normalized_status == "failed":
+            artifacts = self._aristotle_result_artifacts(result_tar_path)
             return ExecutionResult(
                 status="blocked",
                 failure_type="proof_failed",
                 notes=f"Aristotle project {project_id} failed to find a proof. This does not mean the theorem is false.",
-                artifacts=[str(result_tar_path)] if result_tar_path else [],
+                artifacts=artifacts,
                 executor_backend="aristotle",
             )
         
         if normalized_status == "canceled":
+            artifacts = self._aristotle_result_artifacts(result_tar_path)
             return ExecutionResult(
                 status="inconclusive",
                 failure_type="canceled",
                 notes=f"Aristotle project {project_id} was canceled.",
-                artifacts=[str(result_tar_path)] if result_tar_path else [],
+                artifacts=artifacts,
                 executor_backend="aristotle",
             )
         
+        artifacts = self._aristotle_result_artifacts(result_tar_path)
         return ExecutionResult(
             status="inconclusive",
             failure_type="inconclusive",
             notes=f"Aristotle finished with status {status}.",
-            artifacts=[str(result_tar_path)] if result_tar_path else [],
+            artifacts=artifacts,
             executor_backend="aristotle",
         )
+
+    @staticmethod
+    def _aristotle_result_artifacts(result_tar_path: str | None) -> list[str]:
+        """Persist both the archive pointer and a text digest while the archive is local."""
+        if not result_tar_path:
+            return []
+        artifacts = [str(result_tar_path)]
+        diagnostic_text = AristotleSdkProofAdapter._extract_texts_from_tar(Path(result_tar_path))
+        if diagnostic_text:
+            artifacts.append(diagnostic_text[:6000])
+        return artifacts
 
     @staticmethod
     def _extract_lean_from_tar(tar_path: Path) -> str | None:
@@ -635,6 +651,28 @@ class AristotleSdkProofAdapter:
         except (tarfile.TarError, OSError):
             return None
         return None
+
+    @staticmethod
+    def _extract_texts_from_tar(tar_path: Path) -> str | None:
+        if not tar_path.exists():
+            return None
+        snippets: list[str] = []
+        try:
+            with tarfile.open(tar_path, "r:*") as tar:
+                for member in tar.getmembers():
+                    if not member.isfile():
+                        continue
+                    if not member.name.endswith((".lean", ".log", ".txt", ".json", ".stderr", ".stdout")):
+                        continue
+                    extracted = tar.extractfile(member)
+                    if extracted is None:
+                        continue
+                    content = extracted.read().decode("utf-8", errors="ignore").strip()
+                    if content:
+                        snippets.append(f"--- {member.name} ---\n{content[:4000]}")
+        except (tarfile.TarError, OSError):
+            return None
+        return "\n\n".join(snippets) if snippets else None
 
     @staticmethod
     def _obligation_to_lean(obligation: Any) -> dict[str, Any]:
