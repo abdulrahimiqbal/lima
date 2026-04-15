@@ -129,3 +129,33 @@ Decision implication:
 ```text
 We can move on to designing candidate rank/certificate families, but should keep this job running in the background. If it proves, inspect immediately.
 ```
+
+### R6. The Direct Strict-Descent Rank Existence Probe Failed
+
+The decisive rank-hunt probe attempted to prove:
+
+```lean
+theorem rank_certificate_exists :
+  Exists fun cert : RankCertificate => True := by
+  sorry
+```
+
+Aristotle completed with errors / partial proof and left the core existence claim as `sorry`.
+
+Status:
+
+```text
+blocked / partial_proof in digest PD-a9a5cb4fb4
+```
+
+Interpretation:
+
+```text
+The current system did not invent a non-circular strict descent rank. This confirms that rank/certificate existence is the hard missing object, not certificate syntax or soundness.
+```
+
+Decision implication:
+
+```text
+Do not retry the same abstract `exists strict descent rank` probe unchanged. Move to concrete candidate rank families and falsify/mutate them one at a time.
+```
