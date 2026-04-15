@@ -16,6 +16,8 @@ from app.service import CampaignService
 
 
 WORLD_ID = "W-0273193499"
+BATCH_SIZE = 4
+POLL_SECONDS = 20
 
 
 def emit(label: str, payload: object) -> None:
@@ -72,18 +74,22 @@ def main() -> None:
         },
     )
 
-    for batch_index in range(8):
+    submitted_total = 0
+    batch_index = 0
+    while submitted_total < run.compiled_probe_count:
         bake = service.bake_formal_probes(
             campaign.id,
             FormalProbeBakeRequest(
                 world_id=WORLD_ID,
-                max_probes=4,
+                max_probes=BATCH_SIZE,
                 submit_all_at_once=True,
                 retry_failed_submissions=False,
             ),
         )
+        batch_index += 1
+        submitted_total += bake.submitted_probe_count
         emit(
-            f"batch_{batch_index + 1}",
+            f"batch_{batch_index}",
             {
                 "bake_run_id": bake.id,
                 "status": bake.status,
@@ -93,35 +99,9 @@ def main() -> None:
                 "project_ids": bake.project_ids,
             },
         )
-
-    last_pending = None
-    for poll_index in range(50):
-        campaign = service.step_campaign(campaign.id)
-        pending = [
-            {
-                "project_id": job.project_id,
-                "status": job.status,
-                "poll_count": job.poll_count,
-                "debt_id": job.debt_id,
-                "obligation_text": job.obligation_text,
-            }
-            for job in campaign.pending_aristotle_jobs
-        ]
-        pending_count = len(pending)
-        if pending_count != last_pending or poll_index % 5 == 0:
-            emit(
-                "poll",
-                {
-                    "poll_index": poll_index,
-                    "pending_count": pending_count,
-                    "pending_jobs": pending,
-                    "last_execution_result": campaign.last_execution_result,
-                },
-            )
-            last_pending = pending_count
-        if pending_count == 0:
+        if bake.submitted_probe_count == 0:
             break
-        time.sleep(20)
+        poll_to_empty(service, campaign.id)
 
     digest = service.digest_formal_probe_results(
         campaign.id,
@@ -157,6 +137,37 @@ def main() -> None:
             ],
         },
     )
+
+
+def poll_to_empty(service: CampaignService, campaign_id: str, max_polls: int = 50) -> None:
+    last_pending = None
+    for poll_index in range(max_polls):
+        campaign = service.step_campaign(campaign_id)
+        pending = [
+            {
+                "project_id": job.project_id,
+                "status": job.status,
+                "poll_count": job.poll_count,
+                "debt_id": job.debt_id,
+                "obligation_text": job.obligation_text,
+            }
+            for job in campaign.pending_aristotle_jobs
+        ]
+        pending_count = len(pending)
+        if pending_count != last_pending or poll_index % 5 == 0:
+            emit(
+                "poll",
+                {
+                    "poll_index": poll_index,
+                    "pending_count": pending_count,
+                    "pending_jobs": pending,
+                    "last_execution_result": campaign.last_execution_result,
+                },
+            )
+            last_pending = pending_count
+        if pending_count == 0:
+            break
+        time.sleep(POLL_SECONDS)
 
 
 if __name__ == "__main__":
