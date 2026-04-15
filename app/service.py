@@ -42,6 +42,8 @@ from .schemas import (
     ManagerDecision,
     MemoryState,
     PendingAristotleJob,
+    RankCertificateHuntRequest,
+    RankCertificateHuntRun,
     DistilledWorld,
     ProofDebtItem,
     SelfImprovementNote,
@@ -1335,6 +1337,77 @@ class CampaignService:
             )
             return run
 
+    def run_rank_certificate_hunt(
+        self,
+        campaign_id: str,
+        payload: RankCertificateHuntRequest,
+    ) -> RankCertificateHuntRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for rank/certificate hunt.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_rank_certificate_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+                include_naive_rank_falsifiers=payload.include_naive_rank_falsifiers,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"rank-hunt:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = RankCertificateHuntRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                rank_questions=[
+                    "Which naive ranks fail immediately, and why?",
+                    "Can a candidate certificate be stated without using eventual reachability?",
+                    "Can a strict descent object be separated from the original Collatz theorem?",
+                    "Does the next missing lemma look smaller than Collatz or equivalent to it?",
+                ],
+                expected_learning=[
+                    "A concrete obstruction for identity/parity/simple-rank families.",
+                    "A formal skeleton for certificate soundness.",
+                    "Whether the non-circular rank-existence problem is the next bottleneck.",
+                ],
+                summary=(
+                    "Rank/certificate hunt compiled probes that falsify naive ranks and "
+                    "force a non-circular descent certificate candidate."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="RankCertificateHuntRun",
+                title=f"rank-certificate-hunt:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="rank_certificate_hunt_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -1496,6 +1569,129 @@ def finalStrictDescent_{suffix} (rank : finalWorldRank_{suffix}) : Prop :=
                         metadata=metadata,
                     ),
                     notes="Final Collatz break experiment probe; use to decide pursue/pivot.",
+                )
+            )
+        return probes
+
+    def _compile_rank_certificate_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+        include_naive_rank_falsifiers: bool,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def rankHuntStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def rankHuntReachesOne_{suffix} (n : Nat) : Prop :=
+  Exists fun k : Nat => Nat.iterate rankHuntStep_{suffix} k n = 1
+
+def rankHuntRank_{suffix} := Nat -> Nat
+
+def rankHuntStrictDescent_{suffix} (rank : rankHuntRank_{suffix}) : Prop :=
+  forall n : Nat, n > 1 -> rank (rankHuntStep_{suffix} n) < rank n
+
+structure RankCertificate_{suffix} where
+  rank : rankHuntRank_{suffix}
+  descent : rankHuntStrictDescent_{suffix} rank
+
+structure BoundedCertificate_{suffix} (n : Nat) where
+  steps : Nat
+  reaches : Nat.iterate rankHuntStep_{suffix} steps n = 1
+""".strip()
+
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Rank hunt: the certificate objects are definable without assuming Collatz.",
+                f"{base_defs}\n\ntheorem rank_certificate_type_clean_{suffix} : True := by\n  trivial\n",
+                False,
+                "rank_hunt_control",
+            ),
+            (
+                "closure_probe",
+                "Rank hunt: bounded certificates soundly imply reachability.",
+                f"{base_defs}\n\ntheorem bounded_certificate_sound_{suffix} (n : Nat) (cert : BoundedCertificate_{suffix} n) :\n    rankHuntReachesOne_{suffix} n := by\n  exact Exists.intro cert.steps cert.reaches\n",
+                False,
+                "rank_hunt_control",
+            ),
+        ]
+        if include_naive_rank_falsifiers:
+            specs.extend(
+                [
+                    (
+                        "closure_probe",
+                        "Rank hunt: identity rank decreases on the even branch.",
+                        f"{base_defs}\n\ntheorem identity_rank_even_decreases_{suffix} (n : Nat) (hEven : n % 2 = 0) (hPos : n > 1) :\n    rankHuntStep_{suffix} n < n := by\n  sorry\n",
+                        False,
+                        "naive_rank_test",
+                    ),
+                    (
+                        "anti_smuggling_probe",
+                        "Rank hunt: identity rank is not a global descent rank because odd steps can grow.",
+                        f"{base_defs}\n\ntheorem identity_rank_not_global_descent_{suffix} :\n    Not (rankHuntStrictDescent_{suffix} (fun n => n)) := by\n  intro h\n  have h3 := h 3 (by decide)\n  norm_num [rankHuntStrictDescent_{suffix}, rankHuntStep_{suffix}] at h3\n",
+                        False,
+                        "naive_rank_falsifier",
+                    ),
+                ]
+            )
+        specs.extend(
+            [
+                (
+                    "closure_probe",
+                    "Decisive rank hunt: a strict descent certificate would be enough; expose the exact induction/well-founded gap.",
+                    f"{base_defs}\n\ntheorem rank_certificate_implies_collatz_{suffix} (cert : RankCertificate_{suffix}) :\n    forall n : Nat, n > 0 -> rankHuntReachesOne_{suffix} n := by\n  sorry\n",
+                    True,
+                    "decisive_rank",
+                ),
+                (
+                    "closure_probe",
+                    "Decisive rank hunt: invent the non-circular strict descent rank itself.",
+                    f"{base_defs}\n\ntheorem rank_certificate_exists_{suffix} :\n    Exists fun cert : RankCertificate_{suffix} => True := by\n  sorry\n",
+                    True,
+                    "decisive_rank",
+                ),
+                (
+                    "bridge_probe",
+                    "Decisive rank hunt: isolate whether rank existence is merely Collatz renamed.",
+                    f"{base_defs}\n\ndef smuggledRankCertificate_{suffix} : Prop :=\n  forall n : Nat, n > 0 -> rankHuntReachesOne_{suffix} n\n\ntheorem smuggled_rank_equivalent_to_collatz_{suffix} :\n    smuggledRankCertificate_{suffix} <->\n    (forall n : Nat, n > 0 -> rankHuntReachesOne_{suffix} n) := by\n  rfl\n",
+                    True,
+                    "anti_smuggling_rank",
+                ),
+                (
+                    "closure_probe",
+                    "Decisive rank hunt: a local certificate transformer must decrease proof debt, not assume reachability.",
+                    f"{base_defs}\n\nstructure LocalCertificate_{suffix} where\n  value : Nat\n  measure : Nat\n\ndef localCertificateValid_{suffix} (c : LocalCertificate_{suffix}) : Prop := c.value > 0\n\ntheorem local_certificate_transformer_exists_{suffix} :\n    Exists fun transform : LocalCertificate_{suffix} -> LocalCertificate_{suffix} =>\n      forall c : LocalCertificate_{suffix}, localCertificateValid_{suffix} c ->\n        (transform c).measure < c.measure := by\n  sorry\n",
+                    True,
+                    "decisive_rank",
+                ),
+            ]
+        )
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "rank_certificate_hunt": True,
+                "rank_hunt_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes="Rank/certificate hunt probe; use results to choose pursue/pivot.",
                 )
             )
         return probes
