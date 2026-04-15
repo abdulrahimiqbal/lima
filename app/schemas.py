@@ -954,6 +954,28 @@ class CoverageNormalizationHuntRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class CylinderPressureWaveRequest(BaseModel):
+    world_id: str | None = None
+    max_probes: int = Field(default=12, ge=6, le=36)
+    submit_after_compile: bool = False
+
+
+class CylinderPressureWaveRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"CP-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    pressure_families: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

@@ -31,6 +31,8 @@ from .schemas import (
     CompositionalCertificateFamilyRun,
     CoverageNormalizationHuntRequest,
     CoverageNormalizationHuntRun,
+    CylinderPressureWaveRequest,
+    CylinderPressureWaveRun,
     CandidateAnswer,
     ExecutionResult,
     FinalCollatzExperimentRequest,
@@ -1777,6 +1779,78 @@ class CampaignService:
             )
             return run
 
+    def run_cylinder_pressure_wave(
+        self,
+        campaign_id: str,
+        payload: CylinderPressureWaveRequest,
+    ) -> CylinderPressureWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for cylinder pressure wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_cylinder_pressure_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"cylinder-pressure:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = CylinderPressureWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                pressure_families=[
+                    "2-adic residue cylinders",
+                    "dynamic parity admissibility",
+                    "affine block transport",
+                    "pressure accounting",
+                    "legal refinement / split",
+                    "density-style bad cylinder gates",
+                ],
+                expected_learning=[
+                    "Whether dynamic admissibility can replace forced syntactic extension.",
+                    "Whether pressure on residue cylinders gives a non-scalar global object.",
+                    "Whether bad cylinders can be stated as a measurable shrinking family rather than local certificates.",
+                ],
+                summary=(
+                    "Cylinder pressure wave compiled probes for a new 2-adic world where "
+                    "legal residue cylinders, affine block transport, and pressure replace local certificate syntax."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="CylinderPressureWaveRun",
+                title=f"cylinder-pressure-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="cylinder_pressure_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -3116,6 +3190,252 @@ theorem forced_extension_only_solves_syntax_{suffix} :
                     notes=(
                         "Coverage-normalization probe; use results as the final decision gate "
                         "for the current hybrid certificate lineage."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_cylinder_pressure_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def cylStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+structure Cylinder_{suffix} where
+  k : Nat
+  r : Nat
+
+def cylinderMod_{suffix} (c : Cylinder_{suffix}) : Nat :=
+  2 ^ c.k
+
+def inCylinder_{suffix} (n : Nat) (c : Cylinder_{suffix}) : Prop :=
+  n % cylinderMod_{suffix} c = c.r % cylinderMod_{suffix} c
+
+def firstBitLegal_{suffix} (c : Cylinder_{suffix}) (bit : Nat) : Prop :=
+  c.r % 2 = bit
+
+def oddDebt_{suffix} (bits : List Nat) : Nat :=
+  bits.foldl (fun acc bit => acc + bit) 0
+
+def pressureSurplus_{suffix} (bits : List Nat) : Nat :=
+  bits.length - 2 * oddDebt_{suffix} bits
+
+def positivePressure_{suffix} (bits : List Nat) : Prop :=
+  2 * oddDebt_{suffix} bits < bits.length
+
+def cylinderMassDenom_{suffix} (c : Cylinder_{suffix}) : Nat :=
+  2 ^ c.k
+
+def childLow_{suffix} (c : Cylinder_{suffix}) : Cylinder_{suffix} :=
+  {{ k := c.k + 1, r := c.r }}
+
+def childHigh_{suffix} (c : Cylinder_{suffix}) : Cylinder_{suffix} :=
+  {{ k := c.k + 1, r := c.r + 2 ^ c.k }}
+
+def oddCylinder_{suffix} : Cylinder_{suffix} := {{ k := 1, r := 1 }}
+def threeModFourCylinder_{suffix} : Cylinder_{suffix} := {{ k := 2, r := 3 }}
+def zeroModFourCylinder_{suffix} : Cylinder_{suffix} := {{ k := 2, r := 0 }}
+
+def affineOddEven_{suffix} (n : Nat) : Nat :=
+  (3 * n + 1) / 2
+
+def fakeForcedEvenExtension_{suffix} (c : Cylinder_{suffix}) : Prop :=
+  firstBitLegal_{suffix} c 0
+
+def BadPressureCylinder_{suffix} (c : Cylinder_{suffix}) (bits : List Nat) : Prop :=
+  inCylinder_{suffix} c.r c /\\ ¬ positivePressure_{suffix} bits
+
+def DensityBadBound_{suffix} (level badCount : Nat) : Prop :=
+  badCount <= 2 ^ level
+""".strip()
+        specs: list[tuple[str, str, str, bool, str]] = [
+            (
+                "definition_probe",
+                "Cylinder pressure: 2-adic residue cylinders are definable.",
+                f"""{base_defs}
+
+theorem cylinder_mod_three_mod_four_{suffix} :
+    cylinderMod_{suffix} threeModFourCylinder_{suffix} = 4 := by
+  native_decide
+""",
+                False,
+                "cylinder_definition",
+            ),
+            (
+                "definition_probe",
+                "Cylinder pressure: cylinder membership is residue equality, not reachability.",
+                f"""{base_defs}
+
+theorem three_in_three_mod_four_cylinder_{suffix} :
+    inCylinder_{suffix} 3 threeModFourCylinder_{suffix} := by
+  native_decide
+""",
+                False,
+                "cylinder_membership",
+            ),
+            (
+                "bridge_probe",
+                "Cylinder pressure: dynamic first-bit admissibility accepts the odd cylinder.",
+                f"""{base_defs}
+
+theorem odd_cylinder_legal_first_bit_{suffix} :
+    firstBitLegal_{suffix} oddCylinder_{suffix} 1 := by
+  native_decide
+""",
+                False,
+                "dynamic_first_bit",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Cylinder pressure: forced even extension is rejected on the odd cylinder.",
+                f"""{base_defs}
+
+theorem odd_cylinder_rejects_forced_even_extension_{suffix} :
+    Not (fakeForcedEvenExtension_{suffix} oddCylinder_{suffix}) := by
+  native_decide
+""",
+                True,
+                "reject_forced_extension",
+            ),
+            (
+                "simulation_probe",
+                "Cylinder pressure: the odd-even block has concrete affine transport at n = 3.",
+                f"""{base_defs}
+
+theorem odd_even_affine_transport_at_three_{suffix} :
+    affineOddEven_{suffix} 3 = 5 := by
+  native_decide
+""",
+                False,
+                "affine_transport",
+            ),
+            (
+                "closure_probe",
+                "Cylinder pressure: a two-even-after-odd block has positive pressure.",
+                f"""{base_defs}
+
+theorem positive_pressure_100_{suffix} :
+    positivePressure_{suffix} [1, 0, 0] := by
+  native_decide
+""",
+                False,
+                "positive_pressure",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Cylinder pressure: the short odd-even block is pressure-neutral, not positive.",
+                f"""{base_defs}
+
+theorem odd_even_not_positive_pressure_{suffix} :
+    Not (positivePressure_{suffix} [1, 0]) := by
+  native_decide
+""",
+                True,
+                "neutral_pressure_gate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Cylinder pressure: all-odd blocks are bad-pressure cylinders.",
+                f"""{base_defs}
+
+theorem all_odd_bad_pressure_example_{suffix} :
+    BadPressureCylinder_{suffix} oddCylinder_{suffix} [1, 1, 1] := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "bad_pressure_obstruction",
+            ),
+            (
+                "closure_probe",
+                "Cylinder pressure: legal cylinder refinement splits mass denominator by two.",
+                f"""{base_defs}
+
+theorem child_low_mass_denominator_doubles_{suffix} :
+    cylinderMassDenom_{suffix} (childLow_{suffix} threeModFourCylinder_{suffix}) =
+      2 * cylinderMassDenom_{suffix} threeModFourCylinder_{suffix} := by
+  native_decide
+""",
+                False,
+                "mass_refinement",
+            ),
+            (
+                "closure_probe",
+                "Cylinder pressure: high child still refines to a concrete residue cylinder.",
+                f"""{base_defs}
+
+theorem child_high_three_mod_four_has_mod_eight_residue_{suffix} :
+    cylinderMod_{suffix} (childHigh_{suffix} threeModFourCylinder_{suffix}) = 8 /\\
+    (childHigh_{suffix} threeModFourCylinder_{suffix}).r = 7 := by
+  native_decide
+""",
+                False,
+                "high_child_refinement",
+            ),
+            (
+                "closure_probe",
+                "Cylinder pressure: density-style bad bounds are statable without reachesOne.",
+                f"""{base_defs}
+
+theorem density_bad_bound_trivial_level_three_{suffix} :
+    DensityBadBound_{suffix} 3 5 := by
+  native_decide
+""",
+                True,
+                "density_bad_bound",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Decisive cylinder-pressure gate: pressure language has no reachability field.",
+                f"""{base_defs}
+
+structure PressureState_{suffix} where
+  cylinder : Cylinder_{suffix}
+  bits : List Nat
+  surplus : Nat
+
+def pressureStateExample_{suffix} : PressureState_{suffix} :=
+  {{ cylinder := threeModFourCylinder_{suffix}, bits := [1, 0], surplus := pressureSurplus_{suffix} [1, 0] }}
+
+theorem pressure_state_example_has_neutral_surplus_{suffix} :
+    pressureStateExample_{suffix}.surplus = 0 := by
+  native_decide
+""",
+                True,
+                "pressure_no_reachability",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs[:max_probes]:
+            metadata = {
+                "cylinder_pressure_wave": True,
+                "cylinder_pressure_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Cylinder pressure probe; use results to decide whether dynamic 2-adic "
+                        "admissibility gives a new world beyond local certificates."
                     ),
                 )
             )

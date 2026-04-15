@@ -18,6 +18,7 @@ from .schemas import (
     CandidateRankFamilyRequest,
     CompositionalCertificateFamilyRequest,
     CoverageNormalizationHuntRequest,
+    CylinderPressureWaveRequest,
     FinalCollatzExperimentRequest,
     FormalProbeBakeRequest,
     FormalProbeDigestRequest,
@@ -426,6 +427,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.run_coverage_normalization_hunt(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/cylinder-pressure-wave")
+    def run_cylinder_pressure_wave(
+        campaign_id: str,
+        payload: CylinderPressureWaveRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_cylinder_pressure_wave(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
