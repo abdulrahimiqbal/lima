@@ -27,6 +27,9 @@ from .schemas import (
     CampaignUpdateNotes,
     CandidateAnswer,
     ExecutionResult,
+    FinalCollatzExperimentRequest,
+    FinalCollatzExperimentRun,
+    FormalObligationSpec,
     FormalProbe,
     FormalProbeBakeRequest,
     FormalProbeBakeRun,
@@ -828,6 +831,7 @@ class CampaignService:
         }
         world_evolution = self.world_evolution.get_summary(campaign_id)
         probe_digest = self._latest_probe_digest_summary(campaign_id)
+        final_experiment = self._latest_final_collatz_experiment_summary(campaign_id)
         
         # Self-Improvement section
         self_improvement = {
@@ -900,6 +904,7 @@ class CampaignService:
             "invention": invention,
             "world_evolution": world_evolution,
             "probe_digest": probe_digest,
+            "final_experiment": final_experiment,
             "self_improvement": self_improvement,
             "next": next_action,
         }
@@ -1206,6 +1211,87 @@ class CampaignService:
             )
             return digest_run
 
+    def run_final_collatz_experiment(
+        self,
+        campaign_id: str,
+        payload: FinalCollatzExperimentRequest,
+    ) -> FinalCollatzExperimentRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for final Collatz experiment.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_final_collatz_probes(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                max_hard_probes=payload.max_hard_probes,
+                include_controls=payload.include_control_probes,
+            )
+            control_count = sum(1 for probe in probes if probe.formal_obligation.metadata.get("final_experiment_role") == "control")
+            hard_count = len(probes) - control_count
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"final:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = FinalCollatzExperimentRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                control_probe_count=control_count,
+                hard_probe_count=hard_count,
+                probe_ids=[probe.id for probe in probes],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                kill_criteria=[
+                    "Pivot if no nontrivial bridge, closure, or descent probe can be stated without smuggling Collatz.",
+                    "Pivot if all hard probes reduce to proving global termination directly.",
+                    "Pivot if Aristotle only proves controls while every decisive probe remains sorry/blocked with no smaller missing lemma.",
+                    "Pivot if the promoted world cannot define an interpretation map from Nat plus a one-step simulation lemma.",
+                ],
+                pursue_criteria=[
+                    "Pursue if at least one decisive bridge/closure/descent probe is proved or reduced to a strictly smaller named lemma.",
+                    "Pursue if failure diagnostics identify a concrete missing invariant sharper than Collatz itself.",
+                    "Pursue if the world produces a non-circular rank, certificate, inverse-tree, or grammar obstruction statement.",
+                ],
+                expected_learning=[
+                    "Whether the promoted world has more than Lean-clean scaffolding.",
+                    "Whether the exact obstruction is bridge, descent/ranking, positivity, inverse-tree coverage, or anti-smuggling.",
+                    "Whether the next search should mutate this world or abandon the family.",
+                ],
+                summary=(
+                    "Final Collatz experiment compiled hard bridge/closure/descent probes. "
+                    "This run is a decision gate, not a solve declaration."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="FinalCollatzExperimentRun",
+                title=f"final-collatz-experiment:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="final_collatz_experiment_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -1235,6 +1321,140 @@ class CampaignService:
             probes.append(probe)
             if len(probes) >= payload.max_probes:
                 break
+        return probes
+
+    def _compile_final_collatz_probes(
+        self,
+        *,
+        campaign_id: str,
+        world_id: str,
+        max_hard_probes: int,
+        include_controls: bool,
+    ) -> list[FormalProbe]:
+        suffix = _lean_suffix(world_id)
+        base_defs = f"""
+def finalCollatzStep_{suffix} (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3*n + 1
+
+def finalReachesOne_{suffix} (n : Nat) : Prop :=
+  Exists fun k : Nat => Nat.iterate finalCollatzStep_{suffix} k n = 1
+
+structure FinalFiber_{suffix} where
+  value : Nat
+deriving Repr
+
+def finalEncode_{suffix} (n : Nat) : FinalFiber_{suffix} := {{ value := n }}
+def finalDecode_{suffix} (s : FinalFiber_{suffix}) : Nat := s.value
+def finalWorldStep_{suffix} (s : FinalFiber_{suffix}) : FinalFiber_{suffix} :=
+  finalEncode_{suffix} (finalCollatzStep_{suffix} (finalDecode_{suffix} s))
+
+def finalWorldTerminal_{suffix} (s : FinalFiber_{suffix}) : Prop :=
+  finalReachesOne_{suffix} (finalDecode_{suffix} s)
+
+def finalWorldRank_{suffix} := Nat -> Nat
+
+def finalStrictDescent_{suffix} (rank : finalWorldRank_{suffix}) : Prop :=
+  forall n : Nat, n > 1 -> rank (finalCollatzStep_{suffix} n) < rank n
+""".strip()
+
+        specs: list[tuple[str, str, str, bool, str]] = []
+        if include_controls:
+            specs.extend(
+                [
+                    (
+                        "definition_probe",
+                        "Control: encode/decode for the promoted world is definable.",
+                        f"{base_defs}\n\ntheorem final_decode_encode_{suffix} (n : Nat) :\n    finalDecode_{suffix} (finalEncode_{suffix} n) = n := by\n  rfl\n",
+                        False,
+                        "control",
+                    ),
+                    (
+                        "simulation_probe",
+                        "Control: world one-step simulation agrees definitionally with Collatz.",
+                        f"{base_defs}\n\ntheorem final_one_step_simulation_{suffix} (n : Nat) :\n    finalDecode_{suffix} (finalWorldStep_{suffix} (finalEncode_{suffix} n)) = finalCollatzStep_{suffix} n := by\n  rfl\n",
+                        False,
+                        "control",
+                    ),
+                ]
+            )
+
+        hard_specs = [
+            (
+                "simulation_probe",
+                "Break test: prove the odd branch shape, not just the easy even control.",
+                f"{base_defs}\n\ntheorem final_collatz_odd_shape_{suffix} (n : Nat) (h : Not (n % 2 = 0)) :\n    finalCollatzStep_{suffix} n = 3*n + 1 := by\n  simp [finalCollatzStep_{suffix}, h]\n",
+                True,
+                "hard",
+            ),
+            (
+                "bridge_probe",
+                "Break test: bridge world terminality back to the original eventual-reachability shape.",
+                f"{base_defs}\n\ntheorem final_bridge_to_reaches_one_{suffix}\n    (h : forall n : Nat, n > 0 -> finalWorldTerminal_{suffix} (finalEncode_{suffix} n)) :\n    forall n : Nat, n > 0 -> finalReachesOne_{suffix} n := by\n  intro n hn\n  simpa [finalWorldTerminal_{suffix}, finalEncode_{suffix}, finalDecode_{suffix}] using h n hn\n",
+                True,
+                "hard",
+            ),
+            (
+                "closure_probe",
+                "Decisive: strict descent rank would imply eventual reachability; expose missing well-founded lemma if blocked.",
+                f"{base_defs}\n\ntheorem final_descent_implies_reaches_one_{suffix}\n    (rank : finalWorldRank_{suffix})\n    (hdesc : finalStrictDescent_{suffix} rank) :\n    forall n : Nat, n > 0 -> finalReachesOne_{suffix} n := by\n  sorry\n",
+                True,
+                "decisive",
+            ),
+            (
+                "closure_probe",
+                "Decisive: produce the non-circular rank/certificate object. This is the real Collatz burden.",
+                f"{base_defs}\n\ntheorem final_rank_exists_{suffix} :\n    Exists fun rank : finalWorldRank_{suffix} => finalStrictDescent_{suffix} rank := by\n  sorry\n",
+                True,
+                "decisive",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Break test: detect the circular bridge where world terminality is just reachability renamed.",
+                f"{base_defs}\n\ndef finalSmuggledTerminal_{suffix} (n : Nat) : Prop := finalReachesOne_{suffix} n\n\ntheorem final_smuggled_bridge_identity_{suffix} :\n    (forall n : Nat, n > 0 -> finalSmuggledTerminal_{suffix} n) <->\n    (forall n : Nat, n > 0 -> finalReachesOne_{suffix} n) := by\n  rfl\n",
+                True,
+                "hard",
+            ),
+            (
+                "closure_probe",
+                "Decisive: prove positive trajectories stay positive so descent cannot escape through zero.",
+                f"{base_defs}\n\ntheorem final_step_positive_{suffix} (n : Nat) (h : n > 0) :\n    finalCollatzStep_{suffix} n > 0 := by\n  sorry\n",
+                True,
+                "decisive",
+            ),
+            (
+                "bridge_probe",
+                "Decisive: state the exact Collatz theorem as the pullback target, with no solve credit for compiling it.",
+                f"{base_defs}\n\ntheorem final_collatz_pullback_target_{suffix} :\n    forall n : Nat, n > 0 -> finalReachesOne_{suffix} n := by\n  sorry\n",
+                True,
+                "decisive",
+            ),
+        ]
+        specs.extend(hard_specs[:max_hard_probes])
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, role in specs:
+            metadata = {
+                "final_experiment": True,
+                "final_experiment_role": role,
+                "decisive": decisive and role == "decisive",
+                "world_id": world_id,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes="Final Collatz break experiment probe; use to decide pursue/pivot.",
+                )
+            )
         return probes
 
     def _decision_for_formal_probe(
@@ -1383,6 +1603,38 @@ class CampaignService:
             "inconclusive_count": payload.get("inconclusive_count", 0),
             "top_failure_modes": payload.get("top_failure_modes", []),
             "repair_instructions": payload.get("repair_instructions", [])[:5],
+        }
+
+    def _latest_final_collatz_experiment_summary(self, campaign_id: str) -> dict[str, Any]:
+        nodes = self.memory.list_research_nodes(
+            campaign_id,
+            node_type="FinalCollatzExperimentRun",
+            limit=1,
+        )
+        if not nodes:
+            return {
+                "latest_run_id": None,
+                "compiled_probe_count": 0,
+                "hard_probe_count": 0,
+                "decisive_probe_count": 0,
+                "decision_status": None,
+                "summary": None,
+            }
+        payload = nodes[0].payload or {}
+        return {
+            "latest_run_id": payload.get("id") or nodes[0].id,
+            "world_id": payload.get("world_id"),
+            "world_label": payload.get("world_label"),
+            "compiled_probe_count": payload.get("compiled_probe_count", 0),
+            "control_probe_count": payload.get("control_probe_count", 0),
+            "hard_probe_count": payload.get("hard_probe_count", 0),
+            "decisive_probe_count": len(payload.get("decisive_probe_ids", [])),
+            "submitted_probe_count": payload.get("submitted_probe_count", 0),
+            "decision_status": payload.get("decision_status"),
+            "kill_criteria": payload.get("kill_criteria", [])[:4],
+            "pursue_criteria": payload.get("pursue_criteria", [])[:4],
+            "expected_learning": payload.get("expected_learning", [])[:4],
+            "summary": payload.get("summary"),
         }
 
     def _artifacts_by_probe(
@@ -1803,6 +2055,13 @@ class CampaignService:
 
 def _looks_like_aristotle_tar_path(value: str) -> bool:
     return value.endswith(".tar.gz") and "aristotle_results" in value
+
+
+def _lean_suffix(value: str) -> str:
+    suffix = re.sub(r"[^A-Za-z0-9_]", "_", value)
+    if not suffix or suffix[0].isdigit():
+        suffix = f"W_{suffix}"
+    return suffix
 
 
 def _looks_like_aristotle_artifact(value: str) -> bool:

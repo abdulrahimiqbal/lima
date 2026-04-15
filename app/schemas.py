@@ -794,6 +794,33 @@ class FormalProbeDigestRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class FinalCollatzExperimentRequest(BaseModel):
+    world_id: str | None = None
+    max_hard_probes: int = Field(default=12, ge=4, le=40)
+    include_control_probes: bool = True
+    submit_after_compile: bool = False
+    decision_threshold: int = Field(default=2, ge=1, le=10)
+
+
+class FinalCollatzExperimentRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"FE-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    control_probe_count: int = 0
+    hard_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    kill_criteria: list[str] = Field(default_factory=list)
+    pursue_criteria: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

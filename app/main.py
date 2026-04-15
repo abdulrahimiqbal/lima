@@ -15,6 +15,7 @@ from .schemas import (
     CampaignControl,
     CampaignCreate,
     CampaignUpdateNotes,
+    FinalCollatzExperimentRequest,
     FormalProbeBakeRequest,
     FormalProbeDigestRequest,
     InventionBatchCreate,
@@ -328,6 +329,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.digest_formal_probe_results(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/final-collatz-experiment")
+    def run_final_collatz_experiment(
+        campaign_id: str,
+        payload: FinalCollatzExperimentRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_final_collatz_experiment(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
