@@ -100,21 +100,20 @@ Candidate scalar rank-family gauntlet: completed, mostly negative
 Structured rank-family wave: completed, mixed but informative
 Hybrid certificate-family wave: completed, positive local syntax / negative coarse signature completeness
 Compositional certificate wave: completed, positive local composition / negative short-block descent
-Current bottleneck: prove a global coverage/normalization theorem, not more local certificate examples
-Next phase: either invent a real coverage theorem or pivot world family
+Coverage-normalization hunt: completed, coverage statements formalized but syntactic/forced-extension mechanism rejected
+Current bottleneck: current hybrid-certificate lineage lacks a dynamic global mechanism
+Next phase: pivot world family
 ```
 
 ## Next Phase
 
-The next phase is not more broad invention, not another scalar-potential search, not another local certificate-record test, and not another short-block composition test. The hybrid and compositional waves already proved the local language is expressible. The new target is global coverage:
+The next phase should pivot away from the current Alien State-Space / hybrid-certificate lineage. The hybrid, compositional, and coverage-normalization waves proved the local language is expressible, but also showed that the available coverage mechanism is syntactic rather than dynamic.
 
 ```text
-coverage / normalization theorem for the hybrid calculus:
-- every admissible parity/residue block extends, normalizes, or prunes
-- pruning must recur often enough to beat growth
-- the certificate complexity measure must decrease globally, not merely on even-root examples
-- the theorem must avoid being reachability to 1 in disguise
-- failure to state this theorem cleanly should trigger a world-family pivot
+next candidate world families:
+- Tao-informed density / measure transport
+- inverse-tree normal forms with dynamic admissibility constraints
+- minimal-counterexample ecology with dominance pressure
 ```
 
-Success means the current world produces a smaller named theorem than Collatz: a coverage/normalization statement over certificate blocks. Failure means the current encoding-world path probably lacks enough global leverage and should pivot to a different world family.
+Success in the next phase means one of these families produces a smaller named theorem than Collatz. The retired hybrid certificate language remains useful as local syntax, but should no longer be the main proof strategy unless a new global mechanism revives it.

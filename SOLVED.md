@@ -308,3 +308,43 @@ Decision implication:
 ```text
 This is not the final pre-solution step. It is the last clear decision gate for the current Alien State-Space / hybrid-certificate lineage. Continue only if the next mutation can propose a genuine coverage theorem: every admissible parity/residue block either normalizes, prunes, or extends to a lower-complexity certificate. If the next wave again proves only local examples and small anti-descent facts, pivot to a different world family such as Tao-informed density/measure transport, inverse-tree normal forms, or minimal-counterexample ecology.
 ```
+
+### R11. Coverage-Normalization Hunt Exhausted The Current Hybrid Lineage
+
+These facts come from coverage-normalization run `CN-65c74f5756` on world `W-0273193499`, digested in `PD-2fa0becd77`.
+
+Verified probe outcomes:
+
+```text
+admissible parity/residue blocks are definable without reachability: proved
+concrete pruning subblock detection works on a mixed block: proved
+all-odd blocks are admissible obstructions to immediate pruning: proved
+appending an even prune bit normalizes a concrete obstruction block: proved
+trivial extension coverage is too weak because it ignores dynamics: proved
+immediate pruning coverage is false for an admissible all-odd block: proved
+short-block coverage still sees the 3 -> 10 -> 5 growth obstruction: proved
+even-root pruning remains a genuine local descent witness: proved
+block complexity can increase when extending to find pruning: proved
+obstruction classes can be stated as a smaller named target: proved
+density-weakened coverage can be stated without proving full Collatz: proved
+forced-extension coverage is not enough unless the extension is dynamically admissible: proved
+```
+
+Status:
+
+```text
+12 / 12 coverage-normalization probes Lean-clean and proved in digest PD-2fa0becd77
+latest overall digest: 70 proved, 3 blocked, 7 inconclusive across 80 mapped probes
+```
+
+Interpretation:
+
+```text
+The current hybrid lineage has now clarified its own limit. We can define admissible block languages, pruning predicates, obstruction classes, forced extensions, and density-weakened coverage statements without directly assuming Collatz. But the decisive gates show the proposed coverage mechanism is syntactic rather than dynamic: forced extension can append a prune bit without proving that Collatz dynamics permits or benefits from that extension, all-odd blocks obstruct immediate pruning, short blocks still grow from n = 3, and complexity can increase while searching for pruning.
+```
+
+Decision implication:
+
+```text
+Pivot away from the current Alien State-Space / hybrid-certificate lineage. Do not spend another wave on local certificate syntax, local composition, forced extension, or short-block pruning. The next serious path should change world family: Tao-informed density/measure transport, inverse-tree normal forms with dynamic admissibility, or minimal-counterexample ecology. If certificates return, they should be subordinate to one of those global mechanisms rather than the main object.
+```
