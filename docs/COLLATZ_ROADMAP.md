@@ -114,8 +114,9 @@ Cylinder-pressure wave: completed, dynamic admissibility and anti-smuggling gate
 Pressure-globalization wave: completed, split-tree accounting and density-zero targets passed
 Pivot portfolio wave: completed, density/ecology route selected over inverse-tree as main engine
 Composite scarcity viability gate: completed, theorem-shaped route passed 8 / 8 probes
-Current bottleneck: no nontrivial parameterized bad-child scarcity / recovery-frequency theorem yet
-Next phase: Composite Scarcity Theorem hunt
+Composite scarcity theorem local gates: completed, parameterized scarcity/recovery/survivor gates passed 10 / 10 probes
+Current bottleneck: no global dynamic forcing lemma for legal bad-pressure split trees yet
+Next phase: global Composite Scarcity forcing hunt
 ```
 
 ## Next Phase
@@ -127,13 +128,13 @@ current candidate world family:
 - 2-adic cylinder-pressure / density transport / minimal-survivor ecology
 
 next gates:
-- parameterized multi-level bad-child branching bounds
-- pressure recovery frequency after bad all-odd windows
-- density-improving transport from strong scarcity
-- minimal-survivor obstruction reduction
-- density-zero exceptional-family theorem from composite scarcity
+- dynamically legal multi-level bad-child branching bounds
+- forced pressure recovery frequency after bad all-odd windows
+- adversarial persistent bad-frontier search
+- global survivor-obstruction descent
+- density-zero exceptional-family theorem from global composite scarcity
 ```
 
-Success in the next phase means this family proves a smaller named theorem than Collatz: roughly, that every dynamically legal bad-pressure split tree either enters a density-improving transport step within a bounded window or maps to a minimal-survivor obstruction whose obstruction measure strictly decreases. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
+The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. Success in the next phase therefore means proving the missing global forcing lemma: every dynamically legal bad-pressure split tree either enters a density-improving transport step within a bounded window or maps to a minimal-survivor obstruction whose obstruction measure strictly decreases. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
 
-This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove Composite Scarcity, then prove density-zero/no-persistent-survivor, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot produce a nontrivial parameterized scarcity or recovery lemma, this route should be pivoted rather than extended with more local definitions.
+This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove global Composite Scarcity, then prove density-zero/no-persistent-survivor, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot produce a dynamic forcing lemma, or if it exposes a legal persistent bad frontier with no strong scarcity, no recovery, and no survivor descent, this route should pivot rather than add more local definitions.

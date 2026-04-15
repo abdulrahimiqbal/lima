@@ -595,3 +595,68 @@ Composite Scarcity Theorem
 
 Failure should be crisp: if the next wave cannot prove a nontrivial parameterized scarcity/recovery lemma, or if it exposes a legal persistent bad frontier with no density improvement and no survivor reduction, pivot away rather than adding more definitions.
 ```
+
+### R16. Composite Scarcity Theorem Wave Proves The Local Parameterized Gates
+
+These facts come from composite-scarcity theorem run `CT-648f0ecd11` on world `W-0273193499`, local campaign `C-a9cd28647133`, submitted in Aristotle bake `PB-8226f6c43a`, and digested in `PD-ea1d823dab`.
+
+This wave tested the first serious theorem-hunt requirements after the viability gate: parameterized scarcity, depth-indexed density contraction, recovery-window arithmetic, adversarial weak-gate failures, survivor descent, and the final obstruction closure shape.
+
+Verified probe outcomes:
+
+```text
+parameterized strong scarcity implies subcritical bad mass: proved
+depth-indexed scarcity projects to density contraction: proved
+bounded recovery beats odd debt with a parameterized margin: proved
+equal recovery is insufficient for all-odd debt: proved
+weak scarcity is not enough for subcritical mass: proved
+composite step closes from density contraction or survivor descent: proved
+survivor descent forbids persistent self-loop obstruction: proved
+survivor descent composes: proved
+density zero and zero survivor remove final obstruction: proved
+named target is a counting theorem, not a reachability field: proved
+```
+
+Status:
+
+```text
+10 / 10 composite-scarcity theorem probes Lean-clean and proved in digest PD-ea1d823dab
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This is a real mathematical signal, but it remains local. It does not prove the global Composite Scarcity Theorem and it does not prove Collatz.
+
+The new positive information is that the route has nontrivial parameterized pieces, not just examples:
+
+- strong scarcity uniformly implies subcritical bad mass;
+- depth-indexed scarcity projects into density contraction;
+- recovery windows can beat odd debt with a parameterized margin;
+- survivor descent is well-founded enough to forbid self-loops and compose.
+
+The new negative information is also important:
+
+- equal recovery is insufficient for all-odd debt;
+- weak scarcity is insufficient for subcritical mass.
+
+So the theorem cannot be cheap. A proof must show a genuinely stronger, dynamically forced scarcity/recovery-frequency fact along legal Collatz split trees.
+```
+
+Decision implication:
+
+```text
+Promote again, but only one level.
+
+The current bottleneck is no longer "can the ingredients be stated and used?" That is now passed.
+
+The bottleneck is now:
+
+prove a global dynamic forcing lemma:
+every legal bad-pressure split tree eventually satisfies strong scarcity or bounded recovery, unless survivor obstruction strictly decreases.
+
+The next wave should not add new objects. It should attack this global dynamic forcing lemma directly, with adversarial probes for persistent bad frontiers. If a legal persistent bad frontier can avoid strong scarcity, avoid recovery, and avoid survivor descent, this route should pivot.
+```
