@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
 
+from .collatz_automaton import analyze_dynamic_pressure_automaton
 from .config import Settings
 from .executor import Executor
 from .frontier import apply_execution_result, seed_frontier
@@ -40,6 +41,8 @@ from .schemas import (
     CandidateAnswer,
     DynamicAdmissibilityCompassWaveRequest,
     DynamicAdmissibilityCompassWaveRun,
+    DynamicPressureAutomatonWaveRequest,
+    DynamicPressureAutomatonWaveRun,
     ExecutionResult,
     FinalCollatzExperimentRequest,
     FinalCollatzExperimentRun,
@@ -2309,6 +2312,98 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="dynamic_admissibility_compass_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_dynamic_pressure_automaton_wave(
+        self,
+        campaign_id: str,
+        payload: DynamicPressureAutomatonWaveRequest,
+    ) -> DynamicPressureAutomatonWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for dynamic pressure automaton wave.")
+            world_label = world_payload.get("label") or world_id
+            reports = [
+                analyze_dynamic_pressure_automaton(
+                    window=window,
+                    modulus_bits=max(2, window + payload.modulus_extra_bits),
+                )
+                for window in range(1, payload.max_window + 1)
+            ]
+            probes = self._compile_dynamic_pressure_automaton_wave_probes(
+                world_id=world_id,
+                reports=reports,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"dynamic-pressure-automaton:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            first_cycle = next((report for report in reports if report["cycle_found"]), None)
+            if first_cycle:
+                obstruction_summary = (
+                    f"First bad cycle at window={first_cycle['window']} "
+                    f"modulus_bits={first_cycle['modulus_bits']}: "
+                    f"{first_cycle.get('ghost_family') or 'unclassified residue cycle'}."
+                )
+            else:
+                obstruction_summary = "No bad cycles found in the requested residue over-approximations."
+            run = DynamicPressureAutomatonWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                automaton_reports=reports,
+                automaton_gates=[
+                    "sound finite residue relation with hidden high-bit even splits",
+                    "integer pressure surrogate 8 * odd < 5 * even",
+                    "bad-subgraph cycle search before theorem investment",
+                    "acyclic reports produce rank-certificate shape",
+                    "cycle reports produce obstruction witnesses",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether pure dynamic pressure already has a finite no-bad-cycle certificate.",
+                    "Whether residue dynamics exposes 2-adic ghost cycles that require an Archimedean side condition.",
+                    "Which horizons deserve Aristotle replay as certificates rather than hand-picked probes.",
+                    "Whether the roadmap should chase pressure alone or pressure plus positive-integer height.",
+                ],
+                obstruction_summary=obstruction_summary,
+                summary=(
+                    "Dynamic pressure automaton wave enumerated the sound Collatz residue relation, "
+                    "searched the bad-pressure subgraph for cycles, and compiled Lean probes for the "
+                    "pressure rule plus any discovered residue obstruction."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="DynamicPressureAutomatonWaveRun",
+                title=f"dynamic-pressure-automaton-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="dynamic_pressure_automaton_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -5944,6 +6039,191 @@ theorem compass_static_obstruction_has_no_dynamic_witness_{suffix} :
                     notes=(
                         "Dynamic admissibility compass probe; use verification as discovery "
                         "for both the bridge path and pivot sentinels."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_dynamic_pressure_automaton_wave_probes(
+        self,
+        *,
+        world_id: str,
+        reports: list[dict[str, Any]],
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        cycle_report = next((report for report in reports if report["cycle_found"]), None)
+        acyclic_report = next((report for report in reports if not report["cycle_found"]), reports[0])
+        modulus = int((cycle_report or reports[0])["modulus"])
+        window = int((cycle_report or reports[0])["window"])
+        base_defs = f"""
+def dpaM_{suffix} : Nat := {modulus}
+
+def dpaSuccs_{suffix} (r : Nat) : List Nat :=
+  if r % 2 = 0 then [r / 2, r / 2 + dpaM_{suffix} / 2]
+  else [((3 * r + 1) % dpaM_{suffix})]
+
+def dpaPositivePressure_{suffix} (evenCount oddCount : Nat) : Prop :=
+  8 * oddCount < 5 * evenCount
+
+def dpaGhostEven_{suffix} : Nat := dpaM_{suffix} - 2
+
+def dpaGhostOdd_{suffix} : Nat := dpaM_{suffix} - 1
+
+def dpaWindow_{suffix} : Nat := {window}
+
+def dpaAcyclicRankWitness_{suffix} : Nat :=
+  {int(acyclic_report.get("certificate", {}).get("max_rank", 0))}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Dynamic pressure automaton / pressure rule separates one-even from two-even recovery.",
+                f"""{base_defs}
+
+theorem dpa_pressure_rule_separates_recovery_{suffix} :
+    dpaPositivePressure_{suffix} 2 1 /\\
+    Not (dpaPositivePressure_{suffix} 1 1) := by
+  native_decide
+""",
+                True,
+                "pressure_rule",
+                "two_even_recovery",
+            ),
+            (
+                "simulation_probe",
+                "Dynamic pressure automaton / even residue step must split on the hidden high bit.",
+                f"""{base_defs}
+
+theorem dpa_even_step_has_two_residue_successors_{suffix} :
+    0 ∈ dpaSuccs_{suffix} 0 /\\
+    dpaM_{suffix} / 2 ∈ dpaSuccs_{suffix} 0 := by
+  native_decide
+""",
+                True,
+                "residue_relation",
+                "even_high_bit_split",
+            ),
+            (
+                "closure_probe",
+                "Dynamic pressure automaton / acyclic reports carry a finite bad-rank witness.",
+                f"""{base_defs}
+
+theorem dpa_acyclic_report_has_rank_witness_{suffix} :
+    dpaAcyclicRankWitness_{suffix} = {int(acyclic_report.get("certificate", {}).get("max_rank", 0))} := by
+  native_decide
+""",
+                False,
+                "certificate_shape",
+                "acyclic_rank_witness",
+            ),
+        ]
+        if cycle_report:
+            specs.extend(
+                [
+                    (
+                        "anti_smuggling_probe",
+                        "Dynamic pressure automaton / sound residue relation exposes the 2-adic ghost cycle.",
+                        f"""{base_defs}
+
+theorem dpa_two_adic_ghost_cycle_edges_{suffix} :
+    dpaGhostOdd_{suffix} ∈ dpaSuccs_{suffix} dpaGhostEven_{suffix} /\\
+    dpaGhostEven_{suffix} ∈ dpaSuccs_{suffix} dpaGhostOdd_{suffix} := by
+  native_decide
+""",
+                        True,
+                        "ghost_obstruction",
+                        "negative_two_negative_one_cycle",
+                    ),
+                    (
+                        "anti_smuggling_probe",
+                        "Dynamic pressure automaton / the ghost cycle is bad for the pressure rule.",
+                        f"""{base_defs}
+
+theorem dpa_two_adic_ghost_cycle_is_pressure_bad_{suffix} :
+    Not (dpaPositivePressure_{suffix} 1 1) := by
+  native_decide
+""",
+                        True,
+                        "ghost_obstruction",
+                        "pressure_bad_cycle",
+                    ),
+                    (
+                        "bridge_probe",
+                        "Dynamic pressure automaton / ghost obstruction is a negative residue-class phenomenon.",
+                        f"""{base_defs}
+
+theorem dpa_ghost_is_modulus_boundary_pair_{suffix} :
+    dpaGhostEven_{suffix} + 2 = dpaM_{suffix} /\\
+    dpaGhostOdd_{suffix} + 1 = dpaM_{suffix} := by
+  native_decide
+""",
+                        True,
+                        "positive_integer_side_condition",
+                        "archimedean_gap",
+                    ),
+                ]
+            )
+        else:
+            specs.extend(
+                [
+                    (
+                        "closure_probe",
+                        "Dynamic pressure automaton / one-step even windows exit through positive pressure.",
+                        f"""{base_defs}
+
+theorem dpa_one_step_even_window_positive_{suffix} :
+    dpaPositivePressure_{suffix} 1 0 := by
+  native_decide
+""",
+                        True,
+                        "certificate_shape",
+                        "one_step_exit",
+                    ),
+                    (
+                        "anti_smuggling_probe",
+                        "Dynamic pressure automaton / one-step odd windows do not fake pressure progress.",
+                        f"""{base_defs}
+
+theorem dpa_one_step_odd_window_not_positive_{suffix} :
+    Not (dpaPositivePressure_{suffix} 0 1) := by
+  native_decide
+""",
+                        True,
+                        "pressure_rule",
+                        "odd_debt_gate",
+                    ),
+                ]
+            )
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "dynamic_pressure_automaton_wave": True,
+                "automaton_family": family,
+                "automaton_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "cycle_found": bool(cycle_report),
+                "window": window,
+                "modulus": modulus,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Dynamic pressure automaton probe; generated from finite residue "
+                        "search rather than hand-picked narrative examples."
                     ),
                 )
             )

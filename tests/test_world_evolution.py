@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.executor import AristotleSdkProofAdapter
 from app.config import Settings
+from app.collatz_automaton import analyze_dynamic_pressure_automaton
 from app.main import create_app
 from app.schemas import (
     ApprovedExecutionPlan,
@@ -629,6 +630,67 @@ def test_dynamic_admissibility_compass_wave_compiles_bridge_and_pivot_sentinels(
     assert "parity tags alone do not imply dynamic admissibility" in payload["pivot_sentinels"]
     assert payload["decisive_probe_ids"]
     assert any("where to pivot" in item for item in payload["expected_learning"])
+
+
+def test_dynamic_pressure_automaton_detects_two_adic_ghost_cycle() -> None:
+    report = analyze_dynamic_pressure_automaton(window=2, modulus_bits=6)
+
+    assert report["cycle_found"] is True
+    assert report["ghost_family"] == "2-adic negative ghost cycle -2 <-> -1"
+    assert report["certificate"]["kind"] == "bad_cycle_obstruction"
+    cycle_states = report["certificate"]["cycle"]["states"]
+    assert {-2, -1}.issubset({state["signed_residue"] for state in cycle_states})
+    assert report["certificate"]["cycle"]["cycle_positive_pressure"] is False
+
+
+def test_dynamic_pressure_automaton_can_emit_acyclic_rank_certificate() -> None:
+    report = analyze_dynamic_pressure_automaton(window=1, modulus_bits=5)
+
+    assert report["cycle_found"] is False
+    assert report["certificate"]["kind"] == "acyclic_bad_subgraph"
+    assert report["certificate"]["max_rank"] >= 1
+
+
+def test_dynamic_pressure_automaton_wave_compiles_search_backed_probes(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 10,
+            "survivors_per_generation": 4,
+            "mutations_per_survivor": 2,
+            "wildness": "extreme",
+            "max_formal_probes_per_generation": 4,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/dynamic-pressure-automaton-wave",
+        json={
+            "max_window": 4,
+            "modulus_extra_bits": 2,
+            "max_probes": 6,
+            "submit_after_compile": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["compiled_probe_count"] == 6
+    assert payload["automaton_reports"][0]["certificate"]["kind"] == "acyclic_bad_subgraph"
+    assert any(report["cycle_found"] for report in payload["automaton_reports"])
+    assert "2-adic negative ghost cycle" in payload["obstruction_summary"]
+    assert "bad-subgraph cycle search before theorem investment" in payload["automaton_gates"]
+    assert payload["decisive_probe_ids"]
+    assert any("2-adic ghost cycles" in item for item in payload["expected_learning"])
 
 
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
