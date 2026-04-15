@@ -586,6 +586,9 @@ class FormalProbe(BaseModel):
     status: Literal["compiled", "submitted", "proved", "blocked", "inconclusive"] = "compiled"
     result_status: str | None = None
     failure_type: str | None = None
+    artifact_paths: list[str] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    repair_instruction: str | None = None
     notes: str = ""
     created_at: datetime = Field(default_factory=_utc_now)
 
@@ -766,6 +769,27 @@ class FormalProbeBakeRun(BaseModel):
     project_ids: list[str] = Field(default_factory=list)
     status: Literal["submitted", "partial", "blocked"] = "submitted"
     notes: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
+class FormalProbeDigestRequest(BaseModel):
+    world_id: str | None = None
+    max_artifacts: int = Field(default=100, ge=1, le=500)
+    attach_unmapped_artifacts: bool = True
+
+
+class FormalProbeDigestRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"PD-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    artifact_count: int = 0
+    probe_count: int = 0
+    proved_count: int = 0
+    blocked_count: int = 0
+    inconclusive_count: int = 0
+    top_failure_modes: list[str] = Field(default_factory=list)
+    repair_instructions: list[str] = Field(default_factory=list)
+    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)
 
 

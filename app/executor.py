@@ -553,7 +553,8 @@ class AristotleSdkProofAdapter:
         plan: ApprovedExecutionPlan,
     ) -> ExecutionResult:
         """Convert terminal Aristotle status to ExecutionResult."""
-        if status == "complete":
+        normalized_status = status.lower()
+        if normalized_status == "complete":
             extracted = None
             if result_tar_path:
                 extracted = self._extract_lean_from_tar(Path(result_tar_path))
@@ -573,7 +574,7 @@ class AristotleSdkProofAdapter:
                 executor_backend="aristotle",
             )
         
-        if status == "complete_with_errors":
+        if normalized_status == "complete_with_errors":
             return ExecutionResult(
                 status="blocked",
                 failure_type="partial_proof",
@@ -582,7 +583,7 @@ class AristotleSdkProofAdapter:
                 executor_backend="aristotle",
             )
         
-        if status == "out_of_budget":
+        if normalized_status == "out_of_budget":
             return ExecutionResult(
                 status="inconclusive",
                 failure_type="budget_exhausted",
@@ -591,7 +592,7 @@ class AristotleSdkProofAdapter:
                 executor_backend="aristotle",
             )
         
-        if status == "failed":
+        if normalized_status == "failed":
             return ExecutionResult(
                 status="blocked",
                 failure_type="proof_failed",
@@ -600,7 +601,7 @@ class AristotleSdkProofAdapter:
                 executor_backend="aristotle",
             )
         
-        if status == "canceled":
+        if normalized_status == "canceled":
             return ExecutionResult(
                 status="inconclusive",
                 failure_type="canceled",

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+from pathlib import Path
+import re
+import tarfile
 import threading
 import time
+from collections import Counter
 from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
@@ -26,6 +30,8 @@ from .schemas import (
     FormalProbe,
     FormalProbeBakeRequest,
     FormalProbeBakeRun,
+    FormalProbeDigestRequest,
+    FormalProbeDigestRun,
     FrontierNode,
     InventionBatch,
     InventionBatchCreate,
@@ -331,6 +337,7 @@ class CampaignService:
                     "debt_id": updated_job.debt_id,
                     "result_status": result.status,
                     "failure_type": result.failure_type,
+                    "artifacts": result.artifacts,
                 },
             )
 
@@ -820,6 +827,7 @@ class CampaignService:
             "dead_patterns": invention_lab["dead_patterns"][:10],
         }
         world_evolution = self.world_evolution.get_summary(campaign_id)
+        probe_digest = self._latest_probe_digest_summary(campaign_id)
         
         # Self-Improvement section
         self_improvement = {
@@ -891,6 +899,7 @@ class CampaignService:
             "discovery": discovery,
             "invention": invention,
             "world_evolution": world_evolution,
+            "probe_digest": probe_digest,
             "self_improvement": self_improvement,
             "next": next_action,
         }
@@ -1080,6 +1089,106 @@ class CampaignService:
         _ = self.get_campaign(campaign_id)
         return self.invention.get_lab(campaign_id)
 
+    def digest_formal_probe_results(
+        self,
+        campaign_id: str,
+        payload: FormalProbeDigestRequest,
+    ) -> FormalProbeDigestRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            probe_nodes = self.memory.list_research_nodes(
+                campaign_id,
+                node_type="FormalProbe",
+                limit=500,
+            )
+            probes: list[FormalProbe] = []
+            for node in probe_nodes:
+                try:
+                    probe = FormalProbe.model_validate(node.payload)
+                except Exception:
+                    continue
+                if payload.world_id and probe.world_id != payload.world_id:
+                    continue
+                probes.append(probe)
+
+            artifact_paths_by_probe = self._artifact_paths_by_probe(campaign_id, probes)
+            unmapped_artifacts = self._unmapped_aristotle_artifacts(campaign_id, payload.max_artifacts)
+            diagnostics: list[dict] = []
+            failure_modes: Counter[str] = Counter()
+            repair_instructions: list[str] = []
+
+            for probe in probes:
+                paths = list(dict.fromkeys([
+                    *probe.artifact_paths,
+                    *artifact_paths_by_probe.get(probe.id, []),
+                ]))
+                if not paths:
+                    continue
+                diagnostic = self._diagnose_probe_artifacts(probe, paths)
+                diagnostics.append(diagnostic)
+                failure_modes[diagnostic["failure_type"]] += 1
+                if diagnostic.get("repair_instruction"):
+                    repair_instructions.append(diagnostic["repair_instruction"])
+                updated = probe.model_copy(
+                    update={
+                        "status": diagnostic["probe_status"],
+                        "failure_type": diagnostic["failure_type"],
+                        "result_status": diagnostic["result_status"],
+                        "artifact_paths": paths,
+                        "diagnostics": diagnostic,
+                        "repair_instruction": diagnostic.get("repair_instruction"),
+                        "notes": f"{probe.notes} Digest: {diagnostic['summary']}",
+                    }
+                )
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"{probe.probe_type}:{probe.world_id}",
+                    summary=probe.source_text,
+                    status=updated.status,
+                    payload=updated.model_dump(mode="json"),
+                )
+
+            if payload.attach_unmapped_artifacts:
+                for path in unmapped_artifacts:
+                    if len(diagnostics) >= payload.max_artifacts:
+                        break
+                    diagnostic = self._diagnose_unmapped_artifact(path)
+                    diagnostics.append(diagnostic)
+                    failure_modes[diagnostic["failure_type"]] += 1
+                    if diagnostic.get("repair_instruction"):
+                        repair_instructions.append(diagnostic["repair_instruction"])
+
+            digest_run = FormalProbeDigestRun(
+                campaign_id=campaign_id,
+                world_id=payload.world_id or campaign.active_world_id,
+                artifact_count=sum(len(d.get("artifact_paths", [])) for d in diagnostics),
+                probe_count=len([d for d in diagnostics if d.get("probe_id")]),
+                proved_count=sum(1 for d in diagnostics if d.get("probe_status") == "proved"),
+                blocked_count=sum(1 for d in diagnostics if d.get("probe_status") == "blocked"),
+                inconclusive_count=sum(1 for d in diagnostics if d.get("probe_status") == "inconclusive"),
+                top_failure_modes=[mode for mode, _ in failure_modes.most_common(8)],
+                repair_instructions=list(dict.fromkeys(repair_instructions))[:20],
+                diagnostics=diagnostics[:payload.max_artifacts],
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=digest_run.id,
+                node_type="FormalProbeDigestRun",
+                title=f"formal-probe-digest:{digest_run.artifact_count}",
+                summary=", ".join(digest_run.top_failure_modes),
+                status="complete",
+                payload=digest_run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="formal_probe_digest_completed",
+                payload=digest_run.model_dump(mode="json"),
+            )
+            return digest_run
+
     def _compiled_formal_probes(
         self,
         campaign_id: str,
@@ -1203,6 +1312,9 @@ class CampaignService:
                 "status": status,
                 "result_status": result.status,
                 "failure_type": result.failure_type,
+                "artifact_paths": [
+                    artifact for artifact in result.artifacts if _looks_like_aristotle_tar_path(artifact)
+                ],
                 "notes": (
                     f"{probe.notes} Aristotle project {job.project_id} finished with "
                     f"{result.status}/{result.failure_type or 'ok'}."
@@ -1229,6 +1341,131 @@ class CampaignService:
             status=bake_run.status,
             payload=bake_run.model_dump(mode="json"),
         )
+
+    def _latest_probe_digest_summary(self, campaign_id: str) -> dict[str, Any]:
+        nodes = self.memory.list_research_nodes(
+            campaign_id,
+            node_type="FormalProbeDigestRun",
+            limit=1,
+        )
+        if not nodes:
+            return {
+                "latest_digest_id": None,
+                "artifact_count": 0,
+                "probe_count": 0,
+                "top_failure_modes": [],
+                "repair_instructions": [],
+            }
+        payload = nodes[0].payload or {}
+        return {
+            "latest_digest_id": payload.get("id") or nodes[0].id,
+            "artifact_count": payload.get("artifact_count", 0),
+            "probe_count": payload.get("probe_count", 0),
+            "proved_count": payload.get("proved_count", 0),
+            "blocked_count": payload.get("blocked_count", 0),
+            "inconclusive_count": payload.get("inconclusive_count", 0),
+            "top_failure_modes": payload.get("top_failure_modes", []),
+            "repair_instructions": payload.get("repair_instructions", [])[:5],
+        }
+
+    def _artifact_paths_by_probe(
+        self,
+        campaign_id: str,
+        probes: list[FormalProbe],
+    ) -> dict[str, list[str]]:
+        probe_ids = {probe.id for probe in probes}
+        paths_by_probe: dict[str, list[str]] = {probe_id: [] for probe_id in probe_ids}
+        for event in self.memory.list_events(campaign_id, limit=1000):
+            if event.event_type != "aristotle_job_completed":
+                continue
+            probe_id = event.payload.get("debt_id")
+            if probe_id not in probe_ids:
+                continue
+            for artifact in event.payload.get("artifacts") or []:
+                if _looks_like_aristotle_tar_path(artifact):
+                    paths_by_probe[probe_id].append(artifact)
+        return paths_by_probe
+
+    def _unmapped_aristotle_artifacts(
+        self,
+        campaign_id: str,
+        limit: int,
+    ) -> list[str]:
+        try:
+            artifacts = self.memory.store.list_artifacts(
+                campaign_id,
+                artifact_type="execution_result",
+                limit=limit,
+            )
+        except Exception:
+            logger.exception("Unable to list execution_result artifacts for digest.")
+            return []
+        paths: list[str] = []
+        for artifact in artifacts:
+            text = artifact.content_text or ""
+            if _looks_like_aristotle_tar_path(text):
+                paths.append(text)
+        return list(dict.fromkeys(paths))
+
+    def _diagnose_probe_artifacts(
+        self,
+        probe: FormalProbe,
+        artifact_paths: list[str],
+    ) -> dict[str, Any]:
+        base = self._diagnose_artifact_paths(artifact_paths)
+        result_status = probe.result_status or base["result_status"]
+        probe_status = base["probe_status"]
+        if probe.status == "proved" and base["failure_type"] == "no_error_detected":
+            probe_status = "proved"
+        return {
+            **base,
+            "probe_id": probe.id,
+            "world_id": probe.world_id,
+            "probe_type": probe.probe_type,
+            "source_text": probe.source_text,
+            "result_status": result_status,
+        }
+
+    def _diagnose_unmapped_artifact(self, artifact_path: str) -> dict[str, Any]:
+        return {
+            **self._diagnose_artifact_paths([artifact_path]),
+            "probe_id": None,
+            "world_id": None,
+            "probe_type": "unmapped",
+            "source_text": "Unmapped Aristotle result artifact.",
+        }
+
+    def _diagnose_artifact_paths(self, artifact_paths: list[str]) -> dict[str, Any]:
+        snippets: list[str] = []
+        tar_members: list[str] = []
+        missing_paths: list[str] = []
+        for artifact_path in artifact_paths:
+            path = Path(artifact_path)
+            if not path.exists():
+                missing_paths.append(artifact_path)
+                continue
+            extracted = _extract_texts_from_tar(path)
+            tar_members.extend(extracted.keys())
+            snippets.extend(extracted.values())
+
+        combined = "\n\n".join(snippets)
+        failure_type = _classify_aristotle_text(combined, missing_paths)
+        repair = _repair_instruction_for_failure(failure_type, combined)
+        probe_status = "proved" if failure_type == "no_error_detected" else "blocked"
+        if failure_type in {"artifact_missing", "artifact_empty", "unknown_complete_with_errors"}:
+            probe_status = "inconclusive"
+        return {
+            "artifact_paths": artifact_paths,
+            "missing_artifact_paths": missing_paths,
+            "tar_members": tar_members[:50],
+            "failure_type": failure_type,
+            "probe_status": probe_status,
+            "result_status": "proved" if probe_status == "proved" else "blocked",
+            "summary": _summarize_diagnostic(failure_type, combined, missing_paths),
+            "lean_error_excerpt": _first_error_excerpt(combined),
+            "remaining_sorry_count": len(re.findall(r"\bsorry\b", combined, re.IGNORECASE)),
+            "repair_instruction": repair,
+        }
 
     def smoke_aristotle(self, *, strict_live_probe: bool = False) -> dict:
         return self.executor.check_connectivity(strict_live_probe=strict_live_probe)
@@ -1497,3 +1734,98 @@ class CampaignService:
                 lock = threading.Lock()
                 self._campaign_locks[campaign_id] = lock
             return lock
+
+
+def _looks_like_aristotle_tar_path(value: str) -> bool:
+    return value.endswith(".tar.gz") and "aristotle_results" in value
+
+
+def _extract_texts_from_tar(path: Path) -> dict[str, str]:
+    texts: dict[str, str] = {}
+    try:
+        with tarfile.open(path, "r:*") as tar:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                if not member.name.endswith((".lean", ".log", ".txt", ".json", ".stderr", ".stdout")):
+                    continue
+                extracted = tar.extractfile(member)
+                if extracted is None:
+                    continue
+                content = extracted.read().decode("utf-8", errors="ignore")
+                if content.strip():
+                    texts[member.name] = content[:12000]
+    except (tarfile.TarError, OSError):
+        return {}
+    return texts
+
+
+def _classify_aristotle_text(text: str, missing_paths: list[str]) -> str:
+    lower = text.lower()
+    if not text.strip():
+        return "artifact_missing" if missing_paths else "artifact_empty"
+    if "unknown package" in lower or "unknown module" in lower or "no such file or directory" in lower:
+        return "missing_import_or_dependency"
+    if "invalid" in lower and ("field notation" in lower or "declaration" in lower):
+        return "lean_declaration_error"
+    if "unsolved goals" in lower:
+        return "unsolved_goals"
+    if re.search(r"\berror:", lower):
+        return "lean_compile_error"
+    if re.search(r"\bsorry\b", lower):
+        return "partial_proof"
+    if "complete_with_errors" in lower or "with errors" in lower:
+        return "unknown_complete_with_errors"
+    return "no_error_detected"
+
+
+def _repair_instruction_for_failure(failure_type: str, text: str) -> str:
+    if failure_type == "missing_import_or_dependency":
+        return "Add the missing Lean/Mathlib imports or remove dependency-specific syntax from the probe."
+    if failure_type == "lean_declaration_error":
+        return "Repair the generated Lean declaration before asking Aristotle to fill proofs."
+    if failure_type == "unsolved_goals":
+        return "Keep the statement but add a smaller lemma or stronger tactic hint for the unresolved goal."
+    if failure_type == "lean_compile_error":
+        return "Parse the Lean compiler error, fix the statement or tactic syntax, and resubmit a single canonical probe."
+    if failure_type == "partial_proof":
+        return "Replace remaining sorry with a narrower theorem or expose the missing lemma as a new probe."
+    if failure_type in {"artifact_missing", "artifact_empty"}:
+        return "Ensure Aristotle result archives are downloaded and persisted before judging the probe."
+    if failure_type == "unknown_complete_with_errors":
+        return "Inspect full Aristotle logs; the archive did not expose a recognizable Lean error pattern."
+    return "Mark this probe shape as Lean-clean and prefer it in the next repaired probe batch."
+
+
+def _first_error_excerpt(text: str) -> str | None:
+    if not text.strip():
+        return None
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        lower = line.lower()
+        if "error:" in lower or "unsolved goals" in lower or "unknown module" in lower:
+            start = max(0, idx - 2)
+            end = min(len(lines), idx + 8)
+            return "\n".join(lines[start:end])[:2000]
+    if "sorry" in text.lower():
+        for idx, line in enumerate(lines):
+            if "sorry" in line.lower():
+                start = max(0, idx - 3)
+                end = min(len(lines), idx + 6)
+                return "\n".join(lines[start:end])[:2000]
+    return text[:1000]
+
+
+def _summarize_diagnostic(
+    failure_type: str,
+    text: str,
+    missing_paths: list[str],
+) -> str:
+    if missing_paths and not text.strip():
+        return f"Missing Aristotle artifact archive(s): {', '.join(missing_paths[:3])}."
+    if failure_type == "no_error_detected":
+        return "No Lean error or remaining sorry detected in Aristotle artifact text."
+    excerpt = _first_error_excerpt(text)
+    if excerpt:
+        return f"{failure_type}: {excerpt[:300]}"
+    return failure_type
