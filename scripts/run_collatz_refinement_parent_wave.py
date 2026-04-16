@@ -212,6 +212,19 @@ def direct_children(parent_residue: int) -> list[DirectCertificate]:
     return found
 
 
+def selected_parents() -> list[int]:
+    raw = os.environ.get("COLLATZ_PARENT_WAVE_PARENTS", "").strip()
+    if not raw:
+        return PARENT_FRONTIER
+    requested = [int(item.strip()) for item in raw.split(",") if item.strip()]
+    invalid = [item for item in requested if item not in PARENT_FRONTIER]
+    if invalid:
+        raise SystemExit(
+            f"Unsupported parent residues {invalid}; choose from {PARENT_FRONTIER}"
+        )
+    return requested
+
+
 def render_direct_certificate(certificate: DirectCertificate) -> str:
     token = theorem_token(CHILD_MODULUS, certificate.residue)
     lines: list[str] = []
@@ -373,8 +386,9 @@ def build_probe(parent_residue: int) -> tuple[FormalProbe, dict[str, object]]:
     return probe, summary
 
 
-def compile_probes() -> list[tuple[FormalProbe, dict[str, object]]]:
-    return [build_probe(parent) for parent in PARENT_FRONTIER]
+def compile_probes(parents: list[int] | None = None) -> list[tuple[FormalProbe, dict[str, object]]]:
+    parents = parents or selected_parents()
+    return [build_probe(parent) for parent in parents]
 
 
 def run_lean_check(name: str, source: str) -> dict[str, object]:
@@ -416,7 +430,8 @@ def create_campaign(service: CampaignService):
 
 def upsert_probes(service: CampaignService, campaign_id: str) -> list[dict[str, object]]:
     compiled = []
-    for probe, summary in compile_probes():
+    parents = selected_parents()
+    for probe, summary in compile_probes(parents):
         service.memory.upsert_research_node(
             campaign_id=campaign_id,
             node_id=probe.id,
@@ -432,7 +447,8 @@ def upsert_probes(service: CampaignService, campaign_id: str) -> list[dict[str, 
 
 def run_local() -> None:
     checks = []
-    for probe, summary in compile_probes():
+    parents = selected_parents()
+    for probe, summary in compile_probes(parents):
         check = run_lean_check(
             f"parent_{summary['parent_residue']}",
             probe.formal_obligation.lean_declaration or "",
@@ -443,6 +459,7 @@ def run_local() -> None:
         "local",
         {
             "world_id": WORLD_ID,
+            "selected_parents": parents,
             "compiled_probe_count": len(checks),
             "all_sources_compile": all(item["ok"] for item in checks),
             "checks": checks,
@@ -466,6 +483,7 @@ def submit(service: CampaignService, campaign_id: str | None) -> None:
         {
             "campaign_id": campaign_id,
             "world_id": WORLD_ID,
+            "selected_parents": selected_parents(),
             "compiled_probe_count": len(compiled),
             "probes": compiled,
         },

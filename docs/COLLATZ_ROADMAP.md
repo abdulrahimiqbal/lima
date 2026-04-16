@@ -78,6 +78,22 @@ into a small number of profile classes across 4096/8192/16384.
 This is still not a proof artifact. It is guidance for the next hardening step.
 ```
 
+Newest hardening update:
+
+```text
+The remaining nine mod-256 parent roots have now been packaged into explicit Lean-clean
+parent-closure probe files. Each probe contains:
+- the proved dyadic partition theorem
+- fully checked direct mod-4096 child proofs already known locally
+- only the genuinely unresolved mod-4096 child closures as holes
+
+So the frontier is no longer just "some unresolved residues"; it is a finite family
+of theorem-shaped parent closure obligations.
+
+At the moment Aristotle is queue-blocked ("too many requests in progress"), so live
+submission is throttled by account state rather than by probe quality.
+```
+
 Immediate unresolved arithmetic frontier:
 
 ```text
@@ -86,6 +102,10 @@ direct-family theorem frontier:
 
 single-family rewrite frontier:
 27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
+
+parent-closure probe frontier:
+- 31, 47, 63, 71, 91, 111 each reduce to 10 unresolved mod-4096 children after inlining 6 direct children
+- 27, 103, 127 each reduce to 15 unresolved mod-4096 children after inlining 1 direct child
 ```
 
 ## Flow Diagram

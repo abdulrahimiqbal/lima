@@ -95,6 +95,24 @@ That object is now split cleanly into:
    a small number of profile classes rather than exploding arbitrarily
 ```
 
+Newest local hardening signal:
+
+```text
+The nine concrete parent-closure Aristotle probes for
+27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
+now compile locally in Lean as honest files:
+
+- each file contains the general dyadic partition theorem
+- each file contains fully checked direct mod-4096 child proofs already known locally
+- the only remaining holes are the genuinely unresolved mod-4096 child closures
+
+This means the remaining frontier is now packaged as a finite theorem family, not just a compass.
+
+Aristotle submission is currently account-blocked by:
+"too many requests in progress"
+so this is a live-queue issue, not evidence that the probe shape is wrong.
+```
+
 ## Exit-Bridge Extension Facts Added 2026-04-16
 
 ### E1. Nine New Refined Descent Families Compile In Lean
@@ -204,6 +222,39 @@ Interpretation:
 ```text
 This does not prove well-foundedness, but it is the first concrete sign that the
 remaining search may be describable by a finite-state closure theorem.
+```
+
+### E6. Simple Local State Measures Still Do Not Close The Tree
+
+Status:
+
+```text
+search-only signal via scripts/run_collatz_refinement_measure_search.py
+```
+
+What was checked:
+
+```text
+Search for lexicographic measures built from:
+- resolved-child counts over the next four refinement levels
+- recursive unresolved-leaf counts over the next four refinement levels
+```
+
+Result:
+
+```text
+No exact lexicographic measure of that simple form decreases on every unresolved edge
+across the 4096 / 8192 / 16384 refinement transition graph.
+```
+
+Interpretation:
+
+```text
+The final well-founded state cannot be just
+"how many children close nearby."
+
+The remaining theorem almost certainly needs a richer state description than the
+current local profile / leaf-count signatures.
 ```
 
 ## Rank/Certificate Hunt Facts Added 2026-04-15
