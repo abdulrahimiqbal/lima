@@ -1473,3 +1473,86 @@ If this hardening succeeds, the result may become a genuine formal Collatz proof
 
 If hardening fails, the failure is no longer "where should we search?" but exactly which certificate field cannot be expanded.
 ```
+
+### R27. Descent Core Extracted and First Concrete Exit Families Hardened
+
+These facts come from local Lean hardening audits:
+
+```text
+scripts/run_collatz_descent_core_audit.py
+scripts/run_collatz_exit_bridge_hardening.py
+```
+
+Descent-core result:
+
+```text
+descent_core_compiles: true
+exit_bridge_compression_compiles: true
+raw_no_dangerous_to_descent_compiles: false
+```
+
+Concrete exit-bridge result:
+
+```text
+concrete_exit_cases_compile: true
+raw_odd_three_mod_four_family_compiles: false
+```
+
+Verified Lean facts:
+
+```text
+eventual positive descent below n implies ordinary Collatz termination by strong induction: proved
+if the pressure-height route supplies exit existence and exit soundness, Collatz follows: proved
+every positive even number 2*q descends in one Collatz step: proved
+every number 4*a+1 with a>0 descends in three Collatz steps: proved
+every number 16*c+3 descends in six Collatz steps: proved
+every number 32*d+11 descends in eight Collatz steps: proved
+every number 32*d+23 descends in eight Collatz steps: proved
+the covered concrete exit families imply actual Nat-level positive descent: proved
+n=3 has an explicit descent witness: proved
+n=7 has an explicit descent witness: proved
+n=7 is not covered by the current parametric exit families: proved
+```
+
+Interpretation:
+
+```text
+This is the first hardening step that removes some scaffold rather than adding another architecture layer.
+
+The Collatz proof target has been compressed to:
+
+for every n > 1, produce k such that
+0 < collatz^[k](n) < n.
+
+Once that is proved, ordinary Collatz termination follows by strong induction.
+
+The first concrete exits are now real arithmetic Lean theorems, not Bool certificate fields:
+
+even numbers descend immediately;
+numbers congruent to 1 mod 4, except n=1, descend after the odd step and two halvings;
+numbers congruent to 3 mod 16 descend after six Collatz steps;
+numbers congruent to 11 or 23 mod 32 descend after eight Collatz steps:
+
+collatz^[6](16*c+3) = 9*c+2 < 16*c+3.
+collatz^[8](32*d+11) = 27*d+10 < 32*d+11.
+collatz^[8](32*d+23) = 27*d+20 < 32*d+23.
+```
+
+Decision implication:
+
+```text
+The remaining hard bridge is now more sharply visible:
+
+odd numbers congruent to 7, 15, 27, or 31 mod 32.
+
+The first two concrete exit rules did not solve the 4*a+3 family, but three infinite subfamilies are now closed.
+The remaining 7/15/27/31 mod 32 families are exactly where repeated parity-block / pressure-height reasoning must produce a later descent.
+
+The next hardening target should be:
+
+prove concrete parity-block descent theorems for the remaining 7/15/27/31 mod 32 families,
+or extract the recurring affine expansion and prove its pressure-height measure is well-founded.
+
+Do not return to density-zero-first reasoning unless this descent route fails.
+Density-zero can leave sparse counterexamples; eventual descent kills them.
+```
