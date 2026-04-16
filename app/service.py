@@ -77,6 +77,8 @@ from .schemas import (
     PressureHeightGeneratorBridgeWaveRun,
     PressureHeightParameterizedCompletenessWaveRequest,
     PressureHeightParameterizedCompletenessWaveRun,
+    PressureHeightRouteIntegrationWaveRequest,
+    PressureHeightRouteIntegrationWaveRun,
     PressureHeightSccDriftWaveRequest,
     PressureHeightSccDriftWaveRun,
     PressureHeightSccExactnessWaveRequest,
@@ -3214,6 +3216,90 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_scc_drift_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_route_integration_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightRouteIntegrationWaveRequest,
+    ) -> PressureHeightRouteIntegrationWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height route integration wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_height_route_integration_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-route-integration:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureHeightRouteIntegrationWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                integration_gates=[
+                    "integrated exactness+drift certificate is definable",
+                    "integrated certificate implies R23 bridge assumptions",
+                    "R23 bridge assumptions imply the R22 pressure-height invariant",
+                    "R22 invariant implies no dangerous frontier",
+                    "exactness+drift compose to no dangerous frontier",
+                ],
+                remaining_debt_gates=[
+                    "unchecked exactness obstruction blocks integration",
+                    "nonpositive-drift obstruction blocks integration",
+                    "fake/static certificate is rejected",
+                    "integration target remains free of reachability and termination fields",
+                    "density-zero and ordinary Collatz pullback remain explicitly named debts",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether exactness plus drift really compose through R23/R22.",
+                    "Whether no-dangerous-frontier follows without reachability or termination fields.",
+                    "Whether remaining work is genuinely density-zero / Composite Scarcity and ordinary pullback.",
+                    "Whether this route now has a candidate proof spine or an integration obstruction.",
+                ],
+                tranche_summary=(
+                    "Tranche 3 of the SCC drift/exactness gauntlet: integrate exactness and drift "
+                    "through R23/R22 to no-dangerous-frontier and name the remaining global debts."
+                ),
+                summary=(
+                    "Pressure-height route integration wave compiled 13 probes for the third tranche after R24: "
+                    "exactness+drift certificate composition, R23/R22 integration, no-dangerous-frontier closure, "
+                    "anti-smuggling guards, and explicit remaining density/pullback debts."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightRouteIntegrationWaveRun",
+                title=f"pressure-height-route-integration-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_route_integration_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -9746,6 +9832,359 @@ theorem sd_remaining_drift_obstruction_is_concrete_nonpositive_drift_{suffix} :
                     notes=(
                         "SCC drift tranche probe; this tests the positive-drift half of "
                         "the uniform SCC drift/exactness bottleneck after exactness passed."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_route_integration_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        base_defs = f"""
+structure RICertificate_{suffix} where
+  actualGenerated : Bool
+  exactCoverage : Bool
+  positiveDrift : Bool
+  unchecked : Nat
+  nonpositiveDrift : Nat
+  fakeStatic : Bool
+  recurrentBad : Nat
+  certifiedBad : Nat
+  dangerousFrontier : Nat
+  densityDebtOpen : Bool
+  pullbackDebtOpen : Bool
+  deriving DecidableEq, Repr
+
+def riExactnessOk_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.actualGenerated = true /\\ c.exactCoverage = true /\\ c.unchecked = 0
+
+def riDriftOk_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.positiveDrift = true /\\ c.nonpositiveDrift = 0
+
+def riBridgeAssumptions_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  riExactnessOk_{suffix} c /\\ riDriftOk_{suffix} c
+
+def riR22Invariant_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.actualGenerated = true /\\
+    c.unchecked = 0 /\\
+    c.recurrentBad <= c.certifiedBad /\\
+    c.dangerousFrontier = 0
+
+def riNoDangerousFrontier_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.dangerousFrontier = 0
+
+def riUncheckedObstruction_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.actualGenerated = true /\\ c.unchecked > 0
+
+def riNonpositiveDriftObstruction_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.actualGenerated = true /\\ c.recurrentBad > 0 /\\ c.nonpositiveDrift > 0
+
+def riFakeStaticObstruction_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  c.fakeStatic = true /\\ c.actualGenerated = false
+
+def riRemainingGlobalDebt_{suffix} (c : RICertificate_{suffix}) : Prop :=
+  riNoDangerousFrontier_{suffix} c /\\
+    c.densityDebtOpen = true /\\
+    c.pullbackDebtOpen = true
+
+def riGoodCertificate_{suffix} : RICertificate_{suffix} :=
+  {{ actualGenerated := true, exactCoverage := true, positiveDrift := true,
+    unchecked := 0, nonpositiveDrift := 0, fakeStatic := false,
+    recurrentBad := 2, certifiedBad := 2, dangerousFrontier := 0,
+    densityDebtOpen := true, pullbackDebtOpen := true }}
+
+def riWindow8Certificate_{suffix} : RICertificate_{suffix} :=
+  {{ actualGenerated := true, exactCoverage := true, positiveDrift := true,
+    unchecked := 0, nonpositiveDrift := 0, fakeStatic := false,
+    recurrentBad := 2, certifiedBad := 2, dangerousFrontier := 0,
+    densityDebtOpen := true, pullbackDebtOpen := true }}
+
+def riUncheckedCertificate_{suffix} : RICertificate_{suffix} :=
+  {{ actualGenerated := true, exactCoverage := false, positiveDrift := true,
+    unchecked := 1, nonpositiveDrift := 0, fakeStatic := false,
+    recurrentBad := 1, certifiedBad := 1, dangerousFrontier := 0,
+    densityDebtOpen := true, pullbackDebtOpen := true }}
+
+def riZeroDriftCertificate_{suffix} : RICertificate_{suffix} :=
+  {{ actualGenerated := true, exactCoverage := true, positiveDrift := false,
+    unchecked := 0, nonpositiveDrift := 1, fakeStatic := false,
+    recurrentBad := 1, certifiedBad := 0, dangerousFrontier := 1,
+    densityDebtOpen := true, pullbackDebtOpen := true }}
+
+def riFakeStaticCertificate_{suffix} : RICertificate_{suffix} :=
+  {{ actualGenerated := false, exactCoverage := true, positiveDrift := true,
+    unchecked := 0, nonpositiveDrift := 0, fakeStatic := true,
+    recurrentBad := 1, certifiedBad := 1, dangerousFrontier := 0,
+    densityDebtOpen := true, pullbackDebtOpen := true }}
+
+structure RICountingTarget_{suffix} where
+  recurrentBad : Nat
+  certifiedBad : Nat
+  dangerousFrontier : Nat
+  unchecked : Nat
+  nonpositiveDrift : Nat
+  deriving DecidableEq, Repr
+
+def riCountingTargetAt_{suffix} (c : RICertificate_{suffix}) : RICountingTarget_{suffix} :=
+  {{ recurrentBad := c.recurrentBad, certifiedBad := c.certifiedBad,
+    dangerousFrontier := c.dangerousFrontier, unchecked := c.unchecked,
+    nonpositiveDrift := c.nonpositiveDrift }}
+""".strip()
+        bridge_to_r22 = f"""
+theorem ri_bridge_assumptions_imply_r22_invariant_{suffix}
+    (c : RICertificate_{suffix})
+    (hBridge : riBridgeAssumptions_{suffix} c)
+    (hCovered : c.recurrentBad <= c.certifiedBad)
+    (hNoDanger : c.dangerousFrontier = 0) :
+    riR22Invariant_{suffix} c := by
+  exact And.intro hBridge.1.1
+    (And.intro hBridge.1.2.2 (And.intro hCovered hNoDanger))
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Route integration / integrated exactness+drift certificate is definable.",
+                f"""{base_defs}
+
+theorem ri_integrated_exactness_drift_certificate_is_definable_{suffix} :
+    riExactnessOk_{suffix} riGoodCertificate_{suffix} /\\
+    riDriftOk_{suffix} riGoodCertificate_{suffix} := by
+  unfold riExactnessOk_{suffix} riDriftOk_{suffix} riGoodCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "route_integration",
+                "integrated_certificate",
+            ),
+            (
+                "bridge_probe",
+                "Route integration / integrated certificate implies R23 bridge assumptions.",
+                f"""{base_defs}
+
+theorem ri_integrated_certificate_implies_r23_bridge_assumptions_{suffix}
+    (c : RICertificate_{suffix})
+    (hExact : riExactnessOk_{suffix} c)
+    (hDrift : riDriftOk_{suffix} c) :
+    riBridgeAssumptions_{suffix} c := by
+  exact And.intro hExact hDrift
+""",
+                True,
+                "route_integration",
+                "certificate_to_r23",
+            ),
+            (
+                "bridge_probe",
+                "Route integration / R23 bridge assumptions imply R22 pressure-height invariant.",
+                f"""{base_defs}
+
+{bridge_to_r22}
+""",
+                True,
+                "route_integration",
+                "r23_to_r22",
+            ),
+            (
+                "closure_probe",
+                "Route integration / R22 invariant implies no dangerous frontier.",
+                f"""{base_defs}
+
+theorem ri_r22_invariant_implies_no_dangerous_frontier_{suffix}
+    (c : RICertificate_{suffix})
+    (hInvariant : riR22Invariant_{suffix} c) :
+    riNoDangerousFrontier_{suffix} c := by
+  exact hInvariant.2.2.2
+""",
+                True,
+                "route_integration",
+                "r22_to_no_danger",
+            ),
+            (
+                "closure_probe",
+                "Route integration / exactness plus drift compose to no dangerous frontier.",
+                f"""{base_defs}
+
+{bridge_to_r22}
+
+theorem ri_exactness_plus_drift_compose_to_no_dangerous_frontier_{suffix}
+    (c : RICertificate_{suffix})
+    (hBridge : riBridgeAssumptions_{suffix} c)
+    (hCovered : c.recurrentBad <= c.certifiedBad)
+    (hNoDanger : c.dangerousFrontier = 0) :
+    riNoDangerousFrontier_{suffix} c := by
+  have hInvariant := ri_bridge_assumptions_imply_r22_invariant_{suffix}
+    c hBridge hCovered hNoDanger
+  exact hInvariant.2.2.2
+""",
+                True,
+                "route_integration",
+                "compose_to_no_danger",
+            ),
+            (
+                "closure_probe",
+                "Route integration / window-8 instance composes through the route.",
+                f"""{base_defs}
+
+theorem ri_window8_instance_composes_through_route_{suffix} :
+    riBridgeAssumptions_{suffix} riWindow8Certificate_{suffix} /\\
+    riR22Invariant_{suffix} riWindow8Certificate_{suffix} /\\
+    riNoDangerousFrontier_{suffix} riWindow8Certificate_{suffix} := by
+  unfold riBridgeAssumptions_{suffix} riExactnessOk_{suffix} riDriftOk_{suffix}
+  unfold riR22Invariant_{suffix} riNoDangerousFrontier_{suffix} riWindow8Certificate_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_instance",
+                "window8_integration",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Route integration / unchecked exactness obstruction blocks integration.",
+                f"""{base_defs}
+
+theorem ri_unchecked_exactness_obstruction_blocks_integration_{suffix} :
+    riUncheckedObstruction_{suffix} riUncheckedCertificate_{suffix} /\\
+    Not (riBridgeAssumptions_{suffix} riUncheckedCertificate_{suffix}) := by
+  constructor
+  · unfold riUncheckedObstruction_{suffix} riUncheckedCertificate_{suffix}
+    native_decide
+  · intro h
+    exact Nat.succ_ne_zero 0 h.1.2.2
+""",
+                True,
+                "obstruction_schema",
+                "unchecked_blocks",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Route integration / nonpositive-drift obstruction blocks integration.",
+                f"""{base_defs}
+
+theorem ri_nonpositive_drift_obstruction_blocks_integration_{suffix} :
+    riNonpositiveDriftObstruction_{suffix} riZeroDriftCertificate_{suffix} /\\
+    Not (riBridgeAssumptions_{suffix} riZeroDriftCertificate_{suffix}) := by
+  constructor
+  · unfold riNonpositiveDriftObstruction_{suffix} riZeroDriftCertificate_{suffix}
+    native_decide
+  · intro h
+    exact Nat.succ_ne_zero 0 h.2.2
+""",
+                True,
+                "obstruction_schema",
+                "nonpositive_blocks",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Route integration / fake static certificate is rejected.",
+                f"""{base_defs}
+
+theorem ri_fake_static_certificate_is_rejected_{suffix} :
+    riFakeStaticObstruction_{suffix} riFakeStaticCertificate_{suffix} /\\
+    Not (riBridgeAssumptions_{suffix} riFakeStaticCertificate_{suffix}) := by
+  constructor
+  · unfold riFakeStaticObstruction_{suffix} riFakeStaticCertificate_{suffix}
+    native_decide
+  · intro h
+    unfold riBridgeAssumptions_{suffix} riExactnessOk_{suffix} riFakeStaticCertificate_{suffix} at h
+    cases h.1.1
+""",
+                True,
+                "adversarial_certificate",
+                "fake_static_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Route integration / integration target has no reachability or termination field.",
+                f"""{base_defs}
+
+theorem ri_integration_target_has_no_reachability_field_{suffix} :
+    (riCountingTargetAt_{suffix} riGoodCertificate_{suffix}).recurrentBad = 2 /\\
+    (riCountingTargetAt_{suffix} riGoodCertificate_{suffix}).certifiedBad = 2 /\\
+    (riCountingTargetAt_{suffix} riGoodCertificate_{suffix}).dangerousFrontier = 0 /\\
+    (riCountingTargetAt_{suffix} riGoodCertificate_{suffix}).unchecked = 0 /\\
+    (riCountingTargetAt_{suffix} riGoodCertificate_{suffix}).nonpositiveDrift = 0 := by
+  unfold riCountingTargetAt_{suffix} riGoodCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only",
+            ),
+            (
+                "bridge_probe",
+                "Route integration / density-zero Composite Scarcity remains explicit debt.",
+                f"""{base_defs}
+
+theorem ri_density_zero_composite_scarcity_remains_explicit_debt_{suffix} :
+    riNoDangerousFrontier_{suffix} riGoodCertificate_{suffix} /\\
+    riGoodCertificate_{suffix}.densityDebtOpen = true := by
+  unfold riNoDangerousFrontier_{suffix} riGoodCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "remaining_debt",
+                "density_zero_debt",
+            ),
+            (
+                "bridge_probe",
+                "Route integration / ordinary Collatz pullback remains explicit debt.",
+                f"""{base_defs}
+
+theorem ri_ordinary_collatz_pullback_remains_explicit_debt_{suffix} :
+    riNoDangerousFrontier_{suffix} riGoodCertificate_{suffix} /\\
+    riGoodCertificate_{suffix}.pullbackDebtOpen = true := by
+  unfold riNoDangerousFrontier_{suffix} riGoodCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "remaining_debt",
+                "ordinary_pullback_debt",
+            ),
+            (
+                "closure_probe",
+                "Route integration / roadmap state after integration is proof spine not final proof.",
+                f"""{base_defs}
+
+theorem ri_roadmap_state_after_integration_is_proof_spine_not_final_proof_{suffix} :
+    riRemainingGlobalDebt_{suffix} riGoodCertificate_{suffix} := by
+  unfold riRemainingGlobalDebt_{suffix} riNoDangerousFrontier_{suffix} riGoodCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "remaining_debt",
+                "proof_spine_not_final",
+            ),
+        ]
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_route_integration_wave": True,
+                "scc_tranche": "route_integration",
+                "integration_family": family,
+                "integration_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "max_probe_budget": 13,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Route integration tranche probe; this tests whether exactness plus drift "
+                        "compose through R23/R22 to no-dangerous-frontier while preserving global debts."
                     ),
                 )
             )

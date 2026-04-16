@@ -1224,3 +1224,106 @@ If this named lemma proves, the pressure-height route advances to global density
 
 If it fails with a genuine non-height-escaping nonpositive-drift SCC, this route has found its real obstruction and should pivot or add a new invariant.
 ```
+
+### R24. SCC Exactness and Drift Tranches Both Passed
+
+These facts come from the first two tranches of the SCC drift/exactness gauntlet after R23.
+
+Exactness tranche:
+
+```text
+campaign: C-fc2998a6f4f9
+run_id: SX-8d0b29d2ee
+bake_run: PB-4d729fa71b
+digest: PD-ca6a5b2b44
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Drift tranche:
+
+```text
+campaign: C-be4986090faf
+run_id: SD-c50f253c61
+bake_run: PB-d53550b908
+digest: PD-06591e0e53
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified exactness outcomes:
+
+```text
+finite width-k pressure-height SCC witnesses are definable: proved
+SCC edges are actual residue successor edges: proved
+generated SCC reports come from actual generator transitions: proved
+exact SCC coverage is a concrete coverage predicate: proved
+unchecked SCC obstruction is explicitly named: proved
+acyclic SCC reports are exact by construction: proved
+recurrent reports decompose into covered or unchecked: proved
+checked recurrent SCC reports satisfy exact coverage: proved
+checked window-8 SCCs are exact: proved
+exactness target has no reachability or termination field: proved
+adversarial unchecked SCC fails exactness: proved
+fake static SCC is rejected as non-actual: proved
+weak legality does not imply exact coverage: proved
+```
+
+Verified drift outcomes:
+
+```text
+pressure-height drift around actual SCC cycles is definable: proved
+nonpositive-drift obstruction is explicitly named: proved
+height-escaping SCCs are not dangerous minimal survivors: proved
+positive-drift SCCs cannot be dangerous recurrent bad components: proved
+non-height-escaping recurrent bad implies drift obligation: proved
+pressure-recovery exit contributes positive drift: proved
+survivor-drop exit contributes positive drift: proved
+pure pressure ghost recurrence is killed by height lift: proved
+checked window-8 SCCs have positive drift: proved
+drift target has no reachability or termination field: proved
+adversarial zero-drift SCC fails positive drift: proved
+adversarial nonpositive-drift SCC is named obstruction: proved
+remaining drift obstruction is concrete nonpositive drift: proved
+```
+
+Interpretation:
+
+```text
+This is a strong continuation signal, but still not a Collatz proof.
+
+The two halves of the R23 bottleneck now both have Lean-clean local theorem infrastructure:
+
+exact SCC coverage;
+positive SCC drift;
+unchecked exactness obstruction;
+nonpositive drift obstruction;
+anti-smuggling guards for reachability and termination.
+
+The next step is not another SCC sublemma. It is route integration:
+
+exactness + drift
+-> R23 bridge assumptions
+-> R22 pressure-height invariant
+-> no dangerous frontier.
+```
+
+Decision implication:
+
+```text
+Submit the integration tranche.
+
+The integration tranche must distinguish:
+
+1. proof-spine success: exactness + drift feed R23/R22 and no-dangerous-frontier;
+2. remaining proof debt: density-zero / Composite Scarcity and ordinary Collatz pullback;
+3. anti-circularity: no reachability or termination field is introduced during integration.
+
+If route integration passes, this pressure-height route has a candidate proof spine, not a finished Collatz proof.
+```
