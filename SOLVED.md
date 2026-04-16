@@ -879,3 +879,102 @@ bounded-to-parameterized pressure-plus-height frontier theorem
 -> global Composite Scarcity / density-zero closure
 -> pullback target.
 ```
+
+### R20. Pressure-Height Frontier Certificates Verify The Uniform No-Dangerous-Frontier Calculus
+
+These facts come from pressure-height frontier certificate run `FC-2779e9f64f` on world `W-0273193499`, campaign `C-d8cccdd7e4b2`, submitted in Aristotle bake `PB-943580ec29`, and digested in `PD-fdbfaa6100`.
+
+This wave tested the exact next gate after R19. The question was not whether a checked local component can close, but whether the closure exits can be packaged into a uniform frontier certificate theorem with adversarial guardrails.
+
+Raw Aristotle project statuses were mixed:
+
+```text
+7 COMPLETE
+5 COMPLETE_WITH_ERRORS
+```
+
+However, the digest reconciled all mapped probes as proved and reported no detected Lean/math error:
+
+```text
+probe_count: 12
+proved_count: 12
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified probe outcomes:
+
+```text
+component certificate format records pressure, height, and survivor-drop exits: proved
+component certificate excludes danger: proved
+all-certified frontier has no dangerous component: proved
+checked frontier packages as all-certified: proved
+checked certificate has no dangerous survivor: proved
+uncertified frontier can contain danger: proved
+pressure-bad alone is not a certificate: proved
+one height escape without frontier coverage is insufficient: proved
+sound certificate gives density closure: proved
+target is counting-height only: proved
+checked certificate is sound: proved
+certificate theorem is uniform over frontiers: proved
+```
+
+Status:
+
+```text
+12 / 12 pressure-height frontier certificate probes Lean-clean after digest reconciliation in PD-fdbfaa6100
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This is a real theorem-gate win, not just another vocabulary wave.
+
+R19 showed that pressure recovery, height escape, and survivor drop close local bad components. R20 shows that those exits can be assembled into a uniform frontier certificate calculus:
+
+if every component in a frontier is certified by one of the closure exits,
+then the frontier has no dangerous component,
+and this soundness theorem is uniform over arbitrary component lists.
+
+The guardrails matter:
+
+pressure-bad alone is not accepted as a certificate;
+a single height escape without coverage is not enough;
+an uncertified frontier can still contain danger;
+the target is counting/height data, not hidden reachability.
+
+So the pressure-plus-height route is now coherent at the certificate-calculus level.
+```
+
+Decision implication:
+
+```text
+Promote the route from "local survivor closure" to "frontier certificate theorem hunt."
+
+This still does not prove Collatz. The verified theorem is conditional:
+
+all components certified
+-> no dangerous frontier
+-> density/minimal-survivor closure target.
+
+The remaining hard theorem is the existence/completeness theorem:
+
+every dynamically legal Collatz pressure-height frontier is all-certified,
+meaning every recurrent bad component either
+  recovers pressure,
+  height-escapes,
+  or triggers survivor drop.
+
+The next wave should attack this directly. It should not add a new metaphor or another local object. It should build the bounded-to-parameterized frontier-completeness bridge:
+
+1. generate legal pressure-height frontiers from actual Collatz residue dynamics;
+2. classify every recurrent bad component by the three exits;
+3. prove that unchecked/nonexpanding dangerous components cannot persist under the legal generator;
+4. expose a concrete counterexample if such a component exists.
+
+If this completeness bridge succeeds, the route moves to the final proof architecture: density-zero/minimal-survivor closure and sound pullback to ordinary Collatz. If it fails by finding a real legal dangerous component, the route must pivot or add a genuinely new invariant.
+```
