@@ -25,6 +25,8 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ARISTOTLE_LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0"
+
 
 LEAN_DECLARATION_RE = re.compile(
     r"^\s*(?:import|open|namespace|section|variable|variables|theorem|lemma|def|example)\b",
@@ -398,6 +400,8 @@ class AristotleSdkProofAdapter:
             project_dir.mkdir(parents=True, exist_ok=True)
             input_path = project_dir / "Main.lean"
             input_path.write_text(lean_code)
+            # Give Aristotle an explicit Lean toolchain so it does not need to guess or fetch one.
+            (project_dir / "lean-toolchain").write_text(DEFAULT_ARISTOTLE_LEAN_TOOLCHAIN + "\n")
             
             # Build rich context prompt for Aristotle
             prompt_parts = [
