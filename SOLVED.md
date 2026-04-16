@@ -1071,3 +1071,82 @@ If that parameterized theorem proves, R20/R21 feed directly into no-dangerous-fr
 
 The next Aristotle wave should be capped at 13 probes and must be judged as a parameterized-theorem attempt, not another bounded evidence run.
 ```
+
+### R22. Parameterized Pressure-Height Completeness Schema Closes Danger Conditionally
+
+These facts come from parameterized pressure-height completeness run `PK-d359fb4828` on world `W-0273193499`, campaign `C-956553836ea9`, submitted in Aristotle bake `PB-38d8bc6556`, and digested in `PD-4d8843e58d`.
+
+This wave was the 13-probe theorem-lift attempt demanded after R21. It did not add larger bounded windows. It asked whether the bounded-frontier story can be expressed as an all-depth theorem schema with an explicit generator invariant and non-vacuous adversarial controls.
+
+Status:
+
+```text
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified probe outcomes:
+
+```text
+generator invariant is definable: proved
+invariant implies no unchecked component at every depth: proved
+invariant covers recurrent bad components by exits: proved
+height-escape coverage is a complete report: proved
+pressure-recovery coverage is a complete report: proved
+survivor-drop coverage is a complete report: proved
+invariant implies no dangerous frontier at arbitrary depth: proved
+bounded window-8 certificate is an instance of the schema: proved
+schema has no reachability or termination field: proved
+dangerous generator violates the invariant: proved
+unchecked generator violates the invariant: proved
+static persistent bad frontier is rejected by dynamic invariant: proved
+weak invariant exposes unchecked obstruction: proved
+```
+
+Interpretation:
+
+```text
+This is a real theorem-shape win, but it is conditional.
+
+R22 proves the all-depth schema:
+
+parameterized generator invariant
+-> no unchecked component at every depth
+-> recurrent bad components are covered by pressure recovery, height escape, or survivor drop
+-> no dangerous frontier at arbitrary depth.
+
+The adversarial controls are important:
+
+dangerous generators violate the invariant;
+unchecked generators violate the invariant;
+static persistent bad frontiers are rejected;
+weak invariants expose a named unchecked obstruction instead of pretending to close the proof.
+
+So the remaining issue is no longer whether the pressure-height theorem can be stated without circularity. It can.
+```
+
+Decision implication:
+
+```text
+The bottleneck has moved cleanly to the actual-generator bridge:
+
+actual Collatz pressure-height residue generator
+-> parameterized generator invariant.
+
+The next wave must not restate the invariant as an assumption. It should reduce the bridge to concrete dynamic facts:
+
+1. actual residue successor relation is the generator transition relation;
+2. recurrent bad components correspond to generated SCC/cycle witnesses;
+3. non-height-escaping recurrent bad components are exactly nonpositive-drift obstructions;
+4. uniform positive drift / exact SCC coverage implies the generator invariant;
+5. adversarial static bad generators are rejected as non-generated or as violating the drift/exactness assumptions.
+
+If this bridge proves only conditionally, the named remaining theorem should be:
+
+uniform SCC drift/exactness lemma for actual Collatz pressure-height generator.
+
+If the bridge finds a legal non-height-escaping recurrent bad component, the pressure-height route is in serious trouble.
+```

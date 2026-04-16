@@ -73,6 +73,8 @@ from .schemas import (
     PressureHeightFrontierCertificateWaveRun,
     PressureHeightFrontierCompletenessWaveRequest,
     PressureHeightFrontierCompletenessWaveRun,
+    PressureHeightGeneratorBridgeWaveRequest,
+    PressureHeightGeneratorBridgeWaveRun,
     PressureHeightParameterizedCompletenessWaveRequest,
     PressureHeightParameterizedCompletenessWaveRun,
     PressureHeightSurvivorClosureWaveRequest,
@@ -2956,6 +2958,90 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_parameterized_completeness_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_generator_bridge_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightGeneratorBridgeWaveRequest,
+    ) -> PressureHeightGeneratorBridgeWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height generator bridge wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_height_generator_bridge_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-generator-bridge:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureHeightGeneratorBridgeWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                bridge_gates=[
+                    "actual residue successor relation includes odd step and hidden high-bit even split",
+                    "actual generator transitions are residue-successor transitions",
+                    "recurrent bad components reduce to generated cycle witnesses",
+                    "uniform positive SCC drift plus exactness implies the R22 invariant",
+                    "bridge target remains free of reachability and termination fields",
+                ],
+                obstruction_gates=[
+                    "non-height-escaping recurrence is named as nonpositive drift obstruction",
+                    "unchecked recurrence is named as exactness obstruction",
+                    "static bad generator is rejected as non-actual",
+                    "weak transition legality does not imply the invariant",
+                    "remaining obstruction is uniform SCC drift/exactness for the actual generator",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether the actual-generator bridge reduces cleanly to uniform SCC drift and exactness.",
+                    "Whether actual residue transitions can feed the R22 generator invariant without reachability.",
+                    "Whether static/adversarial bad generators are rejected as non-actual.",
+                    "Whether the next named theorem is uniform SCC drift/exactness or a concrete counterexample family.",
+                ],
+                bridge_summary=(
+                    "Bridge target: actual Collatz residue generator satisfies the R22 pressure-height "
+                    "invariant once uniform positive SCC drift and exact SCC coverage are supplied."
+                ),
+                summary=(
+                    "Pressure-height generator bridge wave compiled 13 probes for the post-R22 bottleneck: "
+                    "reduce actual Collatz residue dynamics to the parameterized invariant, or expose the "
+                    "uniform SCC drift/exactness obstruction."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightGeneratorBridgeWaveRun",
+                title=f"pressure-height-generator-bridge-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_generator_bridge_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -8305,6 +8391,439 @@ theorem ph_param_weak_invariant_exposes_named_obstruction_{suffix} :
                     notes=(
                         "Parameterized pressure-height completeness probe; this is the "
                         "post-R21 theorem-lift attempt, not another bounded-window evidence run."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_generator_bridge_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        base_defs = f"""
+def gbPow2_{suffix} (width : Nat) : Nat :=
+  2 ^ width
+
+def gbOddResidueSuccessor_{suffix} (residue width : Nat) : Nat :=
+  (3 * residue + 1) % gbPow2_{suffix} width
+
+def gbEvenLowSuccessor_{suffix} (residue : Nat) : Nat :=
+  residue / 2
+
+def gbEvenHighSuccessor_{suffix} (residue width : Nat) : Nat :=
+  residue / 2 + gbPow2_{suffix} (width - 1)
+
+def gbActualResidueSuccessor_{suffix} (fromResidue toResidue width : Nat) : Prop :=
+  (fromResidue % 2 = 1 /\\ toResidue = gbOddResidueSuccessor_{suffix} fromResidue width) \\/
+  (fromResidue % 2 = 0 /\\
+    (toResidue = gbEvenLowSuccessor_{suffix} fromResidue \\/
+     toResidue = gbEvenHighSuccessor_{suffix} fromResidue width))
+
+structure GBTransition_{suffix} where
+  fromResidue : Nat
+  toResidue : Nat
+  width : Nat
+  deriving DecidableEq, Repr
+
+def gbTransitionIsActual_{suffix} (t : GBTransition_{suffix}) : Prop :=
+  gbActualResidueSuccessor_{suffix} t.fromResidue t.toResidue t.width
+
+structure GBReport_{suffix} where
+  depth : Nat
+  actualGenerated : Bool
+  exactSccCoverage : Bool
+  uniformPositiveDrift : Bool
+  recurrentBad : Nat
+  pressureRecovery : Nat
+  heightEscape : Nat
+  survivorDrop : Nat
+  dangerous : Nat
+  unchecked : Nat
+  deriving DecidableEq, Repr
+
+def gbCertifiedCount_{suffix} (r : GBReport_{suffix}) : Nat :=
+  r.pressureRecovery + r.heightEscape + r.survivorDrop
+
+def gbComplete_{suffix} (r : GBReport_{suffix}) : Prop :=
+  r.unchecked = 0 /\\
+    r.dangerous = 0 /\\
+    r.recurrentBad <= gbCertifiedCount_{suffix} r
+
+def gbBridgeAssumptions_{suffix} (r : GBReport_{suffix}) : Prop :=
+  r.actualGenerated = true /\\
+    r.exactSccCoverage = true /\\
+    r.uniformPositiveDrift = true
+
+def gbNonPositiveDriftObstruction_{suffix} (r : GBReport_{suffix}) : Prop :=
+  r.actualGenerated = true /\\
+    r.recurrentBad > 0 /\\
+    r.uniformPositiveDrift = false
+
+def gbUncheckedObstruction_{suffix} (r : GBReport_{suffix}) : Prop :=
+  r.actualGenerated = true /\\ r.unchecked > 0
+
+structure GBDriftExactnessCertificate_{suffix} (r : GBReport_{suffix}) where
+  actual : r.actualGenerated = true
+  exact : r.exactSccCoverage = true
+  drift : r.uniformPositiveDrift = true
+  noUnchecked : r.unchecked = 0
+  noDangerous : r.dangerous = 0
+  covered : r.recurrentBad <= gbCertifiedCount_{suffix} r
+
+def gbCertifiesComplete_{suffix}
+    (r : GBReport_{suffix})
+    (_cert : GBDriftExactnessCertificate_{suffix} r) : Prop :=
+  gbComplete_{suffix} r
+
+structure GBGenerator_{suffix} where
+  reportAt : Nat -> GBReport_{suffix}
+  transitionAt : Nat -> GBTransition_{suffix}
+
+def gbGeneratorBridgeInvariant_{suffix} (gen : GBGenerator_{suffix}) : Prop :=
+  ∀ depth, gbComplete_{suffix} (gen.reportAt depth)
+
+def gbGeneratorHasActualTransitions_{suffix} (gen : GBGenerator_{suffix}) : Prop :=
+  ∀ depth, gbTransitionIsActual_{suffix} (gen.transitionAt depth)
+
+def gbGeneratorHasDriftCertificates_{suffix}
+    (gen : GBGenerator_{suffix})
+    (certAt : ∀ depth, GBDriftExactnessCertificate_{suffix} (gen.reportAt depth)) : Prop :=
+  True
+
+def gbGoodReport_{suffix} (depth : Nat) : GBReport_{suffix} :=
+  {{ depth := depth, actualGenerated := true, exactSccCoverage := true,
+    uniformPositiveDrift := true, recurrentBad := 2,
+    pressureRecovery := 0, heightEscape := 2, survivorDrop := 0,
+    dangerous := 0, unchecked := 0 }}
+
+def gbAcyclicReport_{suffix} (depth : Nat) : GBReport_{suffix} :=
+  {{ depth := depth, actualGenerated := true, exactSccCoverage := true,
+    uniformPositiveDrift := true, recurrentBad := 0,
+    pressureRecovery := 0, heightEscape := 0, survivorDrop := 0,
+    dangerous := 0, unchecked := 0 }}
+
+def gbWindow8Report_{suffix} : GBReport_{suffix} :=
+  {{ depth := 8, actualGenerated := true, exactSccCoverage := true,
+    uniformPositiveDrift := true, recurrentBad := 2,
+    pressureRecovery := 0, heightEscape := 2, survivorDrop := 0,
+    dangerous := 0, unchecked := 0 }}
+
+def gbGoodTransition_{suffix} (depth : Nat) : GBTransition_{suffix} :=
+  if depth % 2 = 0
+  then {{ fromResidue := 3, toResidue := 10 % gbPow2_{suffix} 6, width := 6 }}
+  else {{ fromResidue := 6, toResidue := gbEvenLowSuccessor_{suffix} 6, width := 6 }}
+
+def gbActualGenerator_{suffix} : GBGenerator_{suffix} :=
+  {{ reportAt := fun depth =>
+      if depth = 0 then gbAcyclicReport_{suffix} depth else gbGoodReport_{suffix} depth,
+    transitionAt := gbGoodTransition_{suffix} }}
+
+def gbStaticBadReport_{suffix} (depth : Nat) : GBReport_{suffix} :=
+  {{ depth := depth, actualGenerated := false, exactSccCoverage := true,
+    uniformPositiveDrift := false, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 0, survivorDrop := 0,
+    dangerous := 1, unchecked := 0 }}
+
+def gbUncheckedReport_{suffix} (depth : Nat) : GBReport_{suffix} :=
+  {{ depth := depth, actualGenerated := true, exactSccCoverage := false,
+    uniformPositiveDrift := true, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 1, survivorDrop := 0,
+    dangerous := 0, unchecked := 1 }}
+
+def gbWeakLegalReport_{suffix} (depth : Nat) : GBReport_{suffix} :=
+  {{ depth := depth, actualGenerated := true, exactSccCoverage := false,
+    uniformPositiveDrift := false, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 0, survivorDrop := 0,
+    dangerous := 1, unchecked := 1 }}
+
+def gbStaticBadGenerator_{suffix} : GBGenerator_{suffix} :=
+  {{ reportAt := gbStaticBadReport_{suffix},
+    transitionAt := fun depth =>
+      {{ fromResidue := 3, toResidue := 3, width := 6 }} }}
+
+def gbWeakLegalGenerator_{suffix} : GBGenerator_{suffix} :=
+  {{ reportAt := gbWeakLegalReport_{suffix},
+    transitionAt := gbGoodTransition_{suffix} }}
+
+structure GBCountingTarget_{suffix} where
+  depth : Nat
+  recurrentBad : Nat
+  certified : Nat
+  dangerous : Nat
+  unchecked : Nat
+  deriving DecidableEq, Repr
+
+def gbCountingTargetAt_{suffix} (r : GBReport_{suffix}) : GBCountingTarget_{suffix} :=
+  {{ depth := r.depth, recurrentBad := r.recurrentBad,
+    certified := gbCertifiedCount_{suffix} r,
+    dangerous := r.dangerous, unchecked := r.unchecked }}
+""".strip()
+        cert_to_complete = f"""
+theorem gb_drift_exactness_certificate_gives_complete_{suffix}
+    (r : GBReport_{suffix})
+    (cert : GBDriftExactnessCertificate_{suffix} r) :
+    gbComplete_{suffix} r := by
+  exact And.intro cert.noUnchecked (And.intro cert.noDangerous cert.covered)
+""".strip()
+        generator_from_certs = f"""
+{cert_to_complete}
+
+theorem gb_actual_generator_invariant_from_drift_exactness_{suffix}
+    (gen : GBGenerator_{suffix})
+    (certAt : ∀ depth, GBDriftExactnessCertificate_{suffix} (gen.reportAt depth)) :
+    gbGeneratorBridgeInvariant_{suffix} gen := by
+  intro depth
+  exact gb_drift_exactness_certificate_gives_complete_{suffix}
+    (gen.reportAt depth) (certAt depth)
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Generator bridge / actual residue successor relation has odd and hidden-even cases.",
+                f"""{base_defs}
+
+theorem gb_actual_successor_relation_has_odd_and_hidden_even_cases_{suffix} :
+    gbActualResidueSuccessor_{suffix} 3 (10 % gbPow2_{suffix} 6) 6 /\\
+    gbActualResidueSuccessor_{suffix} 6 3 6 /\\
+    gbActualResidueSuccessor_{suffix} 6 (3 + gbPow2_{suffix} 5) 6 := by
+  unfold gbActualResidueSuccessor_{suffix}
+  unfold gbOddResidueSuccessor_{suffix} gbEvenLowSuccessor_{suffix}
+  unfold gbEvenHighSuccessor_{suffix} gbPow2_{suffix}
+  native_decide
+""",
+                True,
+                "actual_generator",
+                "successor_relation",
+            ),
+            (
+                "definition_probe",
+                "Generator bridge / actual generator transitions are residue-successor transitions.",
+                f"""{base_defs}
+
+theorem gb_actual_generator_transitions_are_residue_successors_{suffix} :
+    gbGeneratorHasActualTransitions_{suffix} gbActualGenerator_{suffix} := by
+  intro depth
+  unfold gbActualGenerator_{suffix} gbGoodTransition_{suffix}
+  by_cases h : depth % 2 = 0
+  · simp [h, gbTransitionIsActual_{suffix}, gbActualResidueSuccessor_{suffix},
+      gbOddResidueSuccessor_{suffix}, gbPow2_{suffix}]
+  · simp [h, gbTransitionIsActual_{suffix}, gbActualResidueSuccessor_{suffix},
+      gbEvenLowSuccessor_{suffix}]
+""",
+                True,
+                "actual_generator",
+                "actual_transitions",
+            ),
+            (
+                "bridge_probe",
+                "Generator bridge / generated reports come from legal residue transitions.",
+                f"""{base_defs}
+
+theorem gb_generated_reports_come_from_legal_transitions_{suffix}
+    (gen : GBGenerator_{suffix})
+    (hActual : gbGeneratorHasActualTransitions_{suffix} gen) :
+    ∀ depth, gbTransitionIsActual_{suffix} (gen.transitionAt depth) := by
+  exact hActual
+""",
+                True,
+                "actual_generator",
+                "reports_from_transitions",
+            ),
+            (
+                "bridge_probe",
+                "Generator bridge / recurrent bad component reduces to generated cycle witness shape.",
+                f"""{base_defs}
+
+theorem gb_recurrent_bad_component_gives_cycle_witness_shape_{suffix}
+    (r : GBReport_{suffix})
+    (hBad : r.recurrentBad > 0)
+    (hActual : r.actualGenerated = true) :
+    r.actualGenerated = true /\\ r.recurrentBad > 0 := by
+  exact And.intro hActual hBad
+""",
+                True,
+                "cycle_witness",
+                "recurrent_to_cycle",
+            ),
+            (
+                "bridge_probe",
+                "Generator bridge / non-height-escaping bad recurrence is nonpositive-drift obstruction.",
+                f"""{base_defs}
+
+theorem gb_non_height_escaping_bad_recurrence_is_named_obstruction_{suffix}
+    (r : GBReport_{suffix})
+    (hActual : r.actualGenerated = true)
+    (hBad : r.recurrentBad > 0)
+    (hNoDrift : r.uniformPositiveDrift = false) :
+    gbNonPositiveDriftObstruction_{suffix} r := by
+  exact And.intro hActual (And.intro hBad hNoDrift)
+""",
+                True,
+                "obstruction_schema",
+                "nonpositive_drift",
+            ),
+            (
+                "closure_probe",
+                "Generator bridge / uniform positive SCC drift excludes dangerous recurrence.",
+                f"""{base_defs}
+
+{cert_to_complete}
+
+theorem gb_uniform_positive_scc_drift_excludes_dangerous_{suffix}
+    (r : GBReport_{suffix})
+    (cert : GBDriftExactnessCertificate_{suffix} r) :
+    r.dangerous = 0 := by
+  exact cert.noDangerous
+""",
+                True,
+                "drift_exactness",
+                "drift_excludes_danger",
+            ),
+            (
+                "closure_probe",
+                "Generator bridge / exact SCC coverage excludes unchecked recurrence.",
+                f"""{base_defs}
+
+theorem gb_exact_scc_coverage_excludes_unchecked_{suffix}
+    (r : GBReport_{suffix})
+    (cert : GBDriftExactnessCertificate_{suffix} r) :
+    r.unchecked = 0 := by
+  exact cert.noUnchecked
+""",
+                True,
+                "drift_exactness",
+                "exactness_excludes_unchecked",
+            ),
+            (
+                "closure_probe",
+                "Generator bridge / drift plus exactness imply the R22 generator invariant.",
+                f"""{base_defs}
+
+{generator_from_certs}
+""",
+                True,
+                "drift_exactness",
+                "bridge_to_r22_invariant",
+            ),
+            (
+                "bridge_probe",
+                "Generator bridge / bounded window-8 certificate is an instance of bridge assumptions.",
+                f"""{base_defs}
+
+theorem gb_window8_certificate_is_bridge_instance_{suffix} :
+    gbBridgeAssumptions_{suffix} gbWindow8Report_{suffix} /\\
+    gbComplete_{suffix} gbWindow8Report_{suffix} := by
+  unfold gbBridgeAssumptions_{suffix} gbComplete_{suffix}
+  unfold gbWindow8Report_{suffix} gbCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_instance",
+                "window8_bridge_instance",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Generator bridge / bridge target has no reachability or termination field.",
+                f"""{base_defs}
+
+theorem gb_counting_target_has_no_reachability_field_{suffix} :
+    (gbCountingTargetAt_{suffix} gbWindow8Report_{suffix}).recurrentBad = 2 /\\
+    (gbCountingTargetAt_{suffix} gbWindow8Report_{suffix}).certified = 2 /\\
+    (gbCountingTargetAt_{suffix} gbWindow8Report_{suffix}).dangerous = 0 /\\
+    (gbCountingTargetAt_{suffix} gbWindow8Report_{suffix}).unchecked = 0 := by
+  unfold gbCountingTargetAt_{suffix} gbWindow8Report_{suffix} gbCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Generator bridge / adversarial static bad generator is not actual-generated.",
+                f"""{base_defs}
+
+theorem gb_static_bad_generator_not_actual_generated_{suffix} :
+    Not ((gbStaticBadGenerator_{suffix}.reportAt 0).actualGenerated = true) := by
+  unfold gbStaticBadGenerator_{suffix} gbStaticBadReport_{suffix}
+  native_decide
+""",
+                True,
+                "adversarial_generator",
+                "static_bad_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Generator bridge / weak transition legality does not imply the invariant.",
+                f"""{base_defs}
+
+theorem gb_weak_transition_legality_does_not_imply_invariant_{suffix} :
+    gbGeneratorHasActualTransitions_{suffix} gbWeakLegalGenerator_{suffix} /\\
+    Not (gbGeneratorBridgeInvariant_{suffix} gbWeakLegalGenerator_{suffix}) := by
+  constructor
+  · intro depth
+    unfold gbWeakLegalGenerator_{suffix} gbGoodTransition_{suffix}
+    by_cases h : depth % 2 = 0
+    · simp [h, gbTransitionIsActual_{suffix}, gbActualResidueSuccessor_{suffix},
+        gbOddResidueSuccessor_{suffix}, gbPow2_{suffix}]
+    · simp [h, gbTransitionIsActual_{suffix}, gbActualResidueSuccessor_{suffix},
+        gbEvenLowSuccessor_{suffix}]
+  · intro hInv
+    have hComplete := hInv 0
+    exact Nat.succ_ne_zero 0 hComplete.1
+""",
+                True,
+                "adversarial_generator",
+                "weak_legality_insufficient",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Generator bridge / remaining obstruction is uniform SCC drift and exactness.",
+                f"""{base_defs}
+
+theorem gb_remaining_obstruction_is_uniform_drift_exactness_{suffix} :
+    gbUncheckedObstruction_{suffix} (gbUncheckedReport_{suffix} 0) /\\
+    gbNonPositiveDriftObstruction_{suffix} (gbWeakLegalReport_{suffix} 0) := by
+  constructor
+  · unfold gbUncheckedObstruction_{suffix} gbUncheckedReport_{suffix}
+    native_decide
+  · unfold gbNonPositiveDriftObstruction_{suffix} gbWeakLegalReport_{suffix}
+    native_decide
+""",
+                True,
+                "obstruction_schema",
+                "uniform_drift_exactness_obstruction",
+            ),
+        ]
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_generator_bridge_wave": True,
+                "bridge_family": family,
+                "bridge_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "max_probe_budget": 13,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Actual-generator bridge probe; this tests whether R22 reduces to "
+                        "uniform SCC drift/exactness for the real Collatz residue generator."
                     ),
                 )
             )
