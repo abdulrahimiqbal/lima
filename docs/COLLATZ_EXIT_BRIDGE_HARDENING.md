@@ -26,9 +26,12 @@ Every number 4*a+1 with a>0 descends in three Collatz steps.
 Every number 16*c+3 descends in six Collatz steps.
 Every number 32*d+11 descends in eight Collatz steps.
 Every number 32*d+23 descends in eight Collatz steps.
+Every number 128*e+7 descends in eleven Collatz steps.
+Every number 128*e+15 descends in eleven Collatz steps.
+Every number 128*e+59 descends in eleven Collatz steps.
 The covered concrete exit families imply actual Nat-level positive descent.
 The specific 3 and 7 cases have explicit descent witnesses.
-n=7 is not covered by the current parametric exit families.
+n=27 is not covered by the current parametric exit families.
 ```
 
 These are not Bool certificate fields. They are concrete statements about `iterateNat collatzStep`.
@@ -51,6 +54,19 @@ iterateNat collatzStep 8 (32*d+23) = 27*d+20
 27*d+20 < 32*d+23
 ```
 
+Three more close after one deeper residue refinement:
+
+```text
+iterateNat collatzStep 11 (128*e+7) = 81*e+5
+81*e+5 < 128*e+7
+
+iterateNat collatzStep 11 (128*e+15) = 81*e+10
+81*e+10 < 128*e+15
+
+iterateNat collatzStep 11 (128*e+59) = 81*e+38
+81*e+38 < 128*e+59
+```
+
 ## Remaining Gap
 
 The raw parametric theorem for the full odd `3 mod 4` family still fails:
@@ -68,10 +84,10 @@ Lean leaves the expected unsolved goal:
 
 The attempted witness `0` is intentionally wrong; the important fact is that the family has not been solved by the first concrete exits.
 
-After proving the `16*c+3`, `32*d+11`, and `32*d+23` subfamilies, the first unresolved odd residues are:
+After proving the `16*c+3`, `32*d+11`, `32*d+23`, `128*e+7`, `128*e+15`, and `128*e+59` subfamilies, the first unresolved odd residues are:
 
 ```text
-n ≡ 7, 15, 27, or 31 mod 32
+n ≡ 27, 31, 39, 47, 63, 71, 79, 91, 95, 103, 111, 123, or 127 mod 128
 ```
 
 ## Why This Matters
@@ -89,25 +105,26 @@ even n
 odd n ≡ 1 mod 4, n > 1
 odd n ≡ 3 mod 16
 odd n ≡ 11 or 23 mod 32
+odd n ≡ 7, 15, or 59 mod 128
 ```
 
 The remaining parametric obstruction is narrower than before:
 
 ```text
-odd n ≡ 7, 15, 27, or 31 mod 32
+odd n ≡ 27, 31, 39, 47, 63, 71, 79, 91, 95, 103, 111, 123, or 127 mod 128
 ```
 
 That is where the pressure-height machinery must become real arithmetic: repeated parity-block or valuation reasoning must produce a later descent.
 
 ## Next Target
 
-Attack the remaining `7/15/27/31 mod 32` families directly.
+Attack the remaining unresolved `mod 128` frontier directly.
 
 Candidate routes:
 
 ```text
-1. Split 32*d+7, 32*d+15, 32*d+27, and 32*d+31 by the next parity/valuation block.
+1. Split the remaining mod-128 branches one more time and see which children close by composing existing family theorems.
 2. Prove the next parametric descent family if one closes arithmetically.
-3. If a family expands instead of descending, extract the recurring affine map.
-4. Prove that the recurring affine map has a well-founded pressure-height decrease, or identify the exact missing theorem.
+3. If a branch expands instead of descending, extract the recurring affine rewrite map on the family a*t+b.
+4. Prove that the affine rewrite system has a well-founded pressure-height decrease, or identify the exact missing theorem.
 ```

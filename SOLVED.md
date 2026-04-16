@@ -1508,10 +1508,13 @@ every number 4*a+1 with a>0 descends in three Collatz steps: proved
 every number 16*c+3 descends in six Collatz steps: proved
 every number 32*d+11 descends in eight Collatz steps: proved
 every number 32*d+23 descends in eight Collatz steps: proved
+every number 128*e+7 descends in eleven Collatz steps: proved
+every number 128*e+15 descends in eleven Collatz steps: proved
+every number 128*e+59 descends in eleven Collatz steps: proved
 the covered concrete exit families imply actual Nat-level positive descent: proved
 n=3 has an explicit descent witness: proved
 n=7 has an explicit descent witness: proved
-n=7 is not covered by the current parametric exit families: proved
+n=27 is not covered by the current parametric exit families: proved
 ```
 
 Interpretation:
@@ -1532,10 +1535,14 @@ even numbers descend immediately;
 numbers congruent to 1 mod 4, except n=1, descend after the odd step and two halvings;
 numbers congruent to 3 mod 16 descend after six Collatz steps;
 numbers congruent to 11 or 23 mod 32 descend after eight Collatz steps:
+numbers congruent to 7, 15, or 59 mod 128 descend after eleven Collatz steps:
 
 collatz^[6](16*c+3) = 9*c+2 < 16*c+3.
 collatz^[8](32*d+11) = 27*d+10 < 32*d+11.
 collatz^[8](32*d+23) = 27*d+20 < 32*d+23.
+collatz^[11](128*e+7) = 81*e+5 < 128*e+7.
+collatz^[11](128*e+15) = 81*e+10 < 128*e+15.
+collatz^[11](128*e+59) = 81*e+38 < 128*e+59.
 ```
 
 Decision implication:
@@ -1543,15 +1550,23 @@ Decision implication:
 ```text
 The remaining hard bridge is now more sharply visible:
 
-odd numbers congruent to 7, 15, 27, or 31 mod 32.
+the unresolved odd residue branches at the next frontier:
+27, 31, 39, 47, 63, 71, 79, 91, 95, 103, 111, 123, and 127 mod 128.
 
-The first two concrete exit rules did not solve the 4*a+3 family, but three infinite subfamilies are now closed.
-The remaining 7/15/27/31 mod 32 families are exactly where repeated parity-block / pressure-height reasoning must produce a later descent.
+The first two concrete exit rules did not solve the 4*a+3 family, but six infinite odd subfamilies are now closed.
+The remaining mod-128 frontier is exactly where repeated parity-block / pressure-height reasoning must produce a later descent.
 
 The next hardening target should be:
 
-prove concrete parity-block descent theorems for the remaining 7/15/27/31 mod 32 families,
-or extract the recurring affine expansion and prove its pressure-height measure is well-founded.
+prove concrete parity-block descent theorems for the remaining mod-128 frontier,
+or extract the affine rewrite system behind those branches and prove its pressure-height measure is well-founded.
+
+Local compass note:
+
+scripts/run_collatz_affine_rewrite_compass.py is not a Lean proof, but it already shows that
+some unresolved mod-128 roots, including 39, 79, 95, and 123, admit composed affine certificates
+from the currently proved rewrite rules. That is evidence the right object is an affine-family
+rewrite system, not just a larger residue table.
 
 Do not return to density-zero-first reasoning unless this descent route fails.
 Density-zero can leave sparse counterexamples; eventual descent kills them.
