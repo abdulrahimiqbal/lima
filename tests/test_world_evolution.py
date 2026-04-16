@@ -1059,6 +1059,49 @@ def test_pressure_height_route_integration_wave_compiles_third_tranche(
     assert any("proof spine" in item for item in payload["expected_learning"])
 
 
+def test_pressure_height_final_closure_wave_compiles_final_phase(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 10,
+            "survivors_per_generation": 4,
+            "mutations_per_survivor": 2,
+            "wildness": "extreme",
+            "max_formal_probes_per_generation": 4,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/pressure-height-final-closure-wave",
+        json={
+            "max_probes": 13,
+            "submit_after_compile": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["compiled_probe_count"] == 13
+    assert "no-dangerous-frontier global closure target is definable" in payload["closure_gates"]
+    assert "density-zero Composite Scarcity closure is stated without reachability" in payload["closure_gates"]
+    assert "ordinary Collatz pullback target is definable from pressure-height closure" in payload["pullback_gates"]
+    assert "ordinary termination follows from closure plus base coverage" in payload["pullback_gates"]
+    assert "density theorem that assumes termination is rejected" in payload["anti_circularity_gates"]
+    assert "final theorem target has no hidden reachability or termination field" in payload["anti_circularity_gates"]
+    assert "Final phase wave" in payload["phase_summary"]
+    assert payload["decisive_probe_ids"]
+    assert any("final gap" in item for item in payload["expected_learning"])
+
+
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
     service = CampaignService(_settings(tmp_path))
     world_evolution = WorldEvolutionService(service.memory, service.settings, service.invention)

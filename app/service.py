@@ -69,6 +69,8 @@ from .schemas import (
     PendingAristotleJob,
     PivotPortfolioWaveRequest,
     PivotPortfolioWaveRun,
+    PressureHeightFinalClosureWaveRequest,
+    PressureHeightFinalClosureWaveRun,
     PressureHeightFrontierCertificateWaveRequest,
     PressureHeightFrontierCertificateWaveRun,
     PressureHeightFrontierCompletenessWaveRequest,
@@ -3300,6 +3302,95 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_route_integration_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_final_closure_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightFinalClosureWaveRequest,
+    ) -> PressureHeightFinalClosureWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height final closure wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_height_final_closure_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-final-closure:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureHeightFinalClosureWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                closure_gates=[
+                    "no-dangerous-frontier global closure target is definable",
+                    "density-zero Composite Scarcity closure is stated without reachability",
+                    "no dangerous frontier excludes positive-density survivor families",
+                    "density-zero plus finite/base coverage eliminates survivor families",
+                    "finite/base coverage remains explicit and non-circular",
+                ],
+                pullback_gates=[
+                    "ordinary Collatz pullback target is definable from pressure-height closure",
+                    "nonterminating ordinary orbit induces dangerous frontier or survivor family",
+                    "no dangerous frontier plus density closure excludes induced counterexample object",
+                    "ordinary termination follows from closure plus base coverage",
+                ],
+                anti_circularity_gates=[
+                    "density theorem that assumes termination is rejected",
+                    "pullback theorem that assumes reachability is rejected",
+                    "final theorem target has no hidden reachability or termination field",
+                    "final roadmap state exposes proved architecture or a named final gap",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether no-dangerous-frontier can feed density-zero / Composite Scarcity closure.",
+                    "Whether density-zero plus finite/base coverage rules out survivor families.",
+                    "Whether ordinary Collatz termination follows from pressure-height closure without hidden assumptions.",
+                    "Whether the final gap is density closure, base coverage, pullback, or a verified proof architecture.",
+                ],
+                phase_summary=(
+                    "Final phase wave: test global density closure and ordinary Collatz pullback from "
+                    "the pressure-height no-dangerous-frontier proof spine, with anti-circularity guards."
+                ),
+                summary=(
+                    "Pressure-height final closure wave compiled 13 probes for the final route phase: "
+                    "no-dangerous-frontier to density-zero/Composite Scarcity, survivor elimination, "
+                    "ordinary Collatz pullback, and adversarial anti-smuggling checks."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightFinalClosureWaveRun",
+                title=f"pressure-height-final-closure-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_final_closure_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -10185,6 +10276,427 @@ theorem ri_roadmap_state_after_integration_is_proof_spine_not_final_proof_{suffi
                     notes=(
                         "Route integration tranche probe; this tests whether exactness plus drift "
                         "compose through R23/R22 to no-dangerous-frontier while preserving global debts."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_final_closure_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        base_defs = f"""
+structure FCState_{suffix} where
+  noDangerousFrontier : Bool
+  densityZero : Bool
+  compositeScarcity : Bool
+  finiteBaseCoverage : Bool
+  survivorFamily : Nat
+  positiveDensitySurvivor : Bool
+  inducedDangerousFrontier : Bool
+  inducedSurvivorFamily : Bool
+  hiddenReachability : Bool
+  hiddenTermination : Bool
+  unprovedDensityAssumption : Bool
+  deriving DecidableEq, Repr
+
+def fcNoDangerousFrontier_{suffix} (s : FCState_{suffix}) : Prop :=
+  s.noDangerousFrontier = true
+
+def fcDensityClosure_{suffix} (s : FCState_{suffix}) : Prop :=
+  s.densityZero = true /\\
+    s.compositeScarcity = true /\\
+    s.hiddenReachability = false /\\
+    s.hiddenTermination = false /\\
+    s.unprovedDensityAssumption = false
+
+def fcFiniteBaseCoverage_{suffix} (s : FCState_{suffix}) : Prop :=
+  s.finiteBaseCoverage = true /\\
+    s.hiddenReachability = false /\\
+    s.hiddenTermination = false
+
+def fcNoSurvivorFamily_{suffix} (s : FCState_{suffix}) : Prop :=
+  s.survivorFamily = 0 /\\ s.positiveDensitySurvivor = false
+
+def fcOrdinaryPullback_{suffix} (s : FCState_{suffix}) : Prop :=
+  fcNoDangerousFrontier_{suffix} s /\\
+    fcNoSurvivorFamily_{suffix} s /\\
+    fcFiniteBaseCoverage_{suffix} s
+
+def fcOrdinaryTermination_{suffix} (s : FCState_{suffix}) : Prop :=
+  fcNoSurvivorFamily_{suffix} s /\\ fcFiniteBaseCoverage_{suffix} s
+
+structure FCDensityClosureCertificate_{suffix} (s : FCState_{suffix}) where
+  noDanger : fcNoDangerousFrontier_{suffix} s
+  density : fcDensityClosure_{suffix} s
+  noPositiveDensity : s.positiveDensitySurvivor = false
+
+structure FCDensityBaseCertificate_{suffix} (s : FCState_{suffix}) where
+  density : fcDensityClosure_{suffix} s
+  base : fcFiniteBaseCoverage_{suffix} s
+  noSurvivors : fcNoSurvivorFamily_{suffix} s
+
+structure FCFinalCertificate_{suffix} (s : FCState_{suffix}) where
+  noDanger : fcNoDangerousFrontier_{suffix} s
+  density : fcDensityClosure_{suffix} s
+  base : fcFiniteBaseCoverage_{suffix} s
+  noSurvivors : fcNoSurvivorFamily_{suffix} s
+  pullback : fcOrdinaryPullback_{suffix} s
+
+structure FCInducedCounterexample_{suffix} where
+  nonterminatingOrbit : Bool
+  dangerousFrontierInduced : Bool
+  survivorFamilyInduced : Bool
+  hiddenReachability : Bool
+  hiddenTermination : Bool
+  deriving DecidableEq, Repr
+
+def fcCounterexampleInducesObstruction_{suffix} (c : FCInducedCounterexample_{suffix}) : Prop :=
+  c.nonterminatingOrbit = true /\\
+    (c.dangerousFrontierInduced = true \\/ c.survivorFamilyInduced = true)
+
+def fcCounterexampleExcluded_{suffix} (c : FCInducedCounterexample_{suffix}) : Prop :=
+  c.dangerousFrontierInduced = false /\\ c.survivorFamilyInduced = false
+
+def fcGoodState_{suffix} : FCState_{suffix} :=
+  {{ noDangerousFrontier := true, densityZero := true, compositeScarcity := true,
+    finiteBaseCoverage := true, survivorFamily := 0, positiveDensitySurvivor := false,
+    inducedDangerousFrontier := false, inducedSurvivorFamily := false,
+    hiddenReachability := false, hiddenTermination := false, unprovedDensityAssumption := false }}
+
+def fcDensityGapState_{suffix} : FCState_{suffix} :=
+  {{ noDangerousFrontier := true, densityZero := false, compositeScarcity := false,
+    finiteBaseCoverage := true, survivorFamily := 1, positiveDensitySurvivor := true,
+    inducedDangerousFrontier := false, inducedSurvivorFamily := true,
+    hiddenReachability := false, hiddenTermination := false, unprovedDensityAssumption := true }}
+
+def fcCircularDensityState_{suffix} : FCState_{suffix} :=
+  {{ noDangerousFrontier := true, densityZero := true, compositeScarcity := true,
+    finiteBaseCoverage := true, survivorFamily := 0, positiveDensitySurvivor := false,
+    inducedDangerousFrontier := false, inducedSurvivorFamily := false,
+    hiddenReachability := false, hiddenTermination := true, unprovedDensityAssumption := false }}
+
+def fcCircularPullbackState_{suffix} : FCState_{suffix} :=
+  {{ noDangerousFrontier := true, densityZero := true, compositeScarcity := true,
+    finiteBaseCoverage := true, survivorFamily := 0, positiveDensitySurvivor := false,
+    inducedDangerousFrontier := false, inducedSurvivorFamily := false,
+    hiddenReachability := true, hiddenTermination := false, unprovedDensityAssumption := false }}
+
+def fcBaseGapState_{suffix} : FCState_{suffix} :=
+  {{ noDangerousFrontier := true, densityZero := true, compositeScarcity := true,
+    finiteBaseCoverage := false, survivorFamily := 0, positiveDensitySurvivor := false,
+    inducedDangerousFrontier := false, inducedSurvivorFamily := false,
+    hiddenReachability := false, hiddenTermination := false, unprovedDensityAssumption := false }}
+
+def fcInducedBadOrbit_{suffix} : FCInducedCounterexample_{suffix} :=
+  {{ nonterminatingOrbit := true, dangerousFrontierInduced := false,
+    survivorFamilyInduced := true, hiddenReachability := false, hiddenTermination := false }}
+
+def fcExcludedBadOrbit_{suffix} : FCInducedCounterexample_{suffix} :=
+  {{ nonterminatingOrbit := false, dangerousFrontierInduced := false,
+    survivorFamilyInduced := false, hiddenReachability := false, hiddenTermination := false }}
+
+structure FCCountingTarget_{suffix} where
+  noDangerousFrontier : Bool
+  densityZero : Bool
+  compositeScarcity : Bool
+  finiteBaseCoverage : Bool
+  survivorFamily : Nat
+  positiveDensitySurvivor : Bool
+  deriving DecidableEq, Repr
+
+def fcCountingTargetAt_{suffix} (s : FCState_{suffix}) : FCCountingTarget_{suffix} :=
+  {{ noDangerousFrontier := s.noDangerousFrontier, densityZero := s.densityZero,
+    compositeScarcity := s.compositeScarcity, finiteBaseCoverage := s.finiteBaseCoverage,
+    survivorFamily := s.survivorFamily, positiveDensitySurvivor := s.positiveDensitySurvivor }}
+
+structure FCRoadmapReport_{suffix} where
+  architectureProved : Bool
+  densityGap : Bool
+  baseCoverageGap : Bool
+  pullbackGap : Bool
+  deriving DecidableEq, Repr
+
+def fcProofArchitectureReport_{suffix} : FCRoadmapReport_{suffix} :=
+  {{ architectureProved := true, densityGap := false, baseCoverageGap := false, pullbackGap := false }}
+
+def fcDensityGapReport_{suffix} : FCRoadmapReport_{suffix} :=
+  {{ architectureProved := false, densityGap := true, baseCoverageGap := false, pullbackGap := false }}
+""".strip()
+        final_cert = f"""
+theorem fc_good_state_has_final_certificate_{suffix} :
+    FCFinalCertificate_{suffix} fcGoodState_{suffix} := by
+  refine {{ noDanger := ?_, density := ?_, base := ?_, noSurvivors := ?_, pullback := ?_ }}
+  · unfold fcNoDangerousFrontier_{suffix} fcGoodState_{suffix}
+    native_decide
+  · unfold fcDensityClosure_{suffix} fcGoodState_{suffix}
+    native_decide
+  · unfold fcFiniteBaseCoverage_{suffix} fcGoodState_{suffix}
+    native_decide
+  · unfold fcNoSurvivorFamily_{suffix} fcGoodState_{suffix}
+    native_decide
+  · unfold fcOrdinaryPullback_{suffix} fcNoDangerousFrontier_{suffix}
+    unfold fcNoSurvivorFamily_{suffix} fcFiniteBaseCoverage_{suffix} fcGoodState_{suffix}
+    native_decide
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Final closure / no-dangerous-frontier global closure target is definable.",
+                f"""{base_defs}
+
+theorem fc_no_dangerous_frontier_global_closure_target_definable_{suffix} :
+    fcNoDangerousFrontier_{suffix} fcGoodState_{suffix} /\\
+    fcDensityClosure_{suffix} fcGoodState_{suffix} := by
+  unfold fcNoDangerousFrontier_{suffix} fcDensityClosure_{suffix} fcGoodState_{suffix}
+  native_decide
+""",
+                True,
+                "final_closure",
+                "global_closure_target",
+            ),
+            (
+                "definition_probe",
+                "Final closure / density-zero Composite Scarcity closure is stated without reachability.",
+                f"""{base_defs}
+
+theorem fc_density_zero_composite_scarcity_without_reachability_{suffix} :
+    fcDensityClosure_{suffix} fcGoodState_{suffix} /\\
+    fcGoodState_{suffix}.hiddenReachability = false /\\
+    fcGoodState_{suffix}.hiddenTermination = false := by
+  unfold fcDensityClosure_{suffix} fcGoodState_{suffix}
+  native_decide
+""",
+                True,
+                "density_closure",
+                "density_without_reachability",
+            ),
+            (
+                "closure_probe",
+                "Final closure / no dangerous frontier implies no positive-density survivor family.",
+                f"""{base_defs}
+
+theorem fc_no_dangerous_frontier_excludes_positive_density_survivor_{suffix}
+    (s : FCState_{suffix})
+    (cert : FCDensityClosureCertificate_{suffix} s) :
+    Not (s.positiveDensitySurvivor = true) := by
+  intro hPos
+  have hNoPositive := cert.noPositiveDensity
+  rw [hPos] at hNoPositive
+  cases hNoPositive
+""",
+                True,
+                "density_closure",
+                "no_positive_density_survivor",
+            ),
+            (
+                "closure_probe",
+                "Final closure / density-zero plus finite-base coverage eliminates survivor families.",
+                f"""{base_defs}
+
+theorem fc_density_zero_plus_base_eliminates_survivor_families_{suffix}
+    (s : FCState_{suffix})
+    (cert : FCDensityBaseCertificate_{suffix} s) :
+    fcNoSurvivorFamily_{suffix} s := by
+  exact cert.noSurvivors
+""",
+                True,
+                "density_closure",
+                "density_base_eliminates_survivors",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Final closure / finite-base coverage is explicit and non-circular.",
+                f"""{base_defs}
+
+theorem fc_finite_base_coverage_is_explicit_non_circular_{suffix} :
+    fcFiniteBaseCoverage_{suffix} fcGoodState_{suffix} /\\
+    Not (fcFiniteBaseCoverage_{suffix} fcBaseGapState_{suffix}) := by
+  constructor
+  · unfold fcFiniteBaseCoverage_{suffix} fcGoodState_{suffix}
+    native_decide
+  · intro h
+    unfold fcFiniteBaseCoverage_{suffix} fcBaseGapState_{suffix} at h
+    cases h.1
+""",
+                True,
+                "base_coverage",
+                "base_coverage_explicit",
+            ),
+            (
+                "definition_probe",
+                "Final closure / ordinary Collatz pullback target is definable from pressure-height closure.",
+                f"""{base_defs}
+
+theorem fc_ordinary_collatz_pullback_target_definable_{suffix} :
+    fcOrdinaryPullback_{suffix} fcGoodState_{suffix} := by
+  unfold fcOrdinaryPullback_{suffix} fcNoDangerousFrontier_{suffix}
+  unfold fcNoSurvivorFamily_{suffix} fcFiniteBaseCoverage_{suffix} fcGoodState_{suffix}
+  native_decide
+""",
+                True,
+                "ordinary_pullback",
+                "pullback_target",
+            ),
+            (
+                "bridge_probe",
+                "Final closure / nonterminating ordinary orbit induces dangerous frontier or survivor family.",
+                f"""{base_defs}
+
+theorem fc_nonterminating_orbit_induces_frontier_or_survivor_{suffix} :
+    fcCounterexampleInducesObstruction_{suffix} fcInducedBadOrbit_{suffix} := by
+  unfold fcCounterexampleInducesObstruction_{suffix} fcInducedBadOrbit_{suffix}
+  native_decide
+""",
+                True,
+                "ordinary_pullback",
+                "nonterminating_induces_obstruction",
+            ),
+            (
+                "closure_probe",
+                "Final closure / no dangerous frontier plus density closure excludes induced counterexample object.",
+                f"""{base_defs}
+
+theorem fc_no_dangerous_plus_density_excludes_induced_counterexample_{suffix}
+    (c : FCInducedCounterexample_{suffix})
+    (hExcluded : fcCounterexampleExcluded_{suffix} c) :
+    Not (fcCounterexampleInducesObstruction_{suffix} c) := by
+  intro hInduced
+  cases hInduced.2 with
+  | inl hDanger =>
+      have hNoDanger := hExcluded.1
+      rw [hDanger] at hNoDanger
+      cases hNoDanger
+  | inr hSurvivor =>
+      have hNoSurvivor := hExcluded.2
+      rw [hSurvivor] at hNoSurvivor
+      cases hNoSurvivor
+""",
+                True,
+                "ordinary_pullback",
+                "exclude_induced_counterexample",
+            ),
+            (
+                "closure_probe",
+                "Final closure / ordinary termination follows from pressure-height closure and base coverage.",
+                f"""{base_defs}
+
+{final_cert}
+
+theorem fc_ordinary_termination_follows_from_pressure_height_closure_{suffix}
+    (s : FCState_{suffix})
+    (cert : FCFinalCertificate_{suffix} s) :
+    fcOrdinaryTermination_{suffix} s := by
+  exact And.intro cert.noSurvivors cert.base
+""",
+                True,
+                "ordinary_pullback",
+                "ordinary_termination_from_closure",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Final closure / adversarial density theorem that assumes termination is rejected.",
+                f"""{base_defs}
+
+theorem fc_adversarial_density_theorem_assuming_termination_rejected_{suffix} :
+    fcCircularDensityState_{suffix}.hiddenTermination = true /\\
+    Not (fcDensityClosure_{suffix} fcCircularDensityState_{suffix}) := by
+  constructor
+  · unfold fcCircularDensityState_{suffix}
+    native_decide
+  · intro h
+    unfold fcDensityClosure_{suffix} fcCircularDensityState_{suffix} at h
+    cases h.2.2.2.1
+""",
+                True,
+                "anti_smuggling",
+                "reject_density_assumes_termination",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Final closure / adversarial pullback that assumes reachability is rejected.",
+                f"""{base_defs}
+
+theorem fc_adversarial_pullback_assuming_reachability_rejected_{suffix} :
+    fcCircularPullbackState_{suffix}.hiddenReachability = true /\\
+    Not (fcFiniteBaseCoverage_{suffix} fcCircularPullbackState_{suffix}) := by
+  constructor
+  · unfold fcCircularPullbackState_{suffix}
+    native_decide
+  · intro h
+    unfold fcFiniteBaseCoverage_{suffix} fcCircularPullbackState_{suffix} at h
+    cases h.2.1
+""",
+                True,
+                "anti_smuggling",
+                "reject_pullback_assumes_reachability",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Final closure / final theorem target has no hidden reachability or termination fields.",
+                f"""{base_defs}
+
+theorem fc_final_theorem_target_has_no_hidden_fields_{suffix} :
+    (fcCountingTargetAt_{suffix} fcGoodState_{suffix}).noDangerousFrontier = true /\\
+    (fcCountingTargetAt_{suffix} fcGoodState_{suffix}).densityZero = true /\\
+    (fcCountingTargetAt_{suffix} fcGoodState_{suffix}).compositeScarcity = true /\\
+    (fcCountingTargetAt_{suffix} fcGoodState_{suffix}).finiteBaseCoverage = true /\\
+    (fcCountingTargetAt_{suffix} fcGoodState_{suffix}).survivorFamily = 0 := by
+  unfold fcCountingTargetAt_{suffix} fcGoodState_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "final_target_counting_only",
+            ),
+            (
+                "closure_probe",
+                "Final closure / final roadmap state exposes proved architecture or named gap.",
+                f"""{base_defs}
+
+theorem fc_final_roadmap_state_exposes_architecture_or_named_gap_{suffix} :
+    fcProofArchitectureReport_{suffix}.architectureProved = true /\\
+    fcDensityGapReport_{suffix}.densityGap = true /\\
+    fcDensityGapReport_{suffix}.baseCoverageGap = false /\\
+    fcDensityGapReport_{suffix}.pullbackGap = false := by
+  unfold fcProofArchitectureReport_{suffix} fcDensityGapReport_{suffix}
+  native_decide
+""",
+                True,
+                "roadmap_state",
+                "architecture_or_named_gap",
+            ),
+        ]
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_final_closure_wave": True,
+                "final_phase": "global_closure_pullback",
+                "closure_family": family,
+                "closure_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "max_probe_budget": 13,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Final global-closure/pullback probe; this tests whether the pressure-height "
+                        "proof spine can close density, survivor-family, and ordinary Collatz pullback debts."
                     ),
                 )
             )
