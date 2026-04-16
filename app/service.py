@@ -8,6 +8,7 @@ import tarfile
 import threading
 import time
 from collections import Counter
+from typing import Any, Literal
 from uuid import uuid4
 
 from lima_memory import MemoryService, PostgresKnowledgeStore, SqliteKnowledgeStore
@@ -70,6 +71,8 @@ from .schemas import (
     PivotPortfolioWaveRun,
     PressureHeightFrontierCertificateWaveRequest,
     PressureHeightFrontierCertificateWaveRun,
+    PressureHeightFrontierCompletenessWaveRequest,
+    PressureHeightFrontierCompletenessWaveRun,
     PressureHeightSurvivorClosureWaveRequest,
     PressureHeightSurvivorClosureWaveRun,
     PressureGlobalizationWaveRequest,
@@ -2705,6 +2708,170 @@ class CampaignService:
                 payload=run.model_dump(mode="json"),
             )
             return run
+
+    def run_pressure_height_frontier_completeness_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightFrontierCompletenessWaveRequest,
+    ) -> PressureHeightFrontierCompletenessWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height frontier completeness wave.")
+            world_label = world_payload.get("label") or world_id
+            height_reports = [
+                analyze_height_lifted_pressure_automaton(
+                    window=window,
+                    modulus_bits=max(2, window + payload.modulus_extra_bits),
+                )
+                for window in range(1, payload.max_window + 1)
+            ]
+            generated_frontier_reports = [
+                self._pressure_height_generated_frontier_report(report)
+                for report in height_reports
+            ]
+            probes = self._compile_pressure_height_frontier_completeness_wave_probes(
+                world_id=world_id,
+                generated_reports=generated_frontier_reports,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-frontier-completeness:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            dangerous = [
+                report
+                for report in generated_frontier_reports
+                if report["dangerous_components"] > 0
+            ]
+            unchecked = [
+                report
+                for report in generated_frontier_reports
+                if report["unchecked_components"] > 0
+            ]
+            incomplete = [
+                report
+                for report in generated_frontier_reports
+                if not report["all_recurrent_bad_certified"]
+            ]
+            if dangerous:
+                decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "pivot"
+                finite_frontier_summary = (
+                    "Kill-test found a generated dangerous component; pressure-height completeness "
+                    "does not hold at the checked horizon."
+                )
+            elif unchecked:
+                decision_status = "inconclusive"
+                finite_frontier_summary = (
+                    "Kill-test is inconclusive: a generated component needs a larger exact SCC check."
+                )
+            elif incomplete:
+                decision_status = "pivot"
+                finite_frontier_summary = (
+                    "Kill-test found a generated recurrent bad component without a certificate exit."
+                )
+            else:
+                decision_status = "pursue"
+                finite_frontier_summary = (
+                    "Bounded frontier completeness holds for all generated pressure-height reports "
+                    f"through window {payload.max_window}; no dangerous or unchecked components were found."
+                )
+            run = PressureHeightFrontierCompletenessWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                height_lift_reports=height_reports,
+                generated_frontier_reports=generated_frontier_reports,
+                completeness_gates=[
+                    "actual Collatz residue generator creates the checked pressure-height frontiers",
+                    "every generated recurrent bad component is covered by a certificate exit",
+                    "generated all-certified frontier feeds the R20 no-dangerous-frontier theorem",
+                    "bounded completeness is stated with an explicit max window",
+                    "parameterized completeness remains the named global proof debt",
+                ],
+                kill_gates=[
+                    "generated dangerous component kills the current pressure-height route",
+                    "generated unchecked component blocks promotion until exact SCC bounds improve",
+                    "adversarial dangerous report is not complete",
+                    "adversarial unchecked report is not complete",
+                    "finite bounded completeness is not treated as Collatz termination",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether the actual generated finite frontiers satisfy the R20 certificate precondition.",
+                    "Whether a concrete legal dangerous component appears and kills the route.",
+                    "Whether the next proof debt is truly parameterized frontier completeness.",
+                    "Whether we are only seeing bounded evidence rather than a global theorem.",
+                ],
+                finite_frontier_summary=finite_frontier_summary,
+                decision_status=decision_status,
+                summary=(
+                    "Pressure-height frontier completeness wave compiled a kill-test for the current route: "
+                    "actual generated Collatz residue frontiers must be all-certified through the checked "
+                    "horizon, adversarial dangerous/unchecked reports must fail, and any success remains "
+                    "bounded rather than a Collatz proof."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightFrontierCompletenessWaveRun",
+                title=f"pressure-height-frontier-completeness-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_frontier_completeness_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    @staticmethod
+    def _pressure_height_generated_frontier_report(report: dict[str, Any]) -> dict[str, Any]:
+        recurrent_bad = int(report["recurrent_component_count"])
+        height_escape = int(report["height_expanding_component_count"])
+        dangerous = int(report["dangerous_component_count"])
+        unchecked = int(report["unchecked_component_count"])
+        pressure_recovery = 0
+        survivor_drop = 0
+        certified = pressure_recovery + height_escape + survivor_drop
+        return {
+            "window": int(report["window"]),
+            "modulus_bits": int(report["modulus_bits"]),
+            "modulus": int(report["modulus"]),
+            "state_count": int(report["state_count"]),
+            "edge_count": int(report["edge_count"]),
+            "recurrent_bad_components": recurrent_bad,
+            "pressure_recovery_components": pressure_recovery,
+            "height_escape_components": height_escape,
+            "survivor_drop_components": survivor_drop,
+            "dangerous_components": dangerous,
+            "unchecked_components": unchecked,
+            "certified_components": certified,
+            "all_recurrent_bad_certified": (
+                unchecked == 0
+                and dangerous == 0
+                and recurrent_bad <= certified
+            ),
+            "decision": report["decision"],
+        }
 
     def _compiled_formal_probes(
         self,
@@ -7260,6 +7427,436 @@ theorem fc_uniform_certificate_theorem_{suffix}
                     notes=(
                         "Pressure-height frontier certificate probe; this packages the "
                         "local survivor-closure result into a uniform certificate theorem."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_frontier_completeness_wave_probes(
+        self,
+        *,
+        world_id: str,
+        generated_reports: list[dict[str, Any]],
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        max_window = max((int(report["window"]) for report in generated_reports), default=0)
+        acyclic_report = next(
+            (
+                report
+                for report in generated_reports
+                if int(report["recurrent_bad_components"]) == 0
+            ),
+            generated_reports[0],
+        )
+        recurrent_report = next(
+            (
+                report
+                for report in generated_reports
+                if int(report["recurrent_bad_components"]) > 0
+            ),
+            generated_reports[-1],
+        )
+        max_window_report = generated_reports[-1]
+
+        def lean_report(report: dict[str, Any]) -> str:
+            return (
+                "{ "
+                f"window := {int(report['window'])}, "
+                f"modulusBits := {int(report['modulus_bits'])}, "
+                f"stateCount := {int(report['state_count'])}, "
+                f"edgeCount := {int(report['edge_count'])}, "
+                f"recurrentBad := {int(report['recurrent_bad_components'])}, "
+                f"pressureRecovery := {int(report['pressure_recovery_components'])}, "
+                f"heightEscape := {int(report['height_escape_components'])}, "
+                f"survivorDrop := {int(report['survivor_drop_components'])}, "
+                f"dangerous := {int(report['dangerous_components'])}, "
+                f"unchecked := {int(report['unchecked_components'])} "
+                "}"
+            )
+
+        report_entries = ",\n  ".join(lean_report(report) for report in generated_reports)
+        acyclic_entry = lean_report(acyclic_report)
+        recurrent_entry = lean_report(recurrent_report)
+        max_window_entry = lean_report(max_window_report)
+        generated_count = len(generated_reports)
+        total_recurrent = sum(int(report["recurrent_bad_components"]) for report in generated_reports)
+        total_height_escape = sum(int(report["height_escape_components"]) for report in generated_reports)
+        total_dangerous = sum(int(report["dangerous_components"]) for report in generated_reports)
+        total_unchecked = sum(int(report["unchecked_components"]) for report in generated_reports)
+
+        base_defs = f"""
+structure PHKFrontierReport_{suffix} where
+  window : Nat
+  modulusBits : Nat
+  stateCount : Nat
+  edgeCount : Nat
+  recurrentBad : Nat
+  pressureRecovery : Nat
+  heightEscape : Nat
+  survivorDrop : Nat
+  dangerous : Nat
+  unchecked : Nat
+  deriving DecidableEq, Repr
+
+def phkCertifiedCount_{suffix} (r : PHKFrontierReport_{suffix}) : Nat :=
+  r.pressureRecovery + r.heightEscape + r.survivorDrop
+
+def phkReportComplete_{suffix} (r : PHKFrontierReport_{suffix}) : Prop :=
+  r.unchecked = 0 /\\
+    r.dangerous = 0 /\\
+    r.recurrentBad <= phkCertifiedCount_{suffix} r
+
+def phkReportNoDangerous_{suffix} (r : PHKFrontierReport_{suffix}) : Prop :=
+  r.dangerous = 0
+
+def phkReportNoUnchecked_{suffix} (r : PHKFrontierReport_{suffix}) : Prop :=
+  r.unchecked = 0
+
+def phkGeneratedReports_{suffix} : List PHKFrontierReport_{suffix} := [
+  {report_entries}
+]
+
+def phkAcyclicGeneratedReport_{suffix} : PHKFrontierReport_{suffix} :=
+  {acyclic_entry}
+
+def phkRecurrentGeneratedReport_{suffix} : PHKFrontierReport_{suffix} :=
+  {recurrent_entry}
+
+def phkMaxWindowGeneratedReport_{suffix} : PHKFrontierReport_{suffix} :=
+  {max_window_entry}
+
+def phkGeneratedComplete_{suffix} : Prop :=
+  ∀ r, r ∈ phkGeneratedReports_{suffix} -> phkReportComplete_{suffix} r
+
+def phkGeneratedNoDangerous_{suffix} : Prop :=
+  ∀ r, r ∈ phkGeneratedReports_{suffix} -> phkReportNoDangerous_{suffix} r
+
+def phkGeneratedNoUnchecked_{suffix} : Prop :=
+  ∀ r, r ∈ phkGeneratedReports_{suffix} -> phkReportNoUnchecked_{suffix} r
+
+structure PHKBoundedCompletenessCertificate_{suffix} where
+  maxWindow : Nat
+  generatedReportCount : Nat
+  totalRecurrentBad : Nat
+  totalHeightEscape : Nat
+  totalDangerous : Nat
+  totalUnchecked : Nat
+  deriving DecidableEq, Repr
+
+def phkBoundedCertificate_{suffix} : PHKBoundedCompletenessCertificate_{suffix} :=
+  {{ maxWindow := {max_window},
+    generatedReportCount := {generated_count},
+    totalRecurrentBad := {total_recurrent},
+    totalHeightEscape := {total_height_escape},
+    totalDangerous := {total_dangerous},
+    totalUnchecked := {total_unchecked} }}
+
+def phkDangerousReport_{suffix} : PHKFrontierReport_{suffix} :=
+  {{ window := {max_window + 1}, modulusBits := 1, stateCount := 1, edgeCount := 1,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 0,
+    survivorDrop := 0, dangerous := 1, unchecked := 0 }}
+
+def phkUncheckedReport_{suffix} : PHKFrontierReport_{suffix} :=
+  {{ window := {max_window + 2}, modulusBits := 1, stateCount := 1, edgeCount := 1,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 0,
+    survivorDrop := 0, dangerous := 0, unchecked := 1 }}
+
+def phkAdversarialFrontier_{suffix} : List PHKFrontierReport_{suffix} :=
+  [phkDangerousReport_{suffix}]
+
+def phkParameterizedCompleteness_{suffix}
+    (gen : Nat -> PHKFrontierReport_{suffix}) : Prop :=
+  ∀ depth, phkReportComplete_{suffix} (gen depth)
+
+def phkNoDangerousAtEveryDepth_{suffix}
+    (gen : Nat -> PHKFrontierReport_{suffix}) : Prop :=
+  ∀ depth, phkReportNoDangerous_{suffix} (gen depth)
+
+def phkCountingTarget_{suffix} : PHKBoundedCompletenessCertificate_{suffix} :=
+  phkBoundedCertificate_{suffix}
+""".strip()
+
+        generated_complete = f"""
+theorem phk_generated_frontiers_complete_{suffix} :
+    phkGeneratedComplete_{suffix} := by
+  unfold phkGeneratedComplete_{suffix} phkGeneratedReports_{suffix}
+  unfold phkReportComplete_{suffix} phkCertifiedCount_{suffix}
+  native_decide
+""".strip()
+
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Pressure-height frontier completeness / generated report count matches bounded horizon.",
+                f"""{base_defs}
+
+theorem phk_generated_report_count_matches_horizon_{suffix} :
+    phkGeneratedReports_{suffix}.length = {generated_count} /\\
+    phkBoundedCertificate_{suffix}.maxWindow = {max_window} := by
+  unfold phkGeneratedReports_{suffix} phkBoundedCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_generated_frontier",
+                "report_count",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / generated frontiers are all certified through bounded horizon.",
+                f"""{base_defs}
+
+{generated_complete}
+""",
+                True,
+                "bounded_generated_frontier",
+                "bounded_completeness",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / generated frontiers have no dangerous component.",
+                f"""{base_defs}
+
+{generated_complete}
+
+theorem phk_generated_frontiers_have_no_dangerous_{suffix} :
+    phkGeneratedNoDangerous_{suffix} := by
+  intro r hMem
+  exact (phk_generated_frontiers_complete_{suffix} r hMem).2.1
+""",
+                True,
+                "bounded_generated_frontier",
+                "no_dangerous",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / generated frontiers have no unchecked component.",
+                f"""{base_defs}
+
+{generated_complete}
+
+theorem phk_generated_frontiers_have_no_unchecked_{suffix} :
+    phkGeneratedNoUnchecked_{suffix} := by
+  intro r hMem
+  exact (phk_generated_frontiers_complete_{suffix} r hMem).1
+""",
+                True,
+                "bounded_generated_frontier",
+                "no_unchecked",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / generated recurrent bad components are covered by exits.",
+                f"""{base_defs}
+
+{generated_complete}
+
+theorem phk_generated_recurrent_bad_covered_by_exits_{suffix} :
+    ∀ r, r ∈ phkGeneratedReports_{suffix} ->
+      r.recurrentBad <= r.pressureRecovery + r.heightEscape + r.survivorDrop := by
+  intro r hMem
+  exact (phk_generated_frontiers_complete_{suffix} r hMem).2.2
+""",
+                True,
+                "bounded_generated_frontier",
+                "exit_coverage",
+            ),
+            (
+                "definition_probe",
+                "Pressure-height frontier completeness / max-window generated frontier is complete.",
+                f"""{base_defs}
+
+theorem phk_max_window_generated_frontier_complete_{suffix} :
+    phkMaxWindowGeneratedReport_{suffix} ∈ phkGeneratedReports_{suffix} /\\
+    phkReportComplete_{suffix} phkMaxWindowGeneratedReport_{suffix} := by
+  unfold phkMaxWindowGeneratedReport_{suffix} phkGeneratedReports_{suffix}
+  unfold phkReportComplete_{suffix} phkCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_generated_frontier",
+                "max_window_complete",
+            ),
+            (
+                "definition_probe",
+                "Pressure-height frontier completeness / acyclic generated frontier is vacuously complete.",
+                f"""{base_defs}
+
+theorem phk_acyclic_generated_frontier_vacuously_complete_{suffix} :
+    phkAcyclicGeneratedReport_{suffix}.recurrentBad = 0 /\\
+    phkReportComplete_{suffix} phkAcyclicGeneratedReport_{suffix} := by
+  unfold phkAcyclicGeneratedReport_{suffix}
+  unfold phkReportComplete_{suffix} phkCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_generated_frontier",
+                "acyclic_vacuous",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / recurrent generated frontier is height-certified.",
+                f"""{base_defs}
+
+theorem phk_recurrent_generated_frontier_height_certified_{suffix} :
+    phkRecurrentGeneratedReport_{suffix}.recurrentBad <=
+      phkRecurrentGeneratedReport_{suffix}.heightEscape /\\
+    phkReportComplete_{suffix} phkRecurrentGeneratedReport_{suffix} := by
+  unfold phkRecurrentGeneratedReport_{suffix}
+  unfold phkReportComplete_{suffix} phkCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_generated_frontier",
+                "height_certified",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier completeness / bounded certificate declares finite horizon only.",
+                f"""{base_defs}
+
+theorem phk_bounded_certificate_is_finite_only_{suffix} :
+    phkBoundedCertificate_{suffix}.maxWindow = {max_window} /\\
+    phkBoundedCertificate_{suffix}.generatedReportCount = {generated_count} := by
+  unfold phkBoundedCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_not_global",
+                "finite_horizon_only",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / generated completeness feeds no-dangerous frontier theorem.",
+                f"""{base_defs}
+
+{generated_complete}
+
+theorem phk_generated_completeness_feeds_no_dangerous_theorem_{suffix} :
+    ∀ r, r ∈ phkGeneratedReports_{suffix} -> r.dangerous = 0 := by
+  intro r hMem
+  exact (phk_generated_frontiers_complete_{suffix} r hMem).2.1
+""",
+                True,
+                "certificate_bridge",
+                "feeds_no_dangerous",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier completeness / parameterized completeness would close danger at every depth.",
+                f"""{base_defs}
+
+theorem phk_parameterized_completeness_closes_danger_{suffix}
+    (gen : Nat -> PHKFrontierReport_{suffix})
+    (hComplete : phkParameterizedCompleteness_{suffix} gen) :
+    phkNoDangerousAtEveryDepth_{suffix} gen := by
+  intro depth
+  exact (hComplete depth).2.1
+""",
+                True,
+                "parameterized_bridge",
+                "global_shape",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier completeness / counting target has no reachability field.",
+                f"""{base_defs}
+
+theorem phk_counting_target_has_only_frontier_counts_{suffix} :
+    phkCountingTarget_{suffix}.totalDangerous = 0 /\\
+    phkCountingTarget_{suffix}.totalUnchecked = 0 /\\
+    phkCountingTarget_{suffix}.totalRecurrentBad = {total_recurrent} := by
+  unfold phkCountingTarget_{suffix} phkBoundedCertificate_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier completeness / adversarial dangerous report is not complete.",
+                f"""{base_defs}
+
+theorem phk_adversarial_dangerous_report_not_complete_{suffix} :
+    Not (phkReportComplete_{suffix} phkDangerousReport_{suffix}) := by
+  unfold phkReportComplete_{suffix} phkDangerousReport_{suffix}
+  unfold phkCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "kill_gate",
+                "dangerous_refutes_completeness",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier completeness / adversarial unchecked report is not complete.",
+                f"""{base_defs}
+
+theorem phk_adversarial_unchecked_report_not_complete_{suffix} :
+    Not (phkReportComplete_{suffix} phkUncheckedReport_{suffix}) := by
+  unfold phkReportComplete_{suffix} phkUncheckedReport_{suffix}
+  unfold phkCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "kill_gate",
+                "unchecked_refutes_completeness",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier completeness / dangerous member refutes any completeness proof.",
+                f"""{base_defs}
+
+theorem phk_dangerous_member_refutes_completeness_{suffix}
+    (xs : List PHKFrontierReport_{suffix})
+    (r : PHKFrontierReport_{suffix})
+    (hMem : r ∈ xs)
+    (hDanger : r.dangerous ≠ 0)
+    (hComplete : ∀ x, x ∈ xs -> phkReportComplete_{suffix} x) :
+    False := by
+  exact hDanger ((hComplete r hMem).2.1)
+""",
+                True,
+                "kill_gate",
+                "dangerous_member_refutes",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_frontier_completeness_wave": True,
+                "completeness_family": family,
+                "completeness_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "bounded_horizon": max_window,
+                "generated_frontier_totals": {
+                    "report_count": generated_count,
+                    "recurrent_bad": total_recurrent,
+                    "height_escape": total_height_escape,
+                    "dangerous": total_dangerous,
+                    "unchecked": total_unchecked,
+                },
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Pressure-height frontier completeness kill-test; bounded generated "
+                        "frontiers must satisfy the R20 certificate precondition while adversarial "
+                        "dangerous/unchecked reports must refute completeness."
                     ),
                 )
             )
