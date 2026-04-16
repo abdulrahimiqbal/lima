@@ -1267,6 +1267,30 @@ class PressureHeightGeneratorBridgeWaveRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class PressureHeightSccExactnessWaveRequest(BaseModel):
+    world_id: str | None = None
+    max_probes: int = Field(default=13, ge=8, le=13)
+    submit_after_compile: bool = False
+
+
+class PressureHeightSccExactnessWaveRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"SX-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    exactness_gates: list[str] = Field(default_factory=list)
+    obstruction_gates: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    tranche_summary: str = ""
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

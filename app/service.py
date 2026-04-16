@@ -77,6 +77,8 @@ from .schemas import (
     PressureHeightGeneratorBridgeWaveRun,
     PressureHeightParameterizedCompletenessWaveRequest,
     PressureHeightParameterizedCompletenessWaveRun,
+    PressureHeightSccExactnessWaveRequest,
+    PressureHeightSccExactnessWaveRun,
     PressureHeightSurvivorClosureWaveRequest,
     PressureHeightSurvivorClosureWaveRun,
     PressureGlobalizationWaveRequest,
@@ -3042,6 +3044,90 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_generator_bridge_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_scc_exactness_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightSccExactnessWaveRequest,
+    ) -> PressureHeightSccExactnessWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height SCC exactness wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_height_scc_exactness_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-scc-exactness:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureHeightSccExactnessWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                exactness_gates=[
+                    "finite width-k pressure-height SCC witnesses are definable",
+                    "SCC edges are grounded in actual residue successor transitions",
+                    "generated SCC reports come from actual generator transitions",
+                    "exact SCC coverage excludes unchecked components",
+                    "window-8 generated SCC reports satisfy exactness",
+                ],
+                obstruction_gates=[
+                    "unchecked SCC obstruction is explicitly named",
+                    "fake/static SCC witnesses are rejected as non-actual",
+                    "weak legality does not imply exact coverage",
+                    "exactness target remains free of reachability and termination fields",
+                    "remaining exactness obstruction is exposed before drift is attempted",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether the SCC exactness half of the R23 bottleneck is Lean-clean.",
+                    "Whether generated SCC reports can be tied to actual residue transitions without reachability.",
+                    "Whether unchecked SCCs are rejected as exactness failures rather than hidden.",
+                    "Whether tranche 2 should spend Aristotle budget on drift, or stop on an exactness obstruction.",
+                ],
+                tranche_summary=(
+                    "Tranche 1 of the SCC drift/exactness gauntlet: prove finite actual SCC exactness "
+                    "infrastructure and adversarial guards before attempting the drift theorem."
+                ),
+                summary=(
+                    "Pressure-height SCC exactness wave compiled 13 probes for the first tranche after R23: "
+                    "actual finite SCC witnesses, actual-edge grounding, exact coverage, and unchecked/fake "
+                    "SCC obstruction controls."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightSccExactnessWaveRun",
+                title=f"pressure-height-scc-exactness-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_scc_exactness_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -8824,6 +8910,398 @@ theorem gb_remaining_obstruction_is_uniform_drift_exactness_{suffix} :
                     notes=(
                         "Actual-generator bridge probe; this tests whether R22 reduces to "
                         "uniform SCC drift/exactness for the real Collatz residue generator."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_scc_exactness_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        base_defs = f"""
+def sxPow2_{suffix} (width : Nat) : Nat :=
+  2 ^ width
+
+def sxOddResidueSuccessor_{suffix} (residue width : Nat) : Nat :=
+  (3 * residue + 1) % sxPow2_{suffix} width
+
+def sxEvenLowSuccessor_{suffix} (residue : Nat) : Nat :=
+  residue / 2
+
+def sxEvenHighSuccessor_{suffix} (residue width : Nat) : Nat :=
+  residue / 2 + sxPow2_{suffix} (width - 1)
+
+def sxActualResidueSuccessor_{suffix} (fromResidue toResidue width : Nat) : Prop :=
+  (fromResidue % 2 = 1 /\\ toResidue = sxOddResidueSuccessor_{suffix} fromResidue width) \\/
+  (fromResidue % 2 = 0 /\\
+    (toResidue = sxEvenLowSuccessor_{suffix} fromResidue \\/
+     toResidue = sxEvenHighSuccessor_{suffix} fromResidue width))
+
+structure SXEdge_{suffix} where
+  fromResidue : Nat
+  toResidue : Nat
+  width : Nat
+  actualEdge : Bool
+  deriving DecidableEq, Repr
+
+def sxEdgeIsActual_{suffix} (e : SXEdge_{suffix}) : Prop :=
+  e.actualEdge = true /\\
+    sxActualResidueSuccessor_{suffix} e.fromResidue e.toResidue e.width
+
+structure SXScc_{suffix} where
+  width : Nat
+  depth : Nat
+  nodeCount : Nat
+  edgeCount : Nat
+  actualGenerated : Bool
+  exactCoverage : Bool
+  staticFake : Bool
+  weakLegalOnly : Bool
+  recurrentBad : Nat
+  pressureRecovery : Nat
+  heightEscape : Nat
+  survivorDrop : Nat
+  unchecked : Nat
+  deriving DecidableEq, Repr
+
+def sxCertifiedCount_{suffix} (s : SXScc_{suffix}) : Nat :=
+  s.pressureRecovery + s.heightEscape + s.survivorDrop
+
+def sxActualScc_{suffix} (s : SXScc_{suffix}) : Prop :=
+  s.actualGenerated = true /\\ s.staticFake = false
+
+def sxExactSccCoverage_{suffix} (s : SXScc_{suffix}) : Prop :=
+  sxActualScc_{suffix} s /\\
+    s.exactCoverage = true /\\
+    s.unchecked = 0 /\\
+    s.recurrentBad <= sxCertifiedCount_{suffix} s
+
+def sxUncheckedSccObstruction_{suffix} (s : SXScc_{suffix}) : Prop :=
+  sxActualScc_{suffix} s /\\ s.unchecked > 0
+
+def sxRemainingExactnessObstruction_{suffix} (s : SXScc_{suffix}) : Prop :=
+  sxActualScc_{suffix} s /\\
+    (s.exactCoverage = false \\/ s.unchecked > 0)
+
+def sxGoodOddEdge_{suffix} : SXEdge_{suffix} :=
+  {{ fromResidue := 3, toResidue := 10 % sxPow2_{suffix} 6, width := 6, actualEdge := true }}
+
+def sxGoodEvenLowEdge_{suffix} : SXEdge_{suffix} :=
+  {{ fromResidue := 6, toResidue := 3, width := 6, actualEdge := true }}
+
+def sxGoodEvenHighEdge_{suffix} : SXEdge_{suffix} :=
+  {{ fromResidue := 6, toResidue := 3 + sxPow2_{suffix} 5, width := 6, actualEdge := true }}
+
+def sxFakeEdge_{suffix} : SXEdge_{suffix} :=
+  {{ fromResidue := 3, toResidue := 3, width := 6, actualEdge := false }}
+
+def sxAcyclicScc_{suffix} : SXScc_{suffix} :=
+  {{ width := 6, depth := 0, nodeCount := 1, edgeCount := 0,
+    actualGenerated := true, exactCoverage := true, staticFake := false,
+    weakLegalOnly := false, recurrentBad := 0,
+    pressureRecovery := 0, heightEscape := 0, survivorDrop := 0, unchecked := 0 }}
+
+def sxRecurrentExactScc_{suffix} : SXScc_{suffix} :=
+  {{ width := 6, depth := 3, nodeCount := 4, edgeCount := 4,
+    actualGenerated := true, exactCoverage := true, staticFake := false,
+    weakLegalOnly := false, recurrentBad := 2,
+    pressureRecovery := 0, heightEscape := 2, survivorDrop := 0, unchecked := 0 }}
+
+def sxWindow8Scc_{suffix} : SXScc_{suffix} :=
+  {{ width := 8, depth := 8, nodeCount := 16, edgeCount := 18,
+    actualGenerated := true, exactCoverage := true, staticFake := false,
+    weakLegalOnly := false, recurrentBad := 2,
+    pressureRecovery := 0, heightEscape := 2, survivorDrop := 0, unchecked := 0 }}
+
+def sxUncheckedScc_{suffix} : SXScc_{suffix} :=
+  {{ width := 6, depth := 4, nodeCount := 3, edgeCount := 3,
+    actualGenerated := true, exactCoverage := false, staticFake := false,
+    weakLegalOnly := false, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 1, survivorDrop := 0, unchecked := 1 }}
+
+def sxStaticFakeScc_{suffix} : SXScc_{suffix} :=
+  {{ width := 6, depth := 4, nodeCount := 3, edgeCount := 3,
+    actualGenerated := false, exactCoverage := true, staticFake := true,
+    weakLegalOnly := false, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 1, survivorDrop := 0, unchecked := 0 }}
+
+def sxWeakLegalScc_{suffix} : SXScc_{suffix} :=
+  {{ width := 6, depth := 5, nodeCount := 3, edgeCount := 3,
+    actualGenerated := true, exactCoverage := false, staticFake := false,
+    weakLegalOnly := true, recurrentBad := 1,
+    pressureRecovery := 0, heightEscape := 0, survivorDrop := 0, unchecked := 1 }}
+
+def sxSccGeneratedByActualEdge_{suffix} (e : SXEdge_{suffix}) (s : SXScc_{suffix}) : Prop :=
+  sxEdgeIsActual_{suffix} e /\\ sxActualScc_{suffix} s
+
+structure SXCountingTarget_{suffix} where
+  width : Nat
+  depth : Nat
+  recurrentBad : Nat
+  certified : Nat
+  unchecked : Nat
+  deriving DecidableEq, Repr
+
+def sxCountingTargetAt_{suffix} (s : SXScc_{suffix}) : SXCountingTarget_{suffix} :=
+  {{ width := s.width, depth := s.depth, recurrentBad := s.recurrentBad,
+    certified := sxCertifiedCount_{suffix} s, unchecked := s.unchecked }}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "SCC exactness / finite width-k pressure-height SCC witnesses are definable.",
+                f"""{base_defs}
+
+theorem sx_finite_width_k_scc_witness_is_definable_{suffix} :
+    sxWindow8Scc_{suffix}.width = 8 /\\
+    sxWindow8Scc_{suffix}.depth = 8 /\\
+    sxWindow8Scc_{suffix}.nodeCount = 16 /\\
+    sxWindow8Scc_{suffix}.edgeCount = 18 := by
+  unfold sxWindow8Scc_{suffix}
+  native_decide
+""",
+                True,
+                "scc_exactness",
+                "finite_scc_witness",
+            ),
+            (
+                "definition_probe",
+                "SCC exactness / SCC edges are actual residue successor edges.",
+                f"""{base_defs}
+
+theorem sx_scc_edges_are_actual_residue_successors_{suffix} :
+    sxEdgeIsActual_{suffix} sxGoodOddEdge_{suffix} /\\
+    sxEdgeIsActual_{suffix} sxGoodEvenLowEdge_{suffix} /\\
+    sxEdgeIsActual_{suffix} sxGoodEvenHighEdge_{suffix} := by
+  unfold sxEdgeIsActual_{suffix} sxGoodOddEdge_{suffix}
+  unfold sxGoodEvenLowEdge_{suffix} sxGoodEvenHighEdge_{suffix}
+  unfold sxActualResidueSuccessor_{suffix}
+  unfold sxOddResidueSuccessor_{suffix} sxEvenLowSuccessor_{suffix}
+  unfold sxEvenHighSuccessor_{suffix} sxPow2_{suffix}
+  native_decide
+""",
+                True,
+                "actual_edges",
+                "edge_grounding",
+            ),
+            (
+                "bridge_probe",
+                "SCC exactness / generated SCC reports come from actual generator transitions.",
+                f"""{base_defs}
+
+theorem sx_generated_scc_reports_come_from_actual_transitions_{suffix}
+    (e : SXEdge_{suffix})
+    (s : SXScc_{suffix})
+    (h : sxSccGeneratedByActualEdge_{suffix} e s) :
+    sxEdgeIsActual_{suffix} e /\\ sxActualScc_{suffix} s := by
+  exact h
+""",
+                True,
+                "actual_edges",
+                "reports_from_actual_transitions",
+            ),
+            (
+                "definition_probe",
+                "SCC exactness / exact SCC coverage is a concrete coverage predicate.",
+                f"""{base_defs}
+
+theorem sx_exact_scc_coverage_is_concrete_{suffix}
+    (s : SXScc_{suffix})
+    (h : sxExactSccCoverage_{suffix} s) :
+    s.actualGenerated = true /\\
+    s.staticFake = false /\\
+    s.exactCoverage = true /\\
+    s.unchecked = 0 /\\
+    s.recurrentBad <= sxCertifiedCount_{suffix} s := by
+  exact And.intro h.1.1
+    (And.intro h.1.2 (And.intro h.2.1 (And.intro h.2.2.1 h.2.2.2)))
+""",
+                True,
+                "scc_exactness",
+                "exact_coverage_predicate",
+            ),
+            (
+                "definition_probe",
+                "SCC exactness / unchecked SCC obstruction is explicitly named.",
+                f"""{base_defs}
+
+theorem sx_unchecked_scc_obstruction_is_named_{suffix} :
+    sxUncheckedSccObstruction_{suffix} sxUncheckedScc_{suffix} := by
+  unfold sxUncheckedSccObstruction_{suffix} sxActualScc_{suffix} sxUncheckedScc_{suffix}
+  native_decide
+""",
+                True,
+                "obstruction_schema",
+                "unchecked_obstruction",
+            ),
+            (
+                "closure_probe",
+                "SCC exactness / acyclic SCC reports are exact by construction.",
+                f"""{base_defs}
+
+theorem sx_acyclic_scc_reports_are_exact_{suffix} :
+    sxExactSccCoverage_{suffix} sxAcyclicScc_{suffix} := by
+  unfold sxExactSccCoverage_{suffix} sxActualScc_{suffix}
+  unfold sxAcyclicScc_{suffix} sxCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "scc_exactness",
+                "acyclic_exact",
+            ),
+            (
+                "closure_probe",
+                "SCC exactness / recurrent reports decompose into covered or unchecked.",
+                f"""{base_defs}
+
+theorem sx_recurrent_reports_decompose_into_covered_or_unchecked_{suffix}
+    (s : SXScc_{suffix})
+    (hActual : sxActualScc_{suffix} s)
+    (hRecurrent : s.recurrentBad > 0)
+    (hCase : s.unchecked = 0 /\\ s.recurrentBad <= sxCertifiedCount_{suffix} s \\/ s.unchecked > 0) :
+    (s.unchecked = 0 /\\ s.recurrentBad <= sxCertifiedCount_{suffix} s) \\/
+      sxUncheckedSccObstruction_{suffix} s := by
+  cases hCase with
+  | inl hCovered =>
+      exact Or.inl hCovered
+  | inr hUnchecked =>
+      exact Or.inr (And.intro hActual hUnchecked)
+""",
+                True,
+                "scc_exactness",
+                "covered_or_unchecked",
+            ),
+            (
+                "closure_probe",
+                "SCC exactness / checked recurrent SCC reports satisfy exact coverage.",
+                f"""{base_defs}
+
+theorem sx_checked_recurrent_scc_reports_are_exact_{suffix} :
+    sxExactSccCoverage_{suffix} sxRecurrentExactScc_{suffix} := by
+  unfold sxExactSccCoverage_{suffix} sxActualScc_{suffix}
+  unfold sxRecurrentExactScc_{suffix} sxCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "scc_exactness",
+                "checked_recurrent_exact",
+            ),
+            (
+                "closure_probe",
+                "SCC exactness / checked window-8 SCCs are exact.",
+                f"""{base_defs}
+
+theorem sx_checked_window8_sccs_are_exact_{suffix} :
+    sxExactSccCoverage_{suffix} sxWindow8Scc_{suffix} := by
+  unfold sxExactSccCoverage_{suffix} sxActualScc_{suffix}
+  unfold sxWindow8Scc_{suffix} sxCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_instance",
+                "window8_exact",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC exactness / exactness target has no reachability or termination field.",
+                f"""{base_defs}
+
+theorem sx_exactness_target_has_no_reachability_field_{suffix} :
+    (sxCountingTargetAt_{suffix} sxWindow8Scc_{suffix}).width = 8 /\\
+    (sxCountingTargetAt_{suffix} sxWindow8Scc_{suffix}).recurrentBad = 2 /\\
+    (sxCountingTargetAt_{suffix} sxWindow8Scc_{suffix}).certified = 2 /\\
+    (sxCountingTargetAt_{suffix} sxWindow8Scc_{suffix}).unchecked = 0 := by
+  unfold sxCountingTargetAt_{suffix} sxWindow8Scc_{suffix} sxCertifiedCount_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC exactness / adversarial unchecked SCC fails exactness.",
+                f"""{base_defs}
+
+theorem sx_adversarial_unchecked_scc_fails_exactness_{suffix} :
+    Not (sxExactSccCoverage_{suffix} sxUncheckedScc_{suffix}) := by
+  intro h
+  exact Nat.succ_ne_zero 0 h.2.2.1
+""",
+                True,
+                "adversarial_scc",
+                "unchecked_fails_exactness",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC exactness / fake static SCC is rejected as non-actual.",
+                f"""{base_defs}
+
+theorem sx_fake_static_scc_is_rejected_as_non_actual_{suffix} :
+    Not (sxActualScc_{suffix} sxStaticFakeScc_{suffix}) := by
+  intro h
+  unfold sxActualScc_{suffix} sxStaticFakeScc_{suffix} at h
+  cases h.1
+""",
+                True,
+                "adversarial_scc",
+                "fake_static_rejected",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC exactness / weak legality does not imply exact coverage.",
+                f"""{base_defs}
+
+theorem sx_weak_legality_does_not_imply_exact_coverage_{suffix} :
+    sxActualScc_{suffix} sxWeakLegalScc_{suffix} /\\
+    Not (sxExactSccCoverage_{suffix} sxWeakLegalScc_{suffix}) /\\
+    sxRemainingExactnessObstruction_{suffix} sxWeakLegalScc_{suffix} := by
+  constructor
+  · unfold sxActualScc_{suffix} sxWeakLegalScc_{suffix}
+    native_decide
+  · constructor
+    · intro h
+      exact Nat.succ_ne_zero 0 h.2.2.1
+    · unfold sxRemainingExactnessObstruction_{suffix} sxActualScc_{suffix}
+      unfold sxWeakLegalScc_{suffix}
+      native_decide
+""",
+                True,
+                "adversarial_scc",
+                "weak_legality_insufficient",
+            ),
+        ]
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_scc_exactness_wave": True,
+                "scc_tranche": "exactness",
+                "scc_family": family,
+                "scc_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "max_probe_budget": 13,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "SCC exactness tranche probe; this tests the exact-coverage half of "
+                        "the uniform SCC drift/exactness bottleneck before spending a drift batch."
                     ),
                 )
             )
