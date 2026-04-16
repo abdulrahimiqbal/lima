@@ -34,6 +34,7 @@ from .schemas import (
     PressureHeightFrontierCompletenessWaveRequest,
     PressureHeightGeneratorBridgeWaveRequest,
     PressureHeightParameterizedCompletenessWaveRequest,
+    PressureHeightSccDriftWaveRequest,
     PressureHeightSccExactnessWaveRequest,
     PressureHeightSurvivorClosureWaveRequest,
     PressureGlobalizationWaveRequest,
@@ -622,6 +623,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.run_pressure_height_scc_exactness_wave(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/pressure-height-scc-drift-wave")
+    def run_pressure_height_scc_drift_wave(
+        campaign_id: str,
+        payload: PressureHeightSccDriftWaveRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_pressure_height_scc_drift_wave(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

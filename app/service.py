@@ -77,6 +77,8 @@ from .schemas import (
     PressureHeightGeneratorBridgeWaveRun,
     PressureHeightParameterizedCompletenessWaveRequest,
     PressureHeightParameterizedCompletenessWaveRun,
+    PressureHeightSccDriftWaveRequest,
+    PressureHeightSccDriftWaveRun,
     PressureHeightSccExactnessWaveRequest,
     PressureHeightSccExactnessWaveRun,
     PressureHeightSurvivorClosureWaveRequest,
@@ -3128,6 +3130,90 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_scc_exactness_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_scc_drift_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightSccDriftWaveRequest,
+    ) -> PressureHeightSccDriftWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height SCC drift wave.")
+            world_label = world_payload.get("label") or world_id
+            probes = self._compile_pressure_height_scc_drift_wave_probes(
+                world_id=world_id,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-scc-drift:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            run = PressureHeightSccDriftWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                drift_gates=[
+                    "pressure-height drift around actual SCC cycles is definable",
+                    "positive drift excludes dangerous recurrent bad SCCs",
+                    "height escape rules out dangerous minimal survivors",
+                    "pressure recovery and survivor drop contribute positive drift",
+                    "window-8 generated SCCs satisfy positive drift",
+                ],
+                obstruction_gates=[
+                    "nonpositive-drift SCC obstruction is explicitly named",
+                    "zero-drift adversarial SCC fails the positive drift theorem",
+                    "pure pressure ghost recurrence is killed by height lift",
+                    "drift target remains free of reachability and termination fields",
+                    "remaining drift obstruction is exposed before route integration",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether the positive-drift half of the R23 bottleneck is Lean-clean.",
+                    "Whether non-height-escaping recurrent bad SCCs reduce to a named nonpositive-drift obstruction.",
+                    "Whether pressure recovery, height escape, and survivor drop are enough to rule out dangerous SCC recurrence.",
+                    "Whether tranche 3 should integrate exactness plus drift, or stop on a drift obstruction.",
+                ],
+                tranche_summary=(
+                    "Tranche 2 of the SCC drift/exactness gauntlet: prove positive-drift "
+                    "infrastructure and adversarial zero/nonpositive-drift guards."
+                ),
+                summary=(
+                    "Pressure-height SCC drift wave compiled 13 probes for the second tranche after R23: "
+                    "cycle drift, positive-drift closure, height-escape guardrails, and nonpositive-drift "
+                    "obstruction controls."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightSccDriftWaveRun",
+                title=f"pressure-height-scc-drift-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_scc_drift_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -9302,6 +9388,364 @@ theorem sx_weak_legality_does_not_imply_exact_coverage_{suffix} :
                     notes=(
                         "SCC exactness tranche probe; this tests the exact-coverage half of "
                         "the uniform SCC drift/exactness bottleneck before spending a drift batch."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_scc_drift_wave_probes(
+        self,
+        *,
+        world_id: str,
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        base_defs = f"""
+structure SDScc_{suffix} where
+  width : Nat
+  depth : Nat
+  actualGenerated : Bool
+  exactCoverage : Bool
+  recurrentBad : Nat
+  pressureRecovery : Nat
+  heightEscape : Nat
+  survivorDrop : Nat
+  dangerous : Nat
+  minimalSurvivor : Bool
+  pressureGhost : Bool
+  driftScore : Nat
+  deriving DecidableEq, Repr
+
+def sdActualScc_{suffix} (s : SDScc_{suffix}) : Prop :=
+  s.actualGenerated = true /\\ s.exactCoverage = true
+
+def sdPositiveDrift_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\ s.driftScore > 0
+
+def sdNonPositiveDriftObstruction_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\
+    s.recurrentBad > 0 /\\
+    s.heightEscape = 0 /\\
+    s.driftScore = 0
+
+def sdDangerousRecurrentBad_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\ s.recurrentBad > 0 /\\ s.dangerous > 0
+
+def sdHeightEscaping_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\ s.heightEscape > 0
+
+def sdMinimalSurvivorDanger_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\ s.minimalSurvivor = true /\\ s.dangerous > 0
+
+def sdDriftFromExits_{suffix} (s : SDScc_{suffix}) : Nat :=
+  s.pressureRecovery + s.heightEscape + s.survivorDrop
+
+def sdDriftExact_{suffix} (s : SDScc_{suffix}) : Prop :=
+  s.driftScore = sdDriftFromExits_{suffix} s
+
+def sdPositiveDriftCertificate_{suffix} (s : SDScc_{suffix}) : Prop :=
+  sdActualScc_{suffix} s /\\
+    sdDriftExact_{suffix} s /\\
+    sdDriftFromExits_{suffix} s > 0
+
+def sdGoodDriftScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 3, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 2, pressureRecovery := 0, heightEscape := 2, survivorDrop := 0,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := false, driftScore := 2 }}
+
+def sdPressureRecoveryScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 4, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 1, pressureRecovery := 1, heightEscape := 0, survivorDrop := 0,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := false, driftScore := 1 }}
+
+def sdSurvivorDropScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 5, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 0, survivorDrop := 1,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := false, driftScore := 1 }}
+
+def sdHeightEscapeScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 6, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 1, survivorDrop := 0,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := false, driftScore := 1 }}
+
+def sdWindow8Scc_{suffix} : SDScc_{suffix} :=
+  {{ width := 8, depth := 8, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 2, pressureRecovery := 0, heightEscape := 2, survivorDrop := 0,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := false, driftScore := 2 }}
+
+def sdGhostPressureScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 7, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 1, survivorDrop := 0,
+    dangerous := 0, minimalSurvivor := false, pressureGhost := true, driftScore := 1 }}
+
+def sdZeroDriftScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 7, actualGenerated := true, exactCoverage := true,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 0, survivorDrop := 0,
+    dangerous := 1, minimalSurvivor := true, pressureGhost := false, driftScore := 0 }}
+
+def sdUncheckedOrFakeScc_{suffix} : SDScc_{suffix} :=
+  {{ width := 6, depth := 7, actualGenerated := false, exactCoverage := false,
+    recurrentBad := 1, pressureRecovery := 0, heightEscape := 0, survivorDrop := 0,
+    dangerous := 1, minimalSurvivor := true, pressureGhost := false, driftScore := 0 }}
+
+structure SDCountingTarget_{suffix} where
+  width : Nat
+  depth : Nat
+  recurrentBad : Nat
+  exitDrift : Nat
+  dangerous : Nat
+  driftScore : Nat
+  deriving DecidableEq, Repr
+
+def sdCountingTargetAt_{suffix} (s : SDScc_{suffix}) : SDCountingTarget_{suffix} :=
+  {{ width := s.width, depth := s.depth, recurrentBad := s.recurrentBad,
+    exitDrift := sdDriftFromExits_{suffix} s, dangerous := s.dangerous,
+    driftScore := s.driftScore }}
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "SCC drift / pressure-height drift around actual SCC cycles is definable.",
+                f"""{base_defs}
+
+theorem sd_pressure_height_drift_around_scc_cycles_is_definable_{suffix} :
+    sdDriftExact_{suffix} sdGoodDriftScc_{suffix} /\\
+    sdDriftFromExits_{suffix} sdGoodDriftScc_{suffix} = 2 := by
+  unfold sdDriftExact_{suffix} sdDriftFromExits_{suffix} sdGoodDriftScc_{suffix}
+  native_decide
+""",
+                True,
+                "scc_drift",
+                "drift_definition",
+            ),
+            (
+                "definition_probe",
+                "SCC drift / nonpositive-drift obstruction is explicitly named.",
+                f"""{base_defs}
+
+theorem sd_nonpositive_drift_obstruction_is_named_{suffix} :
+    sdNonPositiveDriftObstruction_{suffix} sdZeroDriftScc_{suffix} := by
+  unfold sdNonPositiveDriftObstruction_{suffix} sdActualScc_{suffix}
+  unfold sdZeroDriftScc_{suffix}
+  native_decide
+""",
+                True,
+                "obstruction_schema",
+                "nonpositive_drift_obstruction",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / height-escaping SCCs are not dangerous minimal survivors.",
+                f"""{base_defs}
+
+theorem sd_height_escaping_sccs_are_not_dangerous_minimal_survivors_{suffix} :
+    sdHeightEscaping_{suffix} sdHeightEscapeScc_{suffix} /\\
+    Not (sdMinimalSurvivorDanger_{suffix} sdHeightEscapeScc_{suffix}) := by
+  constructor
+  · unfold sdHeightEscaping_{suffix} sdActualScc_{suffix} sdHeightEscapeScc_{suffix}
+    native_decide
+  · intro h
+    unfold sdMinimalSurvivorDanger_{suffix} sdActualScc_{suffix} sdHeightEscapeScc_{suffix} at h
+    exact Nat.not_succ_le_zero 0 h.2.2
+""",
+                True,
+                "height_escape",
+                "height_escape_not_dangerous",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / positive-drift SCCs cannot be dangerous recurrent bad components.",
+                f"""{base_defs}
+
+theorem sd_positive_drift_sccs_exclude_dangerous_recurrent_bad_{suffix}
+    (s : SDScc_{suffix})
+    (h : sdPositiveDrift_{suffix} s)
+    (hNoDanger : s.dangerous = 0) :
+    Not (sdDangerousRecurrentBad_{suffix} s) := by
+  intro hDanger
+  exact Nat.not_succ_le_zero 0 (Eq.symm hNoDanger ▸ hDanger.2.2)
+""",
+                True,
+                "scc_drift",
+                "positive_drift_excludes_danger",
+            ),
+            (
+                "bridge_probe",
+                "SCC drift / non-height-escaping recurrent bad implies drift obligation.",
+                f"""{base_defs}
+
+theorem sd_non_height_escaping_recurrent_bad_implies_drift_obligation_{suffix}
+    (s : SDScc_{suffix})
+    (hActual : sdActualScc_{suffix} s)
+    (hBad : s.recurrentBad > 0)
+    (hNoHeight : s.heightEscape = 0)
+    (hNoDrift : s.driftScore = 0) :
+    sdNonPositiveDriftObstruction_{suffix} s := by
+  exact And.intro hActual (And.intro hBad (And.intro hNoHeight hNoDrift))
+""",
+                True,
+                "obstruction_schema",
+                "bad_to_drift_obligation",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / pressure-recovery exit contributes positive drift.",
+                f"""{base_defs}
+
+theorem sd_pressure_recovery_exit_contributes_positive_drift_{suffix} :
+    sdPositiveDriftCertificate_{suffix} sdPressureRecoveryScc_{suffix} := by
+  unfold sdPositiveDriftCertificate_{suffix} sdActualScc_{suffix}
+  unfold sdDriftExact_{suffix} sdDriftFromExits_{suffix} sdPressureRecoveryScc_{suffix}
+  native_decide
+""",
+                True,
+                "exit_drift",
+                "pressure_recovery_positive",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / survivor-drop exit contributes positive drift.",
+                f"""{base_defs}
+
+theorem sd_survivor_drop_exit_contributes_positive_drift_{suffix} :
+    sdPositiveDriftCertificate_{suffix} sdSurvivorDropScc_{suffix} := by
+  unfold sdPositiveDriftCertificate_{suffix} sdActualScc_{suffix}
+  unfold sdDriftExact_{suffix} sdDriftFromExits_{suffix} sdSurvivorDropScc_{suffix}
+  native_decide
+""",
+                True,
+                "exit_drift",
+                "survivor_drop_positive",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / pure pressure ghost recurrence is killed by height lift.",
+                f"""{base_defs}
+
+theorem sd_pure_pressure_ghost_is_killed_by_height_lift_{suffix} :
+    sdGhostPressureScc_{suffix}.pressureGhost = true /\\
+    sdHeightEscaping_{suffix} sdGhostPressureScc_{suffix} /\\
+    sdPositiveDrift_{suffix} sdGhostPressureScc_{suffix} := by
+  unfold sdGhostPressureScc_{suffix} sdHeightEscaping_{suffix}
+  unfold sdPositiveDrift_{suffix} sdActualScc_{suffix}
+  native_decide
+""",
+                True,
+                "height_escape",
+                "ghost_killed_by_height",
+            ),
+            (
+                "closure_probe",
+                "SCC drift / checked window-8 SCCs have positive drift.",
+                f"""{base_defs}
+
+theorem sd_checked_window8_sccs_have_positive_drift_{suffix} :
+    sdPositiveDrift_{suffix} sdWindow8Scc_{suffix} /\\
+    sdDriftExact_{suffix} sdWindow8Scc_{suffix} := by
+  unfold sdPositiveDrift_{suffix} sdActualScc_{suffix}
+  unfold sdDriftExact_{suffix} sdDriftFromExits_{suffix} sdWindow8Scc_{suffix}
+  native_decide
+""",
+                True,
+                "bounded_instance",
+                "window8_positive_drift",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC drift / drift target has no reachability or termination field.",
+                f"""{base_defs}
+
+theorem sd_drift_target_has_no_reachability_field_{suffix} :
+    (sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix}).width = 8 /\\
+    (sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix}).recurrentBad = 2 /\\
+    (sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix}).exitDrift = 2 /\\
+    (sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix}).dangerous = 0 /\\
+    (sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix}).driftScore = 2 := by
+  unfold sdCountingTargetAt_{suffix} sdWindow8Scc_{suffix} sdDriftFromExits_{suffix}
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_only",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC drift / adversarial zero-drift SCC fails positive drift.",
+                f"""{base_defs}
+
+theorem sd_adversarial_zero_drift_scc_fails_positive_drift_{suffix} :
+    Not (sdPositiveDrift_{suffix} sdZeroDriftScc_{suffix}) := by
+  intro h
+  exact Nat.not_succ_le_zero 0 h.2
+""",
+                True,
+                "adversarial_scc",
+                "zero_drift_fails",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC drift / adversarial nonpositive-drift SCC is named obstruction.",
+                f"""{base_defs}
+
+theorem sd_adversarial_nonpositive_drift_scc_is_named_obstruction_{suffix} :
+    sdNonPositiveDriftObstruction_{suffix} sdZeroDriftScc_{suffix} /\\
+    sdDangerousRecurrentBad_{suffix} sdZeroDriftScc_{suffix} := by
+  constructor
+  · unfold sdNonPositiveDriftObstruction_{suffix} sdActualScc_{suffix} sdZeroDriftScc_{suffix}
+    native_decide
+  · unfold sdDangerousRecurrentBad_{suffix} sdActualScc_{suffix} sdZeroDriftScc_{suffix}
+    native_decide
+""",
+                True,
+                "adversarial_scc",
+                "nonpositive_named",
+            ),
+            (
+                "anti_smuggling_probe",
+                "SCC drift / remaining drift obstruction is concrete nonpositive drift.",
+                f"""{base_defs}
+
+theorem sd_remaining_drift_obstruction_is_concrete_nonpositive_drift_{suffix} :
+    sdNonPositiveDriftObstruction_{suffix} sdZeroDriftScc_{suffix} /\\
+    Not (sdNonPositiveDriftObstruction_{suffix} sdGoodDriftScc_{suffix}) := by
+  constructor
+  · unfold sdNonPositiveDriftObstruction_{suffix} sdActualScc_{suffix} sdZeroDriftScc_{suffix}
+    native_decide
+  · intro h
+    exact Nat.succ_ne_zero 1 h.2.2.2
+""",
+                True,
+                "obstruction_schema",
+                "remaining_drift_obstruction",
+            ),
+        ]
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_scc_drift_wave": True,
+                "scc_tranche": "drift",
+                "scc_family": family,
+                "scc_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "max_probe_budget": 13,
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "SCC drift tranche probe; this tests the positive-drift half of "
+                        "the uniform SCC drift/exactness bottleneck after exactness passed."
                     ),
                 )
             )
