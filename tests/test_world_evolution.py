@@ -719,6 +719,51 @@ def test_dynamic_pressure_automaton_wave_compiles_search_backed_probes(
     assert any("2-adic ghost cycles" in item for item in payload["expected_learning"])
 
 
+def test_pressure_height_survivor_closure_wave_compiles_closure_and_adversarial_gates(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 10,
+            "survivors_per_generation": 4,
+            "mutations_per_survivor": 2,
+            "wildness": "extreme",
+            "max_formal_probes_per_generation": 4,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/pressure-height-survivor-closure-wave",
+        json={
+            "max_window": 7,
+            "modulus_extra_bits": 4,
+            "max_probes": 10,
+            "submit_after_compile": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["compiled_probe_count"] == 10
+    assert "height escape contradicts minimal persistence" in payload["closure_gates"]
+    assert "pressure bad alone can still persist" in payload["adversarial_gates"]
+    assert "minimal-survivor incompatibility" in payload["closure_summary"]
+    assert any(
+        report["decision"] == "all_checked_bad_cycles_height_expanding"
+        for report in payload["height_lift_reports"]
+    )
+    assert payload["decisive_probe_ids"]
+    assert any("pressure-bad alone is still insufficient" in item for item in payload["expected_learning"])
+
+
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
     service = CampaignService(_settings(tmp_path))
     world_evolution = WorldEvolutionService(service.memory, service.settings, service.invention)

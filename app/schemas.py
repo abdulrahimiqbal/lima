@@ -1137,6 +1137,33 @@ class DynamicPressureAutomatonWaveRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class PressureHeightSurvivorClosureWaveRequest(BaseModel):
+    world_id: str | None = None
+    max_window: int = Field(default=7, ge=2, le=8)
+    modulus_extra_bits: int = Field(default=4, ge=0, le=6)
+    max_probes: int = Field(default=10, ge=6, le=15)
+    submit_after_compile: bool = False
+
+
+class PressureHeightSurvivorClosureWaveRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"PH-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    height_lift_reports: list[dict[str, Any]] = Field(default_factory=list)
+    closure_gates: list[str] = Field(default_factory=list)
+    adversarial_gates: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    closure_summary: str = ""
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

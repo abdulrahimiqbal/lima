@@ -68,6 +68,8 @@ from .schemas import (
     PendingAristotleJob,
     PivotPortfolioWaveRequest,
     PivotPortfolioWaveRun,
+    PressureHeightSurvivorClosureWaveRequest,
+    PressureHeightSurvivorClosureWaveRun,
     PressureGlobalizationWaveRequest,
     PressureGlobalizationWaveRun,
     RankCertificateHuntRequest,
@@ -2451,6 +2453,130 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="dynamic_pressure_automaton_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_survivor_closure_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightSurvivorClosureWaveRequest,
+    ) -> PressureHeightSurvivorClosureWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height survivor closure wave.")
+            world_label = world_payload.get("label") or world_id
+            height_reports = [
+                analyze_height_lifted_pressure_automaton(
+                    window=window,
+                    modulus_bits=max(2, window + payload.modulus_extra_bits),
+                )
+                for window in range(1, payload.max_window + 1)
+            ]
+            probes = self._compile_pressure_height_survivor_closure_wave_probes(
+                world_id=world_id,
+                height_reports=height_reports,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-survivor-closure:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            dangerous = [
+                report
+                for report in height_reports
+                if report["decision"] == "dangerous_nonexpanding_bad_cycle_found"
+            ]
+            unchecked = [
+                report
+                for report in height_reports
+                if report["decision"] == "needs_larger_exact_scc_check"
+            ]
+            expanding = [
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ]
+            if dangerous:
+                closure_summary = (
+                    "Survivor closure gate should pivot: a nonexpanding recurrent bad component "
+                    "survived the height lift."
+                )
+            elif unchecked:
+                closure_summary = (
+                    "Survivor closure gate is not ready: at least one recurrent component needs a "
+                    "larger exact SCC check."
+                )
+            elif expanding:
+                closure_summary = (
+                    "Survivor closure gate is ready: checked recurrent bad components height-escape, "
+                    "so the next proof target is minimal-survivor incompatibility."
+                )
+            else:
+                closure_summary = (
+                    "Survivor closure gate is ready from acyclicity: no recurrent bad component "
+                    "survived in the checked windows."
+                )
+            run = PressureHeightSurvivorClosureWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                height_lift_reports=height_reports,
+                closure_gates=[
+                    "height escape contradicts minimal persistence",
+                    "pressure-bad plus height-escaping block is not a persistent survivor",
+                    "composite exit kills minimal bad obstruction",
+                    "all-checked height escape removes dangerous survivor count",
+                    "closure target remains counting/height-only",
+                ],
+                adversarial_gates=[
+                    "pressure bad alone can still persist",
+                    "nonexpanding pressure-bad block remains an obstruction",
+                    "pressure recovery and survivor drop are separate exits",
+                    "strict height escape is necessary for the new closure step",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether height escape actually closes minimal persistence rather than just naming an escape.",
+                    "Whether pressure-bad alone is still insufficient, preventing false optimism.",
+                    "Whether the next route is pressure-plus-height survivor closure or a pivot away.",
+                    "Whether the closure target can stay free of reachability fields.",
+                ],
+                closure_summary=closure_summary,
+                summary=(
+                    "Pressure-height survivor closure wave compiled theorem-shaped probes for "
+                    "the next gate: pressure-bad recurrence plus positive height drift should "
+                    "exclude persistent minimal survivors, while pressure-bad alone remains insufficient."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightSurvivorClosureWaveRun",
+                title=f"pressure-height-survivor-closure-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_survivor_closure_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -6337,6 +6463,319 @@ theorem dpa_pressure_bad_can_still_height_escape_{suffix} :
                     notes=(
                         "Dynamic pressure automaton probe; generated from finite residue "
                         "search rather than hand-picked narrative examples."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_survivor_closure_wave_probes(
+        self,
+        *,
+        world_id: str,
+        height_reports: list[dict[str, Any]],
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        expanding_report = next(
+            (
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ),
+            None,
+        )
+        expanding_component = (
+            expanding_report["components"][0]
+            if expanding_report and expanding_report.get("components")
+            else None
+        )
+        drift = expanding_component.get("witness_height_drift", {}) if expanding_component else {}
+        recurrent_bad = int(expanding_report.get("recurrent_component_count", 1)) if expanding_report else 1
+        height_escaping = int(expanding_report.get("height_expanding_component_count", 1)) if expanding_report else 1
+        dangerous = int(expanding_report.get("dangerous_component_count", 0)) if expanding_report else 0
+        odd_witness = int(drift.get("cycle_odd_count", 1))
+        even_witness = int(drift.get("cycle_even_count", 1))
+        height_before = max(1, 2**min(even_witness, 8))
+        height_after = height_before + max(1, odd_witness)
+        base_defs = f"""
+structure SurvivorClosureBlock_{suffix} where
+  oddEdges : Nat
+  evenEdges : Nat
+  heightBefore : Nat
+  heightAfter : Nat
+  badMass : Nat
+  nextBadMass : Nat
+  obstruction : Nat
+  nextObstruction : Nat
+
+def scPressureRecovers_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  8 * b.oddEdges < 5 * b.evenEdges
+
+def scPressureBad_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  Not (scPressureRecovers_{suffix} b)
+
+def scHeightEscapes_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  b.heightBefore < b.heightAfter
+
+def scMinimalPersists_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  b.heightAfter <= b.heightBefore
+
+def scSurvivorDrops_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  b.nextObstruction < b.obstruction
+
+def scCompositeExit_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  scPressureRecovers_{suffix} b \\/
+    scHeightEscapes_{suffix} b \\/
+    scSurvivorDrops_{suffix} b
+
+def scMinimalBadObstruction_{suffix} (b : SurvivorClosureBlock_{suffix}) : Prop :=
+  scPressureBad_{suffix} b /\\
+    scMinimalPersists_{suffix} b /\\
+    Not (scPressureRecovers_{suffix} b) /\\
+    Not (scSurvivorDrops_{suffix} b)
+
+def scGhostEscapeBlock_{suffix} : SurvivorClosureBlock_{suffix} :=
+  {{ oddEdges := {odd_witness}, evenEdges := {even_witness},
+    heightBefore := {height_before}, heightAfter := {height_after},
+    badMass := 1, nextBadMass := 1, obstruction := 5, nextObstruction := 5 }}
+
+def scPressureBadPersistentBlock_{suffix} : SurvivorClosureBlock_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 1,
+    heightBefore := 2, heightAfter := 2,
+    badMass := 1, nextBadMass := 1, obstruction := 5, nextObstruction := 5 }}
+
+def scRecoveryBlock_{suffix} : SurvivorClosureBlock_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 2,
+    heightBefore := 2, heightAfter := 2,
+    badMass := 1, nextBadMass := 0, obstruction := 5, nextObstruction := 5 }}
+
+def scDropBlock_{suffix} : SurvivorClosureBlock_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 1,
+    heightBefore := 2, heightAfter := 2,
+    badMass := 1, nextBadMass := 1, obstruction := 5, nextObstruction := 3 }}
+
+structure SurvivorClosureFrontier_{suffix} where
+  horizon : Nat
+  recurrentBad : Nat
+  heightEscaping : Nat
+  dangerous : Nat
+
+def scCheckedFrontier_{suffix} : SurvivorClosureFrontier_{suffix} :=
+  {{ horizon := {int(expanding_report.get("window", 2)) if expanding_report else 2},
+    recurrentBad := {recurrent_bad}, heightEscaping := {height_escaping}, dangerous := {dangerous} }}
+
+def scAllCheckedHeightEscaping_{suffix} (f : SurvivorClosureFrontier_{suffix}) : Prop :=
+  f.recurrentBad = f.heightEscaping /\\ f.dangerous = 0
+
+def scNoDangerousSurvivor_{suffix} (f : SurvivorClosureFrontier_{suffix}) : Prop :=
+  f.dangerous = 0
+
+structure SurvivorClosureTarget_{suffix} where
+  horizon : Nat
+  recurrentBad : Nat
+  heightEscaping : Nat
+  dangerous : Nat
+
+def scTargetExample_{suffix} : SurvivorClosureTarget_{suffix} :=
+  {{ horizon := scCheckedFrontier_{suffix}.horizon,
+    recurrentBad := scCheckedFrontier_{suffix}.recurrentBad,
+    heightEscaping := scCheckedFrontier_{suffix}.heightEscaping,
+    dangerous := scCheckedFrontier_{suffix}.dangerous }}
+""".strip()
+        height_escape_contradiction = f"""
+theorem sc_height_escape_contradicts_minimal_persistence_{suffix}
+    (b : SurvivorClosureBlock_{suffix})
+    (hEscape : scHeightEscapes_{suffix} b)
+    (hPersist : scMinimalPersists_{suffix} b) :
+    False := by
+  unfold scHeightEscapes_{suffix} scMinimalPersists_{suffix} at *
+  omega
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "anti_smuggling_probe",
+                "Pressure-height survivor closure / pressure-bad alone can still persist.",
+                f"""{base_defs}
+
+theorem sc_pressure_bad_alone_can_still_persist_{suffix} :
+    scPressureBad_{suffix} scPressureBadPersistentBlock_{suffix} /\\
+    scMinimalPersists_{suffix} scPressureBadPersistentBlock_{suffix} /\\
+    Not (scCompositeExit_{suffix} scPressureBadPersistentBlock_{suffix}) := by
+  native_decide
+""",
+                True,
+                "adversarial_gate",
+                "pressure_bad_alone_insufficient",
+            ),
+            (
+                "bridge_probe",
+                "Pressure-height survivor closure / height escape contradicts minimal persistence.",
+                f"""{base_defs}
+
+{height_escape_contradiction}
+""",
+                True,
+                "survivor_closure",
+                "height_escape_not_minimal",
+            ),
+            (
+                "bridge_probe",
+                "Pressure-height survivor closure / checked ghost block is pressure-bad but not persistent.",
+                f"""{base_defs}
+
+theorem sc_checked_ghost_is_pressure_bad_but_not_persistent_{suffix} :
+    scPressureBad_{suffix} scGhostEscapeBlock_{suffix} /\\
+    scHeightEscapes_{suffix} scGhostEscapeBlock_{suffix} /\\
+    Not (scMinimalPersists_{suffix} scGhostEscapeBlock_{suffix}) := by
+  native_decide
+""",
+                True,
+                "survivor_closure",
+                "ghost_height_escape",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height survivor closure / composite exit kills minimal bad obstruction.",
+                f"""{base_defs}
+
+{height_escape_contradiction}
+
+theorem sc_composite_exit_kills_minimal_bad_{suffix}
+    (b : SurvivorClosureBlock_{suffix})
+    (hExit : scCompositeExit_{suffix} b)
+    (hBad : scMinimalBadObstruction_{suffix} b) :
+    False := by
+  cases hExit with
+  | inl hRecover =>
+      exact hBad.2.2.1 hRecover
+  | inr hRest =>
+      cases hRest with
+      | inl hHeight =>
+          exact sc_height_escape_contradicts_minimal_persistence_{suffix} b hHeight hBad.2.1
+      | inr hDrop =>
+          exact hBad.2.2.2 hDrop
+""",
+                True,
+                "survivor_closure",
+                "composite_exit",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height survivor closure / nonexpanding pressure-bad block remains obstruction.",
+                f"""{base_defs}
+
+theorem sc_nonexpanding_pressure_bad_remains_obstruction_{suffix} :
+    scMinimalBadObstruction_{suffix} scPressureBadPersistentBlock_{suffix} := by
+  native_decide
+""",
+                True,
+                "adversarial_gate",
+                "strict_height_needed",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height survivor closure / checked frontier has no dangerous survivor component.",
+                f"""{base_defs}
+
+theorem sc_checked_frontier_has_no_dangerous_survivor_{suffix} :
+    scAllCheckedHeightEscaping_{suffix} scCheckedFrontier_{suffix} /\\
+    scNoDangerousSurvivor_{suffix} scCheckedFrontier_{suffix} := by
+  native_decide
+""",
+                True,
+                "survivor_closure",
+                "checked_frontier_no_dangerous",
+            ),
+            (
+                "bridge_probe",
+                "Pressure-height survivor closure / pressure recovery is an independent closure exit.",
+                f"""{base_defs}
+
+theorem sc_pressure_recovery_is_independent_exit_{suffix} :
+    scPressureRecovers_{suffix} scRecoveryBlock_{suffix} /\\
+    scCompositeExit_{suffix} scRecoveryBlock_{suffix} := by
+  native_decide
+""",
+                False,
+                "survivor_closure",
+                "pressure_recovery_exit",
+            ),
+            (
+                "bridge_probe",
+                "Pressure-height survivor closure / survivor drop is an independent closure exit.",
+                f"""{base_defs}
+
+theorem sc_survivor_drop_is_independent_exit_{suffix} :
+    scSurvivorDrops_{suffix} scDropBlock_{suffix} /\\
+    scCompositeExit_{suffix} scDropBlock_{suffix} := by
+  native_decide
+""",
+                False,
+                "survivor_closure",
+                "survivor_drop_exit",
+            ),
+            (
+                "definition_probe",
+                "Pressure-height survivor closure / target is counting-height only.",
+                f"""{base_defs}
+
+theorem sc_target_is_counting_height_only_{suffix} :
+    scTargetExample_{suffix}.horizon = scCheckedFrontier_{suffix}.horizon /\\
+    scTargetExample_{suffix}.dangerous = 0 := by
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_height_only",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height survivor closure / all-checked height escape implies no dangerous survivor.",
+                f"""{base_defs}
+
+theorem sc_all_checked_height_escape_implies_no_dangerous_survivor_{suffix}
+    (f : SurvivorClosureFrontier_{suffix})
+    (h : scAllCheckedHeightEscaping_{suffix} f) :
+    scNoDangerousSurvivor_{suffix} f := by
+  exact h.2
+""",
+                True,
+                "survivor_closure",
+                "frontier_closure_schema",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_survivor_closure_wave": True,
+                "closure_family": family,
+                "closure_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "height_escape_witness": {
+                    "odd_edges": odd_witness,
+                    "even_edges": even_witness,
+                    "height_before": height_before,
+                    "height_after": height_after,
+                },
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Pressure-height survivor closure probe; this is the gate after "
+                        "the height-lifted automaton signal, with adversarial insufficiency checks."
                     ),
                 )
             )
