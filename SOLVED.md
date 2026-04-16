@@ -1327,3 +1327,77 @@ The integration tranche must distinguish:
 
 If route integration passes, this pressure-height route has a candidate proof spine, not a finished Collatz proof.
 ```
+
+### R25. Route Integration Produces a Candidate Proof Spine
+
+These facts come from pressure-height route integration run `RI-0c956a396e` on world `W-0273193499`, campaign `C-0b40d25be898`, submitted in Aristotle bake `PB-eff1191ab8`, and digested in `PD-6141bc819e`.
+
+All raw Aristotle jobs again reported `COMPLETE_WITH_ERRORS`, but the reconciled digest recovered the proof artifacts and found no proof-side failures:
+
+```text
+artifact_count: 64
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified route-integration outcomes:
+
+```text
+integrated exactness+drift certificate is definable: proved
+integrated certificate implies R23 bridge assumptions: proved
+R23 bridge assumptions imply R22 pressure-height invariant: proved
+R22 invariant implies no dangerous frontier: proved
+exactness plus drift compose to no dangerous frontier: proved
+window-8 instance composes through the route: proved
+unchecked exactness obstruction blocks integration: proved
+nonpositive-drift obstruction blocks integration: proved
+fake static certificate is rejected: proved
+integration target has no reachability or termination field: proved
+density-zero Composite Scarcity remains explicit debt: proved
+ordinary Collatz pullback remains explicit debt: proved
+roadmap state after integration is proof spine not final proof: proved
+```
+
+Interpretation:
+
+```text
+This is the strongest verified narrowing so far.
+
+The pressure-height route now has a candidate proof spine:
+
+actual SCC exactness + positive SCC drift
+-> R23 bridge assumptions
+-> R22 pressure-height invariant
+-> no dangerous pressure-height frontier.
+
+The integration did not smuggle the final theorem:
+
+reachability is not a field;
+termination is not a field;
+density-zero / Composite Scarcity is still open;
+ordinary Collatz pullback is still open.
+```
+
+Decision implication:
+
+```text
+The next phase is the final global-closure / pullback phase for this route.
+
+It should not invent another invariant unless the final phase fails. It should test:
+
+1. no dangerous pressure-height frontier implies the density-zero / Composite Scarcity closure;
+2. density-zero plus finite/base coverage rules out a nonterminating survivor family;
+3. the pressure-height statement soundly pulls back to ordinary Collatz termination;
+4. anti-circularity checks confirm that no reachability, termination, or unproved density assumption is hidden.
+
+If this phase passes, we may have a formal proof architecture for Collatz.
+
+If it fails, the failure should name exactly which final bridge is missing:
+
+density closure;
+finite exception/base coverage;
+or ordinary Collatz pullback.
+```
