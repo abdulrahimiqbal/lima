@@ -30,6 +30,7 @@ from .schemas import (
     HybridCertificateFamilyRequest,
     InventionBatchCreate,
     PivotPortfolioWaveRequest,
+    PressureHeightFrontierCertificateWaveRequest,
     PressureHeightSurvivorClosureWaveRequest,
     PressureGlobalizationWaveRequest,
     PromoteWorldRequest,
@@ -552,6 +553,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.run_pressure_height_survivor_closure_wave(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/pressure-height-frontier-certificate-wave")
+    def run_pressure_height_frontier_certificate_wave(
+        campaign_id: str,
+        payload: PressureHeightFrontierCertificateWaveRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_pressure_height_frontier_certificate_wave(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

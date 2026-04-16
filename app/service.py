@@ -68,6 +68,8 @@ from .schemas import (
     PendingAristotleJob,
     PivotPortfolioWaveRequest,
     PivotPortfolioWaveRun,
+    PressureHeightFrontierCertificateWaveRequest,
+    PressureHeightFrontierCertificateWaveRun,
     PressureHeightSurvivorClosureWaveRequest,
     PressureHeightSurvivorClosureWaveRun,
     PressureGlobalizationWaveRequest,
@@ -2577,6 +2579,129 @@ class CampaignService:
                 campaign_id=campaign_id,
                 tick=campaign.tick_count,
                 event_type="pressure_height_survivor_closure_wave_compiled",
+                payload=run.model_dump(mode="json"),
+            )
+            return run
+
+    def run_pressure_height_frontier_certificate_wave(
+        self,
+        campaign_id: str,
+        payload: PressureHeightFrontierCertificateWaveRequest,
+    ) -> PressureHeightFrontierCertificateWaveRun:
+        with self._campaign_lock(campaign_id):
+            campaign = self.get_campaign(campaign_id)
+            world_payload = campaign.current_world_program or {}
+            world_id = payload.world_id or campaign.active_world_id or world_payload.get("id")
+            if not world_id:
+                raise KeyError("No promoted world is available for pressure-height frontier certificate wave.")
+            world_label = world_payload.get("label") or world_id
+            height_reports = [
+                analyze_height_lifted_pressure_automaton(
+                    window=window,
+                    modulus_bits=max(2, window + payload.modulus_extra_bits),
+                )
+                for window in range(1, payload.max_window + 1)
+            ]
+            probes = self._compile_pressure_height_frontier_certificate_wave_probes(
+                world_id=world_id,
+                height_reports=height_reports,
+                max_probes=payload.max_probes,
+            )
+            for probe in probes:
+                self.memory.upsert_research_node(
+                    campaign_id=campaign_id,
+                    node_id=probe.id,
+                    node_type="FormalProbe",
+                    title=f"pressure-height-frontier-certificate:{probe.probe_type}:{world_id}",
+                    summary=probe.source_text,
+                    status=probe.status,
+                    payload=probe.model_dump(mode="json"),
+                )
+            dangerous = [
+                report
+                for report in height_reports
+                if report["decision"] == "dangerous_nonexpanding_bad_cycle_found"
+            ]
+            unchecked = [
+                report
+                for report in height_reports
+                if report["decision"] == "needs_larger_exact_scc_check"
+            ]
+            expanding = [
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ]
+            if dangerous:
+                certificate_summary = (
+                    "Certificate gate should pivot: a dangerous nonexpanding component survived "
+                    "the pressure-plus-height check."
+                )
+            elif unchecked:
+                certificate_summary = (
+                    "Certificate gate is not ready: at least one recurrent component needs a larger exact SCC check."
+                )
+            elif expanding:
+                certificate_summary = (
+                    "Certificate gate is ready: local height-escaping components can be packaged into "
+                    "a uniform no-dangerous-frontier certificate theorem."
+                )
+            else:
+                certificate_summary = (
+                    "Certificate gate is ready from acyclicity: no recurrent bad component survived "
+                    "in the checked windows."
+                )
+            run = PressureHeightFrontierCertificateWaveRun(
+                campaign_id=campaign_id,
+                world_id=world_id,
+                world_label=world_label,
+                compiled_probe_count=len(probes),
+                probe_ids=[probe.id for probe in probes],
+                height_lift_reports=height_reports,
+                certificate_gates=[
+                    "component certificate format records pressure, height, and survivor-drop exits",
+                    "all-certified frontier has no dangerous persistent component",
+                    "certificate soundness is uniform over a component list",
+                    "checked height-lift report packages as a certificate frontier",
+                    "counting/density target depends only on certified bad count",
+                ],
+                adversarial_gates=[
+                    "frontier without certificates can contain a dangerous component",
+                    "pressure-bad alone does not certify a component",
+                    "height escape without frontier coverage is insufficient",
+                    "certificate target has no reachability field",
+                ],
+                decisive_probe_ids=[
+                    probe.id
+                    for probe in probes
+                    if probe.formal_obligation.metadata.get("decisive")
+                ],
+                expected_learning=[
+                    "Whether local survivor closure can be packaged as a uniform frontier certificate theorem.",
+                    "Whether the certificate theorem avoids reachability smuggling.",
+                    "Whether arbitrary pressure-bad frontiers still fail without explicit certificates.",
+                    "Whether the next step can target parameterized certificate existence rather than new vocabulary.",
+                ],
+                certificate_summary=certificate_summary,
+                summary=(
+                    "Pressure-height frontier certificate wave compiled the next bounded-to-parameterized "
+                    "gate: a frontier-wide certificate should imply no dangerous persistent component, "
+                    "while uncertified pressure-bad frontiers remain adversarial."
+                ),
+            )
+            self.memory.upsert_research_node(
+                campaign_id=campaign_id,
+                node_id=run.id,
+                node_type="PressureHeightFrontierCertificateWaveRun",
+                title=f"pressure-height-frontier-certificate-wave:{world_id}",
+                summary=run.summary,
+                status=run.decision_status,
+                payload=run.model_dump(mode="json"),
+            )
+            self.memory.add_event(
+                campaign_id=campaign_id,
+                tick=campaign.tick_count,
+                event_type="pressure_height_frontier_certificate_wave_compiled",
                 payload=run.model_dump(mode="json"),
             )
             return run
@@ -6776,6 +6901,365 @@ theorem sc_all_checked_height_escape_implies_no_dangerous_survivor_{suffix}
                     notes=(
                         "Pressure-height survivor closure probe; this is the gate after "
                         "the height-lifted automaton signal, with adversarial insufficiency checks."
+                    ),
+                )
+            )
+        return probes
+
+    def _compile_pressure_height_frontier_certificate_wave_probes(
+        self,
+        *,
+        world_id: str,
+        height_reports: list[dict[str, Any]],
+        max_probes: int,
+    ) -> list[FormalProbe]:
+        suffix = uuid4().hex[:8]
+        expanding_report = next(
+            (
+                report
+                for report in height_reports
+                if report["decision"] == "all_checked_bad_cycles_height_expanding"
+            ),
+            None,
+        )
+        expanding_component = (
+            expanding_report["components"][0]
+            if expanding_report and expanding_report.get("components")
+            else None
+        )
+        drift = expanding_component.get("witness_height_drift", {}) if expanding_component else {}
+        recurrent_bad = int(expanding_report.get("recurrent_component_count", 1)) if expanding_report else 1
+        height_escaping = int(expanding_report.get("height_expanding_component_count", 1)) if expanding_report else 1
+        dangerous = int(expanding_report.get("dangerous_component_count", 0)) if expanding_report else 0
+        odd_witness = int(drift.get("cycle_odd_count", 1))
+        even_witness = int(drift.get("cycle_even_count", 1))
+        base_defs = f"""
+structure FrontierComponent_{suffix} where
+  oddEdges : Nat
+  evenEdges : Nat
+  heightBefore : Nat
+  heightAfter : Nat
+  obstruction : Nat
+  nextObstruction : Nat
+
+def fcPressureRecovers_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  8 * c.oddEdges < 5 * c.evenEdges
+
+def fcPressureBad_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  Not (fcPressureRecovers_{suffix} c)
+
+def fcHeightEscapes_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  c.heightBefore < c.heightAfter
+
+def fcSurvivorDrops_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  c.nextObstruction < c.obstruction
+
+def fcCertified_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  fcPressureRecovers_{suffix} c \\/
+    fcHeightEscapes_{suffix} c \\/
+    fcSurvivorDrops_{suffix} c
+
+def fcDangerous_{suffix} (c : FrontierComponent_{suffix}) : Prop :=
+  fcPressureBad_{suffix} c /\\
+    Not (fcHeightEscapes_{suffix} c) /\\
+    Not (fcSurvivorDrops_{suffix} c)
+
+def fcAllCertified_{suffix} (xs : List FrontierComponent_{suffix}) : Prop :=
+  ∀ c, c ∈ xs -> fcCertified_{suffix} c
+
+def fcHasDangerous_{suffix} (xs : List FrontierComponent_{suffix}) : Prop :=
+  ∃ c, c ∈ xs /\\ fcDangerous_{suffix} c
+
+def fcHeightComponent_{suffix} : FrontierComponent_{suffix} :=
+  {{ oddEdges := {odd_witness}, evenEdges := {even_witness},
+    heightBefore := 2, heightAfter := 3, obstruction := 5, nextObstruction := 5 }}
+
+def fcRecoveryComponent_{suffix} : FrontierComponent_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 2,
+    heightBefore := 2, heightAfter := 2, obstruction := 5, nextObstruction := 5 }}
+
+def fcDropComponent_{suffix} : FrontierComponent_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 1,
+    heightBefore := 2, heightAfter := 2, obstruction := 5, nextObstruction := 3 }}
+
+def fcDangerousComponent_{suffix} : FrontierComponent_{suffix} :=
+  {{ oddEdges := 1, evenEdges := 1,
+    heightBefore := 2, heightAfter := 2, obstruction := 5, nextObstruction := 5 }}
+
+def fcCheckedFrontier_{suffix} : List FrontierComponent_{suffix} :=
+  [fcHeightComponent_{suffix}, fcRecoveryComponent_{suffix}, fcDropComponent_{suffix}]
+
+def fcAdversarialFrontier_{suffix} : List FrontierComponent_{suffix} :=
+  [fcDangerousComponent_{suffix}]
+
+def fcMixedFrontier_{suffix} : List FrontierComponent_{suffix} :=
+  [fcHeightComponent_{suffix}, fcDangerousComponent_{suffix}]
+
+structure FrontierCertificate_{suffix} where
+  components : List FrontierComponent_{suffix}
+  recurrentBad : Nat
+  certified : Nat
+  dangerous : Nat
+
+def fcCheckedCertificate_{suffix} : FrontierCertificate_{suffix} :=
+  {{ components := fcCheckedFrontier_{suffix},
+    recurrentBad := {recurrent_bad}, certified := {height_escaping}, dangerous := {dangerous} }}
+
+def fcSoundCertificate_{suffix} (cert : FrontierCertificate_{suffix}) : Prop :=
+  fcAllCertified_{suffix} cert.components /\\ cert.dangerous = 0
+
+def fcNoDangerousFrontier_{suffix} (cert : FrontierCertificate_{suffix}) : Prop :=
+  cert.dangerous = 0 /\\ Not (fcHasDangerous_{suffix} cert.components)
+
+def fcDensityClosed_{suffix} (cert : FrontierCertificate_{suffix}) : Prop :=
+  cert.dangerous = 0
+
+structure FrontierCertificateTarget_{suffix} where
+  recurrentBad : Nat
+  certified : Nat
+  dangerous : Nat
+
+def fcTargetExample_{suffix} : FrontierCertificateTarget_{suffix} :=
+  {{ recurrentBad := fcCheckedCertificate_{suffix}.recurrentBad,
+    certified := fcCheckedCertificate_{suffix}.certified,
+    dangerous := fcCheckedCertificate_{suffix}.dangerous }}
+""".strip()
+        component_soundness = f"""
+theorem fc_component_certificate_not_dangerous_{suffix}
+    (c : FrontierComponent_{suffix})
+    (hCert : fcCertified_{suffix} c) :
+    Not (fcDangerous_{suffix} c) := by
+  intro hDanger
+  cases hCert with
+  | inl hRecover =>
+      exact hDanger.1 hRecover
+  | inr hRest =>
+      cases hRest with
+      | inl hHeight =>
+          exact hDanger.2.1 hHeight
+      | inr hDrop =>
+          exact hDanger.2.2 hDrop
+""".strip()
+        frontier_soundness = f"""
+{component_soundness}
+
+theorem fc_all_certified_frontier_has_no_dangerous_{suffix}
+    (xs : List FrontierComponent_{suffix})
+    (hAll : fcAllCertified_{suffix} xs) :
+    Not (fcHasDangerous_{suffix} xs) := by
+  intro hDanger
+  cases hDanger with
+  | intro c hRest =>
+      exact fc_component_certificate_not_dangerous_{suffix} c (hAll c hRest.1) hRest.2
+""".strip()
+        specs: list[tuple[str, str, str, bool, str, str]] = [
+            (
+                "definition_probe",
+                "Pressure-height frontier certificate / component certificate format has three exits.",
+                f"""{base_defs}
+
+theorem fc_component_certificate_format_has_three_exits_{suffix} :
+    fcCertified_{suffix} fcRecoveryComponent_{suffix} /\\
+    fcCertified_{suffix} fcHeightComponent_{suffix} /\\
+    fcCertified_{suffix} fcDropComponent_{suffix} := by
+  native_decide
+""",
+                True,
+                "certificate_format",
+                "three_exits",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / component certificate excludes danger.",
+                f"""{base_defs}
+
+{component_soundness}
+""",
+                True,
+                "certificate_soundness",
+                "component_soundness",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / all-certified frontier has no dangerous component.",
+                f"""{base_defs}
+
+{frontier_soundness}
+""",
+                True,
+                "certificate_soundness",
+                "frontier_soundness",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / checked frontier packages as all-certified.",
+                f"""{base_defs}
+
+theorem fc_checked_frontier_is_all_certified_{suffix} :
+    fcAllCertified_{suffix} fcCheckedFrontier_{suffix} := by
+  native_decide
+""",
+                True,
+                "bounded_certificate",
+                "checked_all_certified",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / checked certificate has no dangerous survivor.",
+                f"""{base_defs}
+
+{frontier_soundness}
+
+theorem fc_checked_certificate_has_no_dangerous_survivor_{suffix} :
+    fcNoDangerousFrontier_{suffix} fcCheckedCertificate_{suffix} := by
+  constructor
+  · native_decide
+  · exact fc_all_certified_frontier_has_no_dangerous_{suffix}
+      fcCheckedCertificate_{suffix}.components
+      (by native_decide)
+""",
+                True,
+                "bounded_certificate",
+                "checked_no_dangerous",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier certificate / uncertified frontier can contain danger.",
+                f"""{base_defs}
+
+theorem fc_uncertified_frontier_can_contain_danger_{suffix} :
+    fcHasDangerous_{suffix} fcAdversarialFrontier_{suffix} := by
+  native_decide
+""",
+                True,
+                "adversarial_gate",
+                "uncertified_danger",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier certificate / pressure-bad alone is not a certificate.",
+                f"""{base_defs}
+
+theorem fc_pressure_bad_alone_is_not_certificate_{suffix} :
+    fcPressureBad_{suffix} fcDangerousComponent_{suffix} /\\
+    Not (fcCertified_{suffix} fcDangerousComponent_{suffix}) := by
+  native_decide
+""",
+                True,
+                "adversarial_gate",
+                "pressure_bad_not_certificate",
+            ),
+            (
+                "anti_smuggling_probe",
+                "Pressure-height frontier certificate / one height escape without coverage is insufficient.",
+                f"""{base_defs}
+
+theorem fc_one_height_escape_without_coverage_insufficient_{suffix} :
+    (∃ c, c ∈ fcMixedFrontier_{suffix} /\\ fcHeightEscapes_{suffix} c) /\\
+    fcHasDangerous_{suffix} fcMixedFrontier_{suffix} := by
+  native_decide
+""",
+                True,
+                "adversarial_gate",
+                "coverage_required",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / sound certificate gives density closure.",
+                f"""{base_defs}
+
+theorem fc_sound_certificate_gives_density_closure_{suffix}
+    (cert : FrontierCertificate_{suffix})
+    (hSound : fcSoundCertificate_{suffix} cert) :
+    fcDensityClosed_{suffix} cert := by
+  exact hSound.2
+""",
+                True,
+                "density_bridge",
+                "certificate_to_density",
+            ),
+            (
+                "definition_probe",
+                "Pressure-height frontier certificate / target is counting-height only.",
+                f"""{base_defs}
+
+theorem fc_target_is_counting_height_only_{suffix} :
+    fcTargetExample_{suffix}.recurrentBad = {recurrent_bad} /\\
+    fcTargetExample_{suffix}.certified = {height_escaping} /\\
+    fcTargetExample_{suffix}.dangerous = 0 := by
+  native_decide
+""",
+                True,
+                "anti_smuggling",
+                "counting_height_only",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / checked certificate is sound.",
+                f"""{base_defs}
+
+theorem fc_checked_certificate_is_sound_{suffix} :
+    fcSoundCertificate_{suffix} fcCheckedCertificate_{suffix} := by
+  constructor
+  · native_decide
+  · native_decide
+""",
+                True,
+                "bounded_certificate",
+                "checked_certificate_sound",
+            ),
+            (
+                "closure_probe",
+                "Pressure-height frontier certificate / certificate theorem is uniform over frontiers.",
+                f"""{base_defs}
+
+{frontier_soundness}
+
+theorem fc_uniform_certificate_theorem_{suffix}
+    (cert : FrontierCertificate_{suffix})
+    (hSound : fcSoundCertificate_{suffix} cert) :
+    fcNoDangerousFrontier_{suffix} cert := by
+  constructor
+  · exact hSound.2
+  · exact fc_all_certified_frontier_has_no_dangerous_{suffix}
+      cert.components hSound.1
+""",
+                True,
+                "certificate_soundness",
+                "uniform_frontier_theorem",
+            ),
+        ]
+
+        probes: list[FormalProbe] = []
+        for probe_type, source_text, lean, decisive, family, role in specs[:max_probes]:
+            metadata = {
+                "pressure_height_frontier_certificate_wave": True,
+                "certificate_family": family,
+                "certificate_role": role,
+                "decisive": decisive,
+                "world_id": world_id,
+                "frontier_counts": {
+                    "recurrent_bad": recurrent_bad,
+                    "height_escaping": height_escaping,
+                    "dangerous": dangerous,
+                },
+            }
+            probes.append(
+                FormalProbe(
+                    world_id=world_id,
+                    probe_type=probe_type,  # type: ignore[arg-type]
+                    source_text=source_text,
+                    formal_obligation=FormalObligationSpec(
+                        source_text=source_text,
+                        channel_hint="proof",
+                        goal_kind="theorem",
+                        lean_declaration=lean,
+                        requires_proof=True,
+                        metadata=metadata,
+                    ),
+                    notes=(
+                        "Pressure-height frontier certificate probe; this packages the "
+                        "local survivor-closure result into a uniform certificate theorem."
                     ),
                 )
             )
