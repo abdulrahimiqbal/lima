@@ -26,6 +26,12 @@ and repeatedly refines them into dyadic child families:
 
 Each child is then tested against the current theorem-backed affine rewrite rules.
 
+The proof-side partner of this file is now:
+
+```text
+docs/COLLATZ_REFINEMENT_PARTITION_AUDIT.md
+```
+
 ## Core Signal
 
 The new 1024 and 4096 theorems do not close parent roots directly.
@@ -76,6 +82,47 @@ Under the current theorem-backed rule inventory, the refinement compass resolves
 
 So deeper refinement does help, but it does not yet close everything.
 
+## Transition Compression
+
+A stronger search view now clusters unresolved states by their next four levels of
+resolved/unresolved child counts.
+
+Across moduli:
+
+```text
+4096
+8192
+16384
+```
+
+the current unresolved tree compresses into only eight local profile classes.
+
+Examples:
+
+```text
+S1 = (0,2) -> (0,4) -> (0,8) -> (0,16)
+S4 = (0,2) -> (0,4) -> (1,7) -> (3,11)
+S7 = (1,1) -> (0,2) -> (1,3) -> (2,4)
+```
+
+and the transitions are structured rather than chaotic, for example:
+
+```text
+at modulus 4096:
+S4 -> {S3, S6}
+S7 -> {S6}
+S2 -> {S1, S3}
+S1 -> {S1, S1}
+
+at modulus 8192:
+S3 -> {S2, S5}
+S6 -> {S5, S8}
+S1 -> {S1, S2} or {S1, S1}
+```
+
+This is still only search signal, but it is closer to a finite automaton than to a
+random residue explosion.
+
 ## What This Means
 
 This is the clearest current statement of the missing theorem:
@@ -93,4 +140,4 @@ Promote this from a compass to a theorem target:
 
 1. define the refinement operator formally
 2. define what it means for a parent family to be closed by its children
-3. find a measure that decreases under refinement-plus-rewrite
+3. replace the profile compass by a real finite-state closure or decreasing measure theorem

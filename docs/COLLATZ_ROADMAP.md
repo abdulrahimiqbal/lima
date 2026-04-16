@@ -59,6 +59,9 @@ concrete exit families currently proved:
 - n ≡ 7, 15, or 59 mod 128
 - n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
 - n ≡ 383, 615, or 2587 mod 4096
+
+general refinement theorem currently proved:
+- if all dyadic children of a family descend, then the parent family descends
 ```
 
 Search-only compass signal:
@@ -69,7 +72,8 @@ composes descent certificates for some mod-256 roots such as 39, 79, 95, and 123
 
 After adding the new 1024 and 4096 extension rules, that root-level frontier does not
 change. A separate refinement compass now shows that the unresolved parents split into
-two visible dyadic archetypes.
+two visible dyadic archetypes, and a transition compass compresses the unresolved tree
+into a small number of profile classes across 4096/8192/16384.
 
 This is still not a proof artifact. It is guidance for the next hardening step.
 ```

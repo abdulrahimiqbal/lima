@@ -11,6 +11,7 @@ docs/COLLATZ_EXIT_BRIDGE_HARDENING.md
 docs/COLLATZ_DESCENT_EXTENSION_HARDENING.md
 docs/COLLATZ_AFFINE_REWRITE_COMPASS.md
 docs/COLLATZ_AFFINE_REFINEMENT_COMPASS.md
+docs/COLLATZ_REFINEMENT_PARTITION_AUDIT.md
 ```
 
 Current status:
@@ -85,6 +86,15 @@ This suggests the right missing object is not just a theorem about affine-family
 rewriting, but a theorem about a dyadic refinement plus affine rewrite system.
 ```
 
+Additional update:
+
+```text
+That object is now split cleanly into:
+1. a proved Lean partition theorem saying child closure implies parent closure
+2. a search-only transition compass suggesting the unresolved tree compresses into
+   a small number of profile classes rather than exploding arbitrarily
+```
+
 ## Exit-Bridge Extension Facts Added 2026-04-16
 
 ### E1. Nine New Refined Descent Families Compile In Lean
@@ -150,6 +160,50 @@ Interpretation:
 ```text
 The remaining proof target is now best described as:
 prove a well-founded dyadic refinement + affine rewrite closure theorem.
+```
+
+### E4. A General Dyadic Partition Theorem Now Compiles In Lean
+
+Status:
+
+```text
+proved locally in Lean via scripts/run_collatz_refinement_partition_audit.py
+```
+
+What it says:
+
+```text
+if both one-bit children descend, then the parent descends
+if all 2^m dyadic children descend, then the parent descends
+```
+
+Interpretation:
+
+```text
+This is the first general theorem that turns finite child closure into a parent theorem.
+It is the proof-side bridge from branch data to universal descent.
+```
+
+### E5. The Unresolved Tree Now Has A Small Transition Compass
+
+Status:
+
+```text
+search-only signal via scripts/run_collatz_refinement_transition_compass.py
+```
+
+Signal:
+
+```text
+across moduli 4096, 8192, and 16384, the unresolved tree compresses into
+eight local profile classes under a four-level child-count signature
+```
+
+Interpretation:
+
+```text
+This does not prove well-foundedness, but it is the first concrete sign that the
+remaining search may be describable by a finite-state closure theorem.
 ```
 
 ## Rank/Certificate Hunt Facts Added 2026-04-15
