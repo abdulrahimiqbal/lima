@@ -32,6 +32,7 @@ from .schemas import (
     PivotPortfolioWaveRequest,
     PressureHeightFrontierCertificateWaveRequest,
     PressureHeightFrontierCompletenessWaveRequest,
+    PressureHeightParameterizedCompletenessWaveRequest,
     PressureHeightSurvivorClosureWaveRequest,
     PressureGlobalizationWaveRequest,
     PromoteWorldRequest,
@@ -580,6 +581,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         try:
             return service.run_pressure_height_frontier_completeness_wave(campaign_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/campaigns/{campaign_id}/world-evolution/pressure-height-parameterized-completeness-wave")
+    def run_pressure_height_parameterized_completeness_wave(
+        campaign_id: str,
+        payload: PressureHeightParameterizedCompletenessWaveRequest,
+        service: CampaignService = Depends(get_service),
+        _auth: None = Depends(require_operator_auth),
+        _csrf: None = Depends(require_csrf),
+    ):
+        try:
+            return service.run_pressure_height_parameterized_completeness_wave(campaign_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

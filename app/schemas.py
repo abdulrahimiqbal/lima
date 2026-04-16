@@ -1219,6 +1219,30 @@ class PressureHeightFrontierCompletenessWaveRun(BaseModel):
     created_at: datetime = Field(default_factory=_utc_now)
 
 
+class PressureHeightParameterizedCompletenessWaveRequest(BaseModel):
+    world_id: str | None = None
+    max_probes: int = Field(default=13, ge=8, le=13)
+    submit_after_compile: bool = False
+
+
+class PressureHeightParameterizedCompletenessWaveRun(BaseModel):
+    id: str = Field(default_factory=lambda: f"PK-{uuid4().hex[:10]}")
+    campaign_id: str
+    world_id: str | None = None
+    world_label: str | None = None
+    compiled_probe_count: int = 0
+    submitted_probe_count: int = 0
+    probe_ids: list[str] = Field(default_factory=list)
+    parameterized_gates: list[str] = Field(default_factory=list)
+    adversarial_gates: list[str] = Field(default_factory=list)
+    decisive_probe_ids: list[str] = Field(default_factory=list)
+    expected_learning: list[str] = Field(default_factory=list)
+    theorem_target_summary: str = ""
+    decision_status: Literal["ready_to_run", "pursue", "pivot", "inconclusive"] = "ready_to_run"
+    summary: str = ""
+    created_at: datetime = Field(default_factory=_utc_now)
+
+
 class CampaignCreate(BaseModel):
     title: str
     problem_statement: str

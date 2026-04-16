@@ -856,6 +856,46 @@ def test_pressure_height_frontier_completeness_wave_compiles_bounded_kill_test(
     assert any("concrete legal dangerous component" in item for item in payload["expected_learning"])
 
 
+def test_pressure_height_parameterized_completeness_wave_compiles_thirteen_probe_lift(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path))
+    client = TestClient(app)
+    campaign_id = _create_campaign(client)
+    run_response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/run",
+        json={
+            "generations": 1,
+            "worlds_per_generation": 10,
+            "survivors_per_generation": 4,
+            "mutations_per_survivor": 2,
+            "wildness": "extreme",
+            "max_formal_probes_per_generation": 4,
+            "max_evidence_probes_per_generation": 4,
+            "promote_best_survivor": True,
+        },
+    )
+    assert run_response.status_code == 200
+
+    response = client.post(
+        f"/api/campaigns/{campaign_id}/world-evolution/pressure-height-parameterized-completeness-wave",
+        json={
+            "max_probes": 13,
+            "submit_after_compile": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["compiled_probe_count"] == 13
+    assert "parameterized frontier generator invariant is explicit" in payload["parameterized_gates"]
+    assert "dangerous generator violates the invariant" in payload["adversarial_gates"]
+    assert "weak invariant exposes named obstruction instead of claiming closure" in payload["adversarial_gates"]
+    assert "Parameterized target" in payload["theorem_target_summary"]
+    assert payload["decisive_probe_ids"]
+    assert any("rather than another bounded search" in item for item in payload["expected_learning"])
+
+
 def test_anti_circularity_rejects_restatement(tmp_path: Path) -> None:
     service = CampaignService(_settings(tmp_path))
     world_evolution = WorldEvolutionService(service.memory, service.settings, service.invention)
