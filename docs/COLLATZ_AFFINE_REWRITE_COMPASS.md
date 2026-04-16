@@ -41,6 +41,15 @@ twentythree_mod_32
 seven_mod_128
 fifteen_mod_128
 fiftynine_mod_128
+twoeightyseven_mod_1024
+eightfifteen_mod_1024
+fiveseventyfive_mod_1024
+fiveeightythree_mod_1024
+threefortyseven_mod_1024
+threesixtyseven_mod_1024
+twentyfiveeightyseven_mod_4096
+sixfifteen_mod_4096
+threeeightythree_mod_4096
 ```
 
 Interpretation:
@@ -84,6 +93,10 @@ and leaves unresolved:
 127
 ```
 
+That unchanged root frontier is the main new fact.
+The extra 1024 and 4096 rules are real, but they only apply after dyadic refinement of
+the parent family.
+
 ## Example Certificates
 
 ```text
@@ -124,35 +137,30 @@ and leaves unresolved:
 
 ## Why This Matters
 
-This is the first useful evidence that the concrete exit-family theorems behave like
+This remains useful evidence that the concrete exit-family theorems behave like
 a compositional rewrite system, not just isolated residue tricks.
 
-That is important because the likely missing object is:
+But after adding the new refined rules, the stronger lesson is:
 
 ```text
-a well-founded affine-family rewrite theorem
+rewrite alone is not enough
+```
+
+The likely missing object is now:
+
+```text
+a well-founded dyadic refinement + affine-family rewrite theorem
 ```
 
 not just a longer list of hand-proved congruence lemmas.
 
 ## Next Use
 
-Use this compass to choose the next Lean promotions.
-
-Good next targets are the unresolved roots:
+Use this compass together with:
 
 ```text
-27
-31
-47
-63
-71
-91
-103
-111
-127
+docs/COLLATZ_AFFINE_REFINEMENT_COMPASS.md
 ```
 
-If these roots stay unresolved even under the affine rewrite search, the remaining gap
-is not “find one more residue family,” but “prove a new rewrite rule or a termination
-measure for the rewrite system itself.”
+The rewrite compass now tells us which parent roots still need refinement.
+The refinement compass tells us how those parents branch.

@@ -1,4 +1,157 @@
 
+## Read This First 2026-04-16
+
+This file is the cumulative fact log.
+
+If you only need the current state, read this section first, then:
+
+```text
+docs/COLLATZ_ROADMAP.md
+docs/COLLATZ_EXIT_BRIDGE_HARDENING.md
+docs/COLLATZ_DESCENT_EXTENSION_HARDENING.md
+docs/COLLATZ_AFFINE_REWRITE_COMPASS.md
+docs/COLLATZ_AFFINE_REFINEMENT_COMPASS.md
+```
+
+Current status:
+
+```text
+Collatz is not proved.
+
+The proof architecture has been compressed to one central target:
+for every n > 1, prove there exists k such that
+0 < collatz^[k](n) < n.
+
+If that target is proved, ordinary Collatz termination follows by strong induction.
+```
+
+What is theorem-level today:
+
+```text
+descent core over Nat: proved locally in Lean
+
+concrete exit families proved locally in Lean:
+- even n
+- n ≡ 1 mod 4, n > 1
+- n ≡ 3 mod 16
+- n ≡ 11 or 23 mod 32
+- n ≡ 7, 15, or 59 mod 128
+- n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
+- n ≡ 383, 615, or 2587 mod 4096
+
+these are actual iterateNat / collatzStep statements, not Bool certificate fields
+```
+
+What is not theorem-level yet:
+
+```text
+the full odd 4*a+3 family
+the final pressure-height scaffold elimination
+the fully expanded Nat-level pullback from the pressure-height route
+```
+
+Current exact local frontier:
+
+```text
+direct-family theorem frontier:
+27, 31, 39, 47, 63, 71, 79, 91, 95, 103, 111, 123, 127 mod 128
+
+single-family affine rewrite frontier:
+27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
+```
+
+Current problem-solving approach:
+
+```text
+1. Keep theorem-level Lean facts and search compasses separate.
+2. Promote only Lean-clean family theorems into the proof layer.
+3. Use compasses only to choose the next theorem candidates.
+4. Prefer proof hardening and scaffold elimination over new invention waves.
+5. If residue-family promotion stalls, prove a well-founded dyadic refinement + affine rewrite theorem instead of enumerating forever.
+```
+
+Current search-only signal:
+
+```text
+The single-family affine rewrite compass is not a proof, but it already shows that some
+unresolved mod-128 roots, including 39, 79, 95, and 123, admit composed descent
+certificates from the currently proved family rules.
+
+The new refinement compass is stronger conceptually:
+the 1024 and 4096 extension rules harden refined children of the unresolved mod-256
+parents, and those parents now cluster into two visible refinement archetypes.
+
+This suggests the right missing object is not just a theorem about affine-family
+rewriting, but a theorem about a dyadic refinement plus affine rewrite system.
+```
+
+## Exit-Bridge Extension Facts Added 2026-04-16
+
+### E1. Nine New Refined Descent Families Compile In Lean
+
+Status:
+
+```text
+proved locally in Lean via scripts/run_collatz_descent_extension_hardening.py
+```
+
+New theorem-backed families:
+
+```text
+1024*t + 287  -> 729*t + 205
+1024*t + 815  -> 729*t + 581
+1024*t + 575  -> 729*t + 410
+1024*t + 583  -> 729*t + 416
+1024*t + 347  -> 729*t + 248
+1024*t + 367  -> 729*t + 262
+4096*t + 2587 -> 2187*t + 1382
+4096*t + 615  -> 2187*t + 329
+4096*t + 383  -> 2187*t + 205
+```
+
+Interpretation:
+
+```text
+The researcher extension was real. These are valid new concrete exit theorems.
+```
+
+### E2. Adding Those Rules Does Not Change The Root-Level Rewrite Frontier
+
+Status:
+
+```text
+verified by scripts/run_collatz_affine_rewrite_compass.py
+```
+
+Interpretation:
+
+```text
+This is not bad news. It means the new rules only become visible after residue refinement.
+The missing object is larger than a single-family rewrite search.
+```
+
+### E3. The Remaining Object Is A Refinement Tree Theorem
+
+Status:
+
+```text
+sharpened by scripts/run_collatz_affine_refinement_compass.py
+```
+
+Signal:
+
+```text
+parents 31, 47, 63, 71, 91, 111 share one refinement profile
+parents 27, 103, 127 share another refinement profile
+```
+
+Interpretation:
+
+```text
+The remaining proof target is now best described as:
+prove a well-founded dyadic refinement + affine rewrite closure theorem.
+```
+
 ## Rank/Certificate Hunt Facts Added 2026-04-15
 
 These facts come from rank/certificate hunt run `RH-3959e21bac` on world `W-0273193499`.

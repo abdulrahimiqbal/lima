@@ -15,6 +15,11 @@ class Family:
 class Rule:
     name: str
     cost: int
+    modulus: int | None = None
+    residue: int | None = None
+    coeff_numerator: int | None = None
+    coeff_denominator: int | None = None
+    leaf_const: int | None = None
 
     def applies(self, family: Family) -> bool:
         a, b = family.coeff, family.const
@@ -23,22 +28,12 @@ class Rule:
                 return a % 2 == 0 and b % 2 == 0 and b > 0
             case "odd2":
                 return a % 2 == 0 and b % 2 == 1
-            case "one_mod_four":
-                return a % 4 == 0 and b % 4 == 1 and b > 1
-            case "three_mod_sixteen":
-                return a % 16 == 0 and b % 16 == 3
-            case "eleven_mod_32":
-                return a % 32 == 0 and b % 32 == 11
-            case "twentythree_mod_32":
-                return a % 32 == 0 and b % 32 == 23
-            case "seven_mod_128":
-                return a % 128 == 0 and b % 128 == 7
-            case "fifteen_mod_128":
-                return a % 128 == 0 and b % 128 == 15
-            case "fiftynine_mod_128":
-                return a % 128 == 0 and b % 128 == 59
             case _:
-                raise ValueError(f"Unknown rule {self.name}")
+                if self.modulus is None or self.residue is None:
+                    raise ValueError(f"Unknown rule {self.name}")
+                if self.name == "one_mod_four":
+                    return a % self.modulus == 0 and b % self.modulus == self.residue and b > 1
+                return a % self.modulus == 0 and b % self.modulus == self.residue
 
     def apply(self, family: Family) -> Family:
         a, b = family.coeff, family.const
@@ -47,34 +42,46 @@ class Rule:
                 return Family(a // 2, b // 2)
             case "odd2":
                 return Family((3 * a) // 2, (3 * b + 1) // 2)
-            case "one_mod_four":
-                return Family((3 * a) // 4, (3 * (b - 1)) // 4 + 1)
-            case "three_mod_sixteen":
-                return Family((9 * a) // 16, (9 * (b - 3)) // 16 + 2)
-            case "eleven_mod_32":
-                return Family((27 * a) // 32, (27 * (b - 11)) // 32 + 10)
-            case "twentythree_mod_32":
-                return Family((27 * a) // 32, (27 * (b - 23)) // 32 + 20)
-            case "seven_mod_128":
-                return Family((81 * a) // 128, (81 * (b - 7)) // 128 + 5)
-            case "fifteen_mod_128":
-                return Family((81 * a) // 128, (81 * (b - 15)) // 128 + 10)
-            case "fiftynine_mod_128":
-                return Family((81 * a) // 128, (81 * (b - 59)) // 128 + 38)
             case _:
-                raise ValueError(f"Unknown rule {self.name}")
+                if (
+                    self.modulus is None
+                    or self.residue is None
+                    or self.coeff_numerator is None
+                    or self.coeff_denominator is None
+                    or self.leaf_const is None
+                ):
+                    raise ValueError(f"Unknown rule {self.name}")
+                return Family(
+                    (self.coeff_numerator * a) // self.coeff_denominator,
+                    (self.coeff_numerator * (b - self.residue)) // self.coeff_denominator
+                    + self.leaf_const,
+                )
+
+
+DIRECT_RULES = [
+    Rule("one_mod_four", 3, 4, 1, 3, 4, 1),
+    Rule("three_mod_sixteen", 6, 16, 3, 9, 16, 2),
+    Rule("eleven_mod_32", 8, 32, 11, 27, 32, 10),
+    Rule("twentythree_mod_32", 8, 32, 23, 27, 32, 20),
+    Rule("seven_mod_128", 11, 128, 7, 81, 128, 5),
+    Rule("fifteen_mod_128", 11, 128, 15, 81, 128, 10),
+    Rule("fiftynine_mod_128", 11, 128, 59, 81, 128, 38),
+    Rule("twoeightyseven_mod_1024", 16, 1024, 287, 729, 1024, 205),
+    Rule("eightfifteen_mod_1024", 16, 1024, 815, 729, 1024, 581),
+    Rule("fiveseventyfive_mod_1024", 16, 1024, 575, 729, 1024, 410),
+    Rule("fiveeightythree_mod_1024", 16, 1024, 583, 729, 1024, 416),
+    Rule("threefortyseven_mod_1024", 16, 1024, 347, 729, 1024, 248),
+    Rule("threesixtyseven_mod_1024", 16, 1024, 367, 729, 1024, 262),
+    Rule("twentyfiveeightyseven_mod_4096", 19, 4096, 2587, 2187, 4096, 1382),
+    Rule("sixfifteen_mod_4096", 19, 4096, 615, 2187, 4096, 329),
+    Rule("threeeightythree_mod_4096", 19, 4096, 383, 2187, 4096, 205),
+]
 
 
 RULES = [
     Rule("even1", 1),
     Rule("odd2", 2),
-    Rule("one_mod_four", 3),
-    Rule("three_mod_sixteen", 6),
-    Rule("eleven_mod_32", 8),
-    Rule("twentythree_mod_32", 8),
-    Rule("seven_mod_128", 11),
-    Rule("fifteen_mod_128", 11),
-    Rule("fiftynine_mod_128", 11),
+    *DIRECT_RULES,
 ]
 
 
@@ -147,6 +154,11 @@ def main() -> int:
             {
                 "name": rule.name,
                 "cost": rule.cost,
+                "modulus": rule.modulus,
+                "residue": rule.residue,
+                "coeff_numerator": rule.coeff_numerator,
+                "coeff_denominator": rule.coeff_denominator,
+                "leaf_const": rule.leaf_const,
             }
             for rule in RULES
         ],
@@ -156,10 +168,16 @@ def main() -> int:
             "rules on affine families a*t+b and searches for a leaf family with strictly "
             "smaller coefficient and constant than the root."
         ),
+        "note_on_refinement": (
+            "Adding the new 1024 and 4096 direct-descent rules does not change the current "
+            "mod-256 root frontier, because those rules only fire after dyadic residue refinement. "
+            "The next missing object is therefore not just a longer rewrite list, but a "
+            "well-founded rewrite-plus-refinement theorem."
+        ),
         "next_signal": (
             "If a root remains unresolved under this rewrite search, the missing ingredient is "
-            "not another isolated residue lemma but a new rewrite rule or a well-founded "
-            "termination theorem for the affine rewrite system."
+            "not another isolated residue lemma but a new rewrite rule, a residue-splitting "
+            "operator, or a well-founded termination theorem for the affine rewrite system."
         ),
     }
     print(json.dumps(payload, indent=2))

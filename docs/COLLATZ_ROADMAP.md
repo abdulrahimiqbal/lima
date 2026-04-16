@@ -26,14 +26,62 @@ proved pressure-bad recurrence can be separated from height-escaping ghost recur
 proved local pressure-plus-height survivor closure is Lean-clean
 proved uniform pressure-height frontier certificate calculus is Lean-clean
 proved bounded generated pressure-height frontier completeness through window 8
+proved the parameterized pressure-height frontier completeness theorem
+proved the actual-generator / SCC exactness / SCC drift bridge
+proved route integration through no-dangerous-frontier
+proved final closure architecture at theorem-shape level
 ```
 
 What it has not done:
 
 ```text
-proved the parameterized pressure-height frontier completeness theorem
-proved global Composite Scarcity / density-zero closure
-proved the sound pullback to ordinary Collatz termination
+expanded the remaining scaffold/certificate fields into concrete arithmetic definitions
+proved global Composite Scarcity / density-zero closure without scaffold fields
+proved the fully expanded Nat-level pullback to ordinary Collatz termination
+proved eventual positive descent below n for every n > 1
+```
+
+## Immediate Lean Snapshot
+
+This roadmap is the zoomed-out map.
+
+The immediate local Lean hardening state is:
+
+```text
+descent core over Nat: proved
+compressed target: for every n > 1, produce k with 0 < collatz^[k](n) < n
+
+concrete exit families currently proved:
+- even n
+- n ≡ 1 mod 4, n > 1
+- n ≡ 3 mod 16
+- n ≡ 11 or 23 mod 32
+- n ≡ 7, 15, or 59 mod 128
+- n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
+- n ≡ 383, 615, or 2587 mod 4096
+```
+
+Search-only compass signal:
+
+```text
+A single-family affine rewrite compass, built from the proved Lean family rules, already
+composes descent certificates for some mod-256 roots such as 39, 79, 95, and 123.
+
+After adding the new 1024 and 4096 extension rules, that root-level frontier does not
+change. A separate refinement compass now shows that the unresolved parents split into
+two visible dyadic archetypes.
+
+This is still not a proof artifact. It is guidance for the next hardening step.
+```
+
+Immediate unresolved arithmetic frontier:
+
+```text
+direct-family theorem frontier:
+27, 31, 39, 47, 63, 71, 79, 91, 95, 103, 111, 123, 127 mod 128
+
+single-family rewrite frontier:
+27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
 ```
 
 ## Flow Diagram
