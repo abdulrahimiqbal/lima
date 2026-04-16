@@ -23,13 +23,15 @@ proved 2-adic cylinder-pressure language is Lean-clean
 proved pressure-globalization accounting is Lean-clean
 proved dynamic pressure automaton evidence is Lean-clean
 proved pressure-bad recurrence can be separated from height-escaping ghost recurrence
+proved local pressure-plus-height survivor closure is Lean-clean
 ```
 
 What it has not done:
 
 ```text
-proved that height escape closes the minimal-survivor / density obstruction
-proved the global Composite Scarcity theorem
+proved the parameterized pressure-plus-height frontier theorem
+proved global Composite Scarcity / density-zero closure
+proved the sound pullback to ordinary Collatz termination
 ```
 
 ## Flow Diagram
@@ -61,7 +63,9 @@ flowchart TD
     T --> U{Bad recurrence always recovers or height-escapes?}
     U -- no --> X6[Pivot: pressure world has real bad recurrence]
     U -- yes --> V[Minimal-survivor / density closure]
-    V --> S
+    V --> W{Parameterized frontier theorem?}
+    W -- no --> T
+    W -- yes --> S
     S -- yes --> M
     L --> M[Prove soundness + pullback]
     M --> N{All critical debt proved?}
@@ -125,8 +129,9 @@ Composite scarcity theorem local gates: completed, parameterized scarcity/recove
 Global forcing hunt: completed, explicit alternatives force progress but static legality admits persistent bad frontiers
 Dynamic pressure automaton: completed, pure residue pressure has ghost recurrence
 Height-lifted pressure automaton: completed, checked recurrent bad components height-escape
-Current bottleneck: no proof that height escape closes the minimal-survivor / density obstruction
-Next phase: pressure-plus-height survivor-closure hunt
+Pressure-plus-height survivor closure: completed, local minimal-survivor closure passed 10 / 10 probes
+Current bottleneck: no parameterized theorem over all legal pressure-plus-height frontiers
+Next phase: bounded-to-parameterized pressure-plus-height frontier theorem
 ```
 
 ## Next Phase
@@ -142,9 +147,10 @@ next gates:
 - pressure-bad residue recurrences are all height-escaping, not dangerous bounded cycles
 - height escape is incompatible with persistent minimal-survivor obstruction
 - bounded-horizon pressure-plus-height certificates over actual legal split trees
+- parameterized pressure-plus-height frontier theorem
 - density-zero exceptional-family theorem from global composite scarcity
 ```
 
-The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. Success in the next phase therefore means proving the pressure-plus-height bridge: actual Collatz parity/residue-block admissibility forces pressure recovery or height escape, and height escape closes the minimal-survivor/density obstruction. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
+The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. The pressure-height survivor closure wave then proved the local minimal-survivor gate: pressure-bad alone can persist, but height escape contradicts minimal persistence, and the composite exits kill local minimal bad obstruction. Success in the next phase therefore means globalizing this local closure: actual Collatz parity/residue-block admissibility must force pressure recovery, height escape, or survivor drop over all legal frontiers, and that parameterized frontier theorem must feed the density-zero closure. The retired hybrid certificate and inverse-tree languages remain useful as subordinate bookkeeping, but should no longer be the main proof strategy unless the cylinder-pressure mechanism needs them.
 
-This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove pressure-plus-height survivor closure, then prove global Composite Scarcity / density-zero, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot connect height escape to minimal-survivor closure, this route should pivot rather than add more local definitions.
+This is still not the final step before Collatz is solved. It is the current named theorem hunt before a possible final-step theorem: prove the parameterized pressure-plus-height frontier theorem, then prove global Composite Scarcity / density-zero, then prove the sound pullback to ordinary Collatz termination. If the next wave cannot globalize the local survivor-closure result, this route should pivot rather than add more local definitions.

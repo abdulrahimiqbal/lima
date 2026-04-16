@@ -808,3 +808,74 @@ pressure-bad recurrence + positive height drift
 
 If that gate can be verified locally and then parameterized, this becomes the first genuinely theorem-shaped bridge from the automaton evidence toward Collatz. If height escape cannot be connected to minimal-survivor closure, then this route stalls despite the good automaton signal.
 ```
+
+### R19. Pressure-Plus-Height Survivor Closure Passes The Local Win Gate
+
+These facts come from pressure-height survivor closure run `PH-53e964f582` on world `W-0273193499`, local campaign `C-73032c066a12`, submitted in Aristotle bake `PB-4e58efa7c1`, and digested in `PD-ebd3a2a4fb`.
+
+This wave tested the exact gate created by R18. The question was not whether height escape can be named, but whether it actually does logical work against a minimal persistent survivor while preserving adversarial guardrails.
+
+Verified probe outcomes:
+
+```text
+pressure-bad alone can still persist: proved
+height escape contradicts minimal persistence: proved
+checked ghost block is pressure-bad but not persistent: proved
+composite exit kills minimal bad obstruction: proved
+nonexpanding pressure-bad block remains obstruction: proved
+checked frontier has no dangerous survivor component: proved
+pressure recovery is an independent closure exit: proved
+survivor drop is an independent closure exit: proved
+target is counting-height only: proved
+all-checked height escape implies no dangerous survivor: proved
+```
+
+Status:
+
+```text
+10 / 10 pressure-height survivor closure probes Lean-clean and proved in digest PD-ebd3a2a4fb
+blocked: 0
+inconclusive: 0
+pending Aristotle jobs: 0
+```
+
+Interpretation:
+
+```text
+This is the win we were looking for at the local theorem-gate level.
+
+The positive result is not merely "height escape exists." The verified local closure is:
+
+height escape contradicts minimal persistence;
+pressure-bad plus height-escaping is not a persistent survivor;
+pressure recovery, height escape, and survivor drop form independent closure exits;
+if all checked recurrent bad components height-escape, then no dangerous survivor remains.
+
+The adversarial result is equally important:
+
+pressure-bad alone can still persist;
+nonexpanding pressure-bad blocks remain obstructions.
+
+So the wave did not prove a vacuous story. It proved exactly why height is necessary and exactly where it helps.
+```
+
+Decision implication:
+
+```text
+Promote the route from "height-lifted signal" to "local pressure-plus-height survivor closure."
+
+This is still not Collatz. The remaining gap is global and parameterized:
+
+for all legal Collatz pressure frontiers, every recurrent bad component either
+  recovers pressure,
+  height-escapes,
+  or triggers survivor drop;
+then the density/minimal-survivor obstruction closes;
+then the sound pullback proves ordinary Collatz termination.
+
+The next wave should not invent a new object. It should globalize this local closure:
+
+bounded-to-parameterized pressure-plus-height frontier theorem
+-> global Composite Scarcity / density-zero closure
+-> pullback target.
+```
