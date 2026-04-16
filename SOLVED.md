@@ -1150,3 +1150,77 @@ uniform SCC drift/exactness lemma for actual Collatz pressure-height generator.
 
 If the bridge finds a legal non-height-escaping recurrent bad component, the pressure-height route is in serious trouble.
 ```
+
+### R23. Actual-Generator Bridge Reduces the Bottleneck to SCC Drift/Exactness
+
+These facts come from pressure-height generator bridge run `GB-e0044e97b7` on world `W-0273193499`, campaign `C-d047c5b28b79`, submitted in Aristotle bake `PB-49bc616259`, and digested in `PD-7e1c3df725`.
+
+All raw Aristotle projects ended with `COMPLETE_WITH_ERRORS`, but the reconciled digest recovered the submitted proof artifacts and found no proof-side failures:
+
+```text
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified probe outcomes:
+
+```text
+actual residue successor relation has odd and hidden-even cases: proved
+actual generator transitions are residue-successor transitions: proved
+generated reports come from legal residue transitions: proved
+recurrent bad component reduces to generated cycle witness shape: proved
+non-height-escaping bad recurrence is nonpositive-drift obstruction: proved
+uniform positive SCC drift excludes dangerous recurrence: proved
+exact SCC coverage excludes unchecked recurrence: proved
+drift plus exactness imply the R22 generator invariant: proved
+bounded window-8 certificate is an instance of bridge assumptions: proved
+bridge target has no reachability or termination field: proved
+adversarial static bad generator is not actual-generated: proved
+weak transition legality does not imply the invariant: proved
+remaining obstruction is uniform SCC drift and exactness: proved
+```
+
+Interpretation:
+
+```text
+This is a real reduction, not a Collatz proof.
+
+R23 proves that the post-R22 bridge can be expressed cleanly:
+
+actual residue successor dynamics
+-> pressure-height generator reports
+-> recurrent bad components correspond to generated cycle/SCC witnesses
+-> non-height-escaping bad recurrence is exactly a nonpositive-drift obstruction
+-> uniform positive SCC drift plus exact SCC coverage imply the R22 invariant.
+
+The guardrails also passed:
+
+the target still has no reachability or termination field;
+static bad generators are rejected as non-actual;
+weak transition legality does not imply the invariant.
+```
+
+Decision implication:
+
+```text
+The bottleneck is now sharply named:
+
+uniform SCC drift/exactness lemma for the actual Collatz pressure-height generator.
+
+This is stronger than the previous "bridge" bottleneck. We are no longer asking whether the invariant can talk to actual residue dynamics. It can, provided the generator has uniform drift and exact SCC coverage.
+
+The next wave should not invent another broad world. It should attack the named lemma directly:
+
+1. define finite width-k SCCs of the actual residue successor graph;
+2. define pressure-height drift around SCC cycles;
+3. prove exact coverage for SCC reports, or expose the first unchecked SCC family;
+4. prove positive drift for all non-height-escaping SCCs, or expose a zero/nonpositive-drift family;
+5. lift the finite-width SCC statement into a parameterized width theorem.
+
+If this named lemma proves, the pressure-height route advances to global density-zero / Composite Scarcity pullback.
+
+If it fails with a genuine non-height-escaping nonpositive-drift SCC, this route has found its real obstruction and should pivot or add a new invariant.
+```

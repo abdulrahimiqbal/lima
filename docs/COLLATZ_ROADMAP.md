@@ -135,8 +135,9 @@ Pressure-plus-height survivor closure: completed, local minimal-survivor closure
 Pressure-height frontier certificate calculus: completed, uniform no-dangerous-frontier theorem passed 12 / 12 probes
 Bounded generated frontier completeness: completed, substantive window-8 kill-test probes passed 13 / 13 submitted jobs; 2 redundant audit probes missing from submission-cap artifact
 Parameterized pressure-height completeness schema: completed, all-depth conditional theorem passed 13 / 13 probes
-Current bottleneck: actual Collatz residue generator has not yet been proved to satisfy the parameterized invariant
-Next phase: actual-generator bridge to pressure-height invariant
+Actual-generator bridge: completed, reduced invariant satisfaction to uniform SCC drift/exactness, 13 / 13 probes
+Current bottleneck: uniform SCC drift/exactness lemma for the actual Collatz pressure-height generator
+Next phase: SCC drift/exactness theorem
 ```
 
 ## Next Phase
@@ -152,12 +153,13 @@ next gates:
 - pressure-bad residue recurrences are all height-escaping, not dangerous bounded cycles
 - height escape is incompatible with persistent minimal-survivor obstruction
 - actual Collatz residue generator satisfies the parameterized pressure-height invariant
+- uniform SCC drift/exactness for the actual pressure-height generator
 - density-zero exceptional-family theorem from global composite scarcity
 ```
 
-The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. The pressure-height survivor closure wave then proved the local minimal-survivor gate: pressure-bad alone can persist, but height escape contradicts minimal persistence, and the composite exits kill local minimal bad obstruction. The frontier certificate wave then proved that if every component has one of the closure exits, there is no dangerous frontier. The bounded completeness kill test then generated actual pressure-height frontiers through window 8 and found no dangerous or unchecked recurrent bad component; every recurrent bad component was height-certified. The parameterized completeness wave then proved the conditional all-depth schema: if a generator satisfies the pressure-height invariant, then no dangerous frontier exists at arbitrary depth.
+The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. The pressure-height survivor closure wave then proved the local minimal-survivor gate: pressure-bad alone can persist, but height escape contradicts minimal persistence, and the composite exits kill local minimal bad obstruction. The frontier certificate wave then proved that if every component has one of the closure exits, there is no dangerous frontier. The bounded completeness kill test then generated actual pressure-height frontiers through window 8 and found no dangerous or unchecked recurrent bad component; every recurrent bad component was height-certified. The parameterized completeness wave then proved the conditional all-depth schema: if a generator satisfies the pressure-height invariant, then no dangerous frontier exists at arbitrary depth. The actual-generator bridge then proved that invariant satisfaction reduces to uniform positive drift plus exact SCC coverage for generated pressure-height SCCs.
 
-This is still not the final step before Collatz is solved. The current named theorem hunt is now the actual-generator bridge: prove that the real Collatz residue generator satisfies the pressure-height invariant. If that bridge succeeds, the route moves to global Composite Scarcity / density-zero, then the sound pullback to ordinary Collatz termination. If the bridge exposes a legal non-height-escaping recurrent bad component, this route should pivot or add a genuinely new invariant.
+This is still not the final step before Collatz is solved. The current named theorem hunt is now the SCC drift/exactness theorem: prove that actual generated pressure-height SCCs have exact coverage and that every non-height-escaping recurrent bad SCC has positive drift. If that theorem succeeds, the route moves to global Composite Scarcity / density-zero, then the sound pullback to ordinary Collatz termination. If the theorem exposes a legal non-height-escaping nonpositive-drift SCC, this route should pivot or add a genuinely new invariant.
 
 ## Next Aristotle Wave Constraint
 
@@ -166,33 +168,34 @@ The next Aristotle wave should use **13 probes or fewer** and must not be a larg
 Required scope:
 
 ```text
-Target: actual-generator bridge to parameterized pressure-height invariant
+Target: uniform SCC drift/exactness for the actual pressure-height generator
 
 Acceptable wins:
-- a theorem reducing the actual Collatz generator invariant to a uniform SCC drift/exactness lemma
-- a bridge showing actual residue transitions feed the parameterized invariant under explicit dynamic assumptions
-- a concrete legal non-height-escaping or unchecked component family that refutes the route
+- a theorem proving exact SCC coverage for the actual generated pressure-height reports
+- a theorem proving positive drift for every non-height-escaping recurrent bad SCC
+- a concrete actual SCC family with unchecked coverage or nonpositive drift that refutes the route
 
 Not enough:
 - more bounded windows
-- another abstract schema assuming the invariant
-- another proof that local exits are sound
+- another bridge theorem assuming drift/exactness
+- another syntax-only SCC definition
+- another proof that local exits are sound after assuming certificates
 ```
 
 Suggested 13-probe shape:
 
 ```text
-1. define actual residue successor relation with hidden high-bit even split
-2. define actual pressure-height generator transition from residue successors
-3. prove generated reports come from legal residue transitions
-4. prove recurrent bad component gives a generated cycle witness
-5. prove non-height-escaping bad recurrence is a nonpositive-drift obstruction
-6. prove uniform positive SCC drift excludes dangerous recurrence
-7. prove exact SCC coverage excludes unchecked recurrence
-8. prove drift + exactness imply the R22 generator invariant
-9. prove bounded window-8 certificate is an instance of the bridge assumptions
-10. prove the bridge target has no reachability/termination field
-11. adversarial static bad generator is not actual-transition generated
-12. weak transition legality does not imply the invariant
-13. expose named remaining obstruction: uniform SCC drift/exactness for actual generator
+1. define finite width-k pressure-height SCC witnesses for the actual generator
+2. define SCC exact coverage and unchecked SCC obstruction
+3. define cycle pressure-height drift and nonpositive-drift obstruction
+4. prove acyclic SCC reports are exact by construction
+5. prove checked recurrent bad SCCs decompose into pressure recovery, height escape, or survivor drop
+6. prove height-escaping SCCs cannot be dangerous minimal survivors
+7. prove positive-drift SCCs cannot be dangerous recurrent bad components
+8. prove exact coverage plus positive drift implies the R23 bridge assumptions
+9. prove window-8 generated SCCs satisfy exact coverage and positive drift
+10. prove the SCC theorem target has no reachability/termination field
+11. adversarial unchecked SCC fails exact coverage
+12. adversarial zero-drift SCC fails positive drift
+13. expose the named remaining obstruction: a concrete actual SCC family or a parameterized drift theorem
 ```
