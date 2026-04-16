@@ -139,8 +139,9 @@ Actual-generator bridge: completed, reduced invariant satisfaction to uniform SC
 SCC exactness tranche: completed, exact coverage and unchecked-obstruction guards passed 13 / 13 probes
 SCC drift tranche: completed, positive-drift and nonpositive-obstruction guards passed 13 / 13 probes
 Route integration: completed, exactness+drift compose through R23/R22 to no-dangerous-frontier, 13 / 13 probes
-Current bottleneck: no-dangerous-frontier has not yet been pulled through density-zero / Composite Scarcity to ordinary Collatz termination
-Next phase: final global closure and ordinary Collatz pullback
+Final closure architecture: completed, no-dangerous-frontier composes through density closure and ordinary pullback at theorem-shape level, 13 / 13 probes
+Current bottleneck: final architecture still uses certificate/scaffold fields that must be expanded into concrete arithmetic definitions
+Next phase: proof hardening and scaffold elimination
 ```
 
 ## Next Phase
@@ -160,11 +161,12 @@ next gates:
 - route integration from SCC exactness/drift to no-dangerous-frontier
 - density-zero exceptional-family theorem from global composite scarcity
 - ordinary Collatz pullback from the pressure-height no-dangerous-frontier theorem
+- expansion of final closure certificates into concrete arithmetic proofs
 ```
 
-The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. The pressure-height survivor closure wave then proved the local minimal-survivor gate: pressure-bad alone can persist, but height escape contradicts minimal persistence, and the composite exits kill local minimal bad obstruction. The frontier certificate wave then proved that if every component has one of the closure exits, there is no dangerous frontier. The bounded completeness kill test then generated actual pressure-height frontiers through window 8 and found no dangerous or unchecked recurrent bad component; every recurrent bad component was height-certified. The parameterized completeness wave then proved the conditional all-depth schema: if a generator satisfies the pressure-height invariant, then no dangerous frontier exists at arbitrary depth. The actual-generator bridge then proved that invariant satisfaction reduces to uniform positive drift plus exact SCC coverage for generated pressure-height SCCs. The SCC gauntlet separately verified exactness and drift tranches, with adversarial unchecked and zero-drift SCCs rejected. The route integration tranche then composed exactness+drift through R23/R22 to no-dangerous-frontier while explicitly preserving the density-zero and ordinary-pullback debts.
+The local parameterized gates have now passed: strong scarcity implies subcritical bad mass, depth-indexed scarcity projects to density contraction, bounded recovery can beat odd debt, weak scarcity/equal recovery are insufficient, and survivor descent composes while forbidding self-loops. The adversarial global-forcing hunt then separated the real issue: explicit dynamic alternatives do force progress, but static legality alone admits legal persistent bad frontiers such as all-odd/no-recovery, equal-recovery, and weak-scarcity cases. The dynamic-pressure automaton sharpened this again: pure residue pressure has real bad recurrences, including the 2-adic ghost cycle -2 <-> -1, but the height lift classifies the checked recurrent bad components as Archimedean-height-escaping rather than dangerous nonexpanding cycles. The pressure-height survivor closure wave then proved the local minimal-survivor gate: pressure-bad alone can persist, but height escape contradicts minimal persistence, and the composite exits kill local minimal bad obstruction. The frontier certificate wave then proved that if every component has one of the closure exits, there is no dangerous frontier. The bounded completeness kill test then generated actual pressure-height frontiers through window 8 and found no dangerous or unchecked recurrent bad component; every recurrent bad component was height-certified. The parameterized completeness wave then proved the conditional all-depth schema: if a generator satisfies the pressure-height invariant, then no dangerous frontier exists at arbitrary depth. The actual-generator bridge then proved that invariant satisfaction reduces to uniform positive drift plus exact SCC coverage for generated pressure-height SCCs. The SCC gauntlet separately verified exactness and drift tranches, with adversarial unchecked and zero-drift SCCs rejected. The route integration tranche then composed exactness+drift through R23/R22 to no-dangerous-frontier while explicitly preserving the density-zero and ordinary-pullback debts. The final closure wave then verified the theorem-shape architecture from no-dangerous-frontier through density-zero / Composite Scarcity and ordinary pullback, while rejecting obvious termination/reachability smuggling.
 
-This is now the final phase for this route, but not one tiny last check. The current named theorem hunt is global closure and ordinary pullback: prove that no dangerous pressure-height frontier forces the density-zero / Composite Scarcity closure, then prove that this closure soundly pulls back to ordinary Collatz termination. If this succeeds without hidden reachability or termination assumptions, the route may become a formal proof architecture for Collatz. If it fails, the failure should identify whether the missing bridge is density closure, finite exception/base coverage, or ordinary pullback.
+This is no longer an invention roadmap. The current named work is proof hardening: replace the remaining certificate/scaffold fields in the final architecture with concrete arithmetic definitions and proofs. If hardening succeeds, the route can become a genuine formal Collatz proof attempt. If hardening fails, the failure should name the exact unexpandable field: density closure, finite/base coverage, survivor-family elimination, or ordinary Nat pullback.
 
 ## Next Aristotle Wave Constraint
 
@@ -173,35 +175,36 @@ The next Aristotle wave should use **13 probes or fewer** and must not be a larg
 Required scope:
 
 ```text
-Target: final global closure and ordinary Collatz pullback
+Target: proof hardening and scaffold elimination
 
 Acceptable wins:
-- a theorem showing no dangerous pressure-height frontier implies density-zero / Composite Scarcity closure
-- a theorem showing density-zero plus finite/base coverage eliminates nonterminating survivor families
-- a theorem pulling the pressure-height closure back to ordinary Collatz termination
-- a final anti-circularity audit showing no reachability, termination, or unproved density assumption was introduced
+- a theorem replacing final closure certificate fields with concrete pressure-height definitions
+- a theorem deriving density-zero / Composite Scarcity from no-dangerous-frontier without a density field
+- a theorem deriving finite/base coverage without assuming termination
+- a theorem over Nat pulling the pressure-height closure back to ordinary Collatz termination
+- an audit proving the final theorem statement has no scaffold fields
 
 Not enough:
-- another invariant or SCC tranche
-- another no-dangerous-frontier theorem that leaves density-zero open
-- a density theorem that assumes termination, reachability, or finite exception coverage
-- a pullback theorem that assumes the ordinary Collatz theorem or hides the minimal-counterexample step
+- another theorem-shape wave that keeps certificate fields
+- another proof over Boolean report records only
+- another anti-circularity probe without expanding a field
+- a final theorem that assumes density closure, finite/base coverage, reachability, or termination
 ```
 
 Suggested 13-probe shape:
 
 ```text
-1. define no-dangerous-frontier global closure target
-2. define density-zero / Composite Scarcity closure without reachability
-3. prove no-dangerous-frontier implies no positive-density survivor family
-4. prove density-zero plus finite/base coverage eliminates survivor families
-5. prove finite/base coverage is explicit and non-circular
-6. define ordinary Collatz pullback from pressure-height closure
-7. prove every nonterminating ordinary orbit would induce a dangerous frontier or survivor family
-8. prove no dangerous frontier plus density closure excludes that induced object
-9. prove ordinary termination follows from the pressure-height closure and base coverage
-10. adversarial density-zero theorem that assumes termination is rejected
-11. adversarial pullback that assumes reachability is rejected
-12. prove final theorem target has no hidden reachability/termination fields
-13. expose final roadmap state: proved architecture, density gap, base-coverage gap, or pullback gap
+1. inline no-dangerous-frontier into the density closure statement
+2. replace densityZero Bool with a concrete density-zero predicate
+3. replace compositeScarcity Bool with a concrete scarcity bound
+4. derive no positive-density survivor family from the concrete predicates
+5. replace finiteBaseCoverage Bool with explicit finite/base theorem obligations
+6. define the ordinary Nat-level Collatz orbit predicate
+7. prove a nonterminating Nat orbit induces a pressure-height survivor object
+8. prove the survivor object contradicts concrete density closure
+9. prove ordinary Collatz termination over Nat from the expanded lemmas
+10. reject any density proof using termination or reachability
+11. reject any pullback proof using the final theorem as an assumption
+12. prove the final theorem has no scaffold/certificate fields
+13. expose the remaining unexpanded field, if any
 ```

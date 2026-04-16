@@ -1401,3 +1401,75 @@ density closure;
 finite exception/base coverage;
 or ordinary Collatz pullback.
 ```
+
+### R26. Final Closure Wave Verifies the Architecture, Not Yet an Expanded Collatz Proof
+
+These facts come from pressure-height final closure run `FC-05860564e3` on world `W-0273193499`, campaign `C-101e19362c8b`, submitted in Aristotle bake `PB-ae72ac8b3d`, and digested in `PD-fb58dbf69e`.
+
+All raw Aristotle jobs again reported `COMPLETE_WITH_ERRORS`, but the reconciled digest recovered the proof artifacts and found no proof-side failures:
+
+```text
+artifact_count: 53
+probe_count: 13
+proved_count: 13
+blocked_count: 0
+inconclusive_count: 0
+reconciled_pending_job_count: 0
+```
+
+Verified final-closure outcomes:
+
+```text
+no-dangerous-frontier global closure target is definable: proved
+density-zero Composite Scarcity closure is stated without reachability: proved
+no dangerous frontier implies no positive-density survivor family: proved
+density-zero plus finite-base coverage eliminates survivor families: proved
+finite-base coverage is explicit and non-circular: proved
+ordinary Collatz pullback target is definable from pressure-height closure: proved
+nonterminating ordinary orbit induces dangerous frontier or survivor family: proved
+no dangerous frontier plus density closure excludes induced counterexample object: proved
+ordinary termination follows from pressure-height closure and base coverage: proved
+adversarial density theorem that assumes termination is rejected: proved
+adversarial pullback that assumes reachability is rejected: proved
+final theorem target has no hidden reachability or termination fields: proved
+final roadmap state exposes proved architecture or named gap: proved
+```
+
+Interpretation:
+
+```text
+This verifies the final proof architecture for the pressure-height route.
+
+The architecture now composes:
+
+actual SCC exactness + positive SCC drift
+-> R23 bridge assumptions
+-> R22 pressure-height invariant
+-> no dangerous pressure-height frontier
+-> density-zero / Composite Scarcity closure
+-> no survivor family
+-> ordinary Collatz pullback.
+
+But this is still not a fully expanded Collatz proof.
+
+The final wave proves the architecture is coherent and rejects obvious circular variants. It does not yet replace every certificate field with a fully expanded arithmetic derivation from first principles.
+```
+
+Decision implication:
+
+```text
+Do not run another broad invention wave.
+
+The next work is proof hardening:
+
+1. inline the certificate fields into concrete definitions;
+2. remove scaffold-only fields from the final closure objects;
+3. prove the density-zero / Composite Scarcity lemma from the earlier pressure-height machinery, not as a field;
+4. prove finite/base coverage concretely;
+5. prove the ordinary Collatz pullback as a theorem over Nat, not as a named certificate predicate;
+6. keep the anti-circularity tests in place.
+
+If this hardening succeeds, the result may become a genuine formal Collatz proof attempt.
+
+If hardening fails, the failure is no longer "where should we search?" but exactly which certificate field cannot be expanded.
+```
