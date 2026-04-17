@@ -88,7 +88,8 @@ Everything else is now downstream of that target.
 ## The Two Serious Endgames
 
 There are no longer many plausible endgames in this repo.
-There are only two serious theorem families left.
+There are still two visible theorem families, but the best current finish now
+looks like a hybrid of them.
 
 ### Route A. Direct Descent / Refinement Closure
 
@@ -125,6 +126,19 @@ so every branch eventually hits a proved descent family
 ```
 
 If that theorem lands, the partition theorem plus the descent core should finish the proof.
+
+Newest sharpening from the refinement signature audit:
+
+```text
+finite-horizon exact resolved/unresolved tree shape is still too weak;
+the recurrent core survives as one large signature component.
+
+But that recurrent core projects exactly back to the same 13 unresolved residue cylinders
+mod 128.
+
+So the direct-route missing object is now better read as a cylinder exclusion theorem:
+for each of those 13 mod-128 cylinders, there is no infinite unresolved refinement branch.
+```
 
 ### Route B. Pressure-Height Scaffold Elimination
 
@@ -165,6 +179,7 @@ the real target is eventual descent below n
 the architecture route is real but still conditional
 the direct arithmetic route has a finite unresolved frontier
 the missing object keeps reappearing as refinement + rewrite closure,
+then sharper as a finite obstruction kernel / residue-cylinder problem,
 or as a concrete Nat-level realization of the pressure-height exits
 ```
 
@@ -177,8 +192,8 @@ The shortest honest roadmap from here is:
 
 ```text
 1. keep the descent core fixed as the final compression target
-2. use direct arithmetic/refinement closure as the primary route
-3. keep pressure-height scaffold elimination as the backup route
+2. use the direct arithmetic frontier to define the true finite unresolved kernel
+3. use pressure-height scaffold elimination as the global engine on that kernel
 4. force every new Aristotle probe to discriminate between those two routes
 5. stop broad invention; only attack named remaining obligations
 ```
@@ -242,19 +257,26 @@ The current best bet is:
 
 ```text
 primary:
-well-founded dyadic refinement + affine rewrite closure
+finite-state kernel compression of the remaining odd frontier, followed by
+pressure-height scaffold hardening on that kernel
+
+The newest direct-route reading of that kernel is:
+13 unresolved residue cylinders mod 128 together with an infinite-branch exclusion theorem.
 
 secondary:
-concrete Nat-level pressure-height exit / pullback theorem
+standalone well-founded dyadic refinement + affine rewrite closure
 ```
 
 Why this ordering:
 
 ```text
-the descent route is already theorem-level on actual Nat arithmetic
-the remaining frontier is finite and named
-the pressure-height route is stronger architecturally,
-but still blocked on scaffold elimination into concrete arithmetic
+the direct arithmetic route has already shrunk the remaining frontier to a small
+named parent set
+the pressure-height route already has the stronger global proof spine
+the transition compass suggests the unresolved tree may admit finite-state
+compression rather than an open-ended new rank
+one finite obstruction kernel would let exactness and drift become finite exact
+theorems instead of all-depth family debt
 ```
 
 ## Bottom Line
@@ -265,8 +287,9 @@ But it is also not wandering.
 The remaining unknown has compressed to:
 
 ```text
-either a refinement/rewrite well-foundedness theorem
-or a concrete Nat-level pressure-height bridge theorem
+either a standalone refinement/rewrite well-foundedness theorem
+or a finite exact obstruction kernel that lets the pressure-height bridge
+become fully concrete
 ```
 
 If either of those lands, the descent core turns it into a genuine Collatz proof path.

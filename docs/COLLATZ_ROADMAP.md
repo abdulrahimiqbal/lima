@@ -6,6 +6,7 @@ For the current endgame audit, also read:
 
 ```text
 docs/COLLATZ_PROOF_DEBT_AUDIT.md
+docs/COLLATZ_REFINEMENT_SIGNATURE_AUDIT.md
 ```
 
 ## Current Position
@@ -70,8 +71,30 @@ There are now only two serious endgames left in the repo:
    pressure-height exit / pullback theorem
 ```
 
-The current best bet is route 1, because it already lives directly over actual
-Nat-level descent families and the remaining frontier is finite and named.
+The current best bet is now a hybrid leaning toward route 2:
+
+```text
+use the direct odd frontier only to compress the remaining obstruction to a
+finite kernel, then finish through the pressure-height proof spine
+```
+
+That shift is justified by the current state:
+
+```text
+the exact refinement-signature audit shows that shallow finite tree shape is still too
+weak, but the recurrent unresolved core projects exactly back to the same 13 unresolved
+mod-128 residue cylinders.
+
+So the direct frontier is still valuable, but now mainly as a way to identify the exact
+finite kernel / cylinder family that the pressure-height route must kill concretely.
+```
+
+```text
+the direct frontier is already finite and named
+the pressure-height route already has theorem-shaped exactness/drift -> no-dangerous-frontier
+the transition compass suggests the unresolved tree may admit finite-state
+compression instead of a brand-new scalar rank
+```
 
 ## Immediate Lean Snapshot
 
@@ -265,7 +288,7 @@ SCC drift tranche: completed, positive-drift and nonpositive-obstruction guards 
 Route integration: completed, exactness+drift compose through R23/R22 to no-dangerous-frontier, 13 / 13 probes
 Final closure architecture: completed, no-dangerous-frontier composes through density closure and ordinary pullback at theorem-shape level, 13 / 13 probes
 Current bottleneck: final architecture still uses certificate/scaffold fields that must be expanded into concrete arithmetic definitions
-Next phase: proof hardening and scaffold elimination
+Next phase: proof hardening, finite-kernel compression, and scaffold elimination
 ```
 
 ## Next Phase
@@ -331,4 +354,17 @@ Suggested 13-probe shape:
 11. reject any pullback proof using the final theorem as an assumption
 12. prove the final theorem has no scaffold/certificate fields
 13. expose the remaining unexpanded field, if any
+```
+
+Hybrid variant now worth prioritizing:
+
+```text
+1. prove the 13 mod-128 frontier splits into 9 true parent roots mod 256
+2. define a finite kernel for the unresolved return dynamics of those parents
+3. prove exact SCC coverage on that kernel
+4. prove positive drift on that kernel
+5. restate no-dangerous-frontier directly from those explicit kernel predicates
+6. derive concrete density/scarcity closure from no-dangerous-frontier
+7. prove finite/base coverage below the kernel bound
+8. pull the concrete closure statement back to eventual positive descent over Nat
 ```
