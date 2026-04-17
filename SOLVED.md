@@ -144,6 +144,31 @@ It is stronger evidence that the unresolved frontier is finite-state enough to s
 kernel exactness/drift theorem rather than residue-by-residue sprawl.
 ```
 
+Newest live Aristotle sharpening:
+
+```text
+The representative K2 parent probe for 256*t + 31 has now returned a real artifact bundle.
+
+What that artifact confirms:
+- the mod-256 parent 31 reduces to 16 mod-4096 children
+- 6 of those children already have deterministic local descent proofs:
+  287, 1311, 1823, 2335, 2591, 3359
+- the genuinely open K2 child set is:
+  31, 543, 799, 1055, 1567, 2079, 2847, 3103, 3615, 3871
+
+Local verification also confirms the structural reason the direct proof stalls:
+starting from 4096*t + 31, the deterministic Collatz prefix reaches
+19683*t + 155 after 21 steps.
+
+At that point the coefficient is still larger than 4096 and is odd,
+so parity becomes t-dependent before descent is obtained.
+
+This is not a proof of impossibility.
+It is a real sharpening of the K2 subproblem:
+the next exact local target is no longer "close 256*t+31 somehow",
+but "control the 10 open mod-4096 K2 children as a recurrent kernel family".
+```
+
 Current problem-solving approach:
 
 ```text

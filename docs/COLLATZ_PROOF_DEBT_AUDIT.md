@@ -226,6 +226,33 @@ That is still search-only.
 But it is the strongest current sign that the unresolved kernel continues to admit
 finite-state compression after another full refinement layer.
 
+Newest live K2 sharpening:
+
+```text
+the completed Aristotle artifact for the representative K2 parent 256*t + 31
+does not close the parent, but it does isolate the exact open K2 child family:
+
+open mod-4096 children:
+31, 543, 799, 1055, 1567, 2079, 2847, 3103, 3615, 3871
+
+already closed mod-4096 children:
+287, 1311, 1823, 2335, 2591, 3359
+```
+
+Local deterministic verification sharpens the same obstruction:
+
+```text
+4096*t + 31 reaches 19683*t + 155 after 21 deterministic steps,
+with coefficient still > 4096 and odd.
+```
+
+So the live K2 debt is now more explicit:
+
+```text
+the next direct-route object is not the whole parent 256*t+31,
+but the recurrent 10-child mod-4096 K2 kernel it generates
+```
+
 ### Route B. Pressure-Height Scaffold Elimination
 
 Current verified status:

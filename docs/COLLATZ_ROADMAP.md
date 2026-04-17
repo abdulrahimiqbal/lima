@@ -233,6 +233,29 @@ At the moment Aristotle is queue-blocked ("too many requests in progress"), so l
 submission is throttled by account state rather than by probe quality.
 ```
 
+Newest live parent-probe sharpening:
+
+```text
+the representative K2 parent probe for 256*t + 31 has now produced a real artifact bundle.
+
+It does not close the parent, but it isolates the exact K2 mod-4096 open child set:
+31, 543, 799, 1055, 1567, 2079, 2847, 3103, 3615, 3871
+
+The already closed K2 siblings are:
+287, 1311, 1823, 2335, 2591, 3359
+
+Local verification confirms the same stall mechanism:
+4096*t + 31 reaches 19683*t + 155 after 21 deterministic steps,
+with coefficient still above 4096 and odd, so parity dependence appears before descent.
+```
+
+That sharpens the roadmap again:
+
+```text
+the next direct local target inside K2 is the 10-child recurrent mod-4096 family,
+not the parent 256*t+31 as a single opaque theorem
+```
+
 Immediate unresolved arithmetic frontier:
 
 ```text
