@@ -16,6 +16,7 @@ docs/COLLATZ_PROOF_DEBT_AUDIT.md
 docs/COLLATZ_FRONTIER128_SPLIT_HARDENING.md
 docs/COLLATZ_SCC_KERNEL_ENDGAME.md
 docs/COLLATZ_REFINEMENT_SIGNATURE_AUDIT.md
+docs/COLLATZ_KERNEL_REFINEMENT_AUDIT.md
 ```
 
 Current status:
@@ -49,7 +50,7 @@ concrete exit families proved locally in Lean:
 - n ≡ 3 mod 16
 - n ≡ 11 or 23 mod 32
 - n ≡ 7, 15, or 59 mod 128
-- n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
+- n ≡ 287, 347, 367, 423, 507, 575, 583, 735, 815, 923, 975, or 999 mod 1024
 - n ≡ 383, 615, or 2587 mod 4096
 
 these are actual iterateNat / collatzStep statements, not Bool certificate fields
@@ -110,6 +111,37 @@ each of the 13 frontier families is proved to factor through either
 At mod 256:
 every surviving open family is proved to factor through both of its mod-512 children.
 No one-bit reduction remains at this layer under the current direct descent facts.
+
+At mod 512:
+12 open families now reduce to a single mod-1024 child because the sibling child
+already has a verified direct descent theorem.
+```
+
+Newest search-only kernel signal:
+
+```text
+The deeper lift-signature audit now shows:
+
+open mod-256 residue set -> 3 coarse classes
+open mod-512 residue set -> 4 coarse classes
+
+This does not prove closure.
+It does strengthen the finite-kernel thesis by showing that one deeper unresolved layer
+still compresses to a tiny number of repeating state types.
+```
+
+Newest search-only mod-1024 kernel signal:
+
+```text
+Under the current direct-descent search budget, the open mod-1024 frontier has 65 residues.
+
+Ignoring the trivial residue 1, it compresses into:
+- 3 nontrivial coarse child-count signatures
+- 3 nontrivial exact local-profile classes
+
+This is still not a proof artifact.
+It is stronger evidence that the unresolved frontier is finite-state enough to support a
+kernel exactness/drift theorem rather than residue-by-residue sprawl.
 ```
 
 Current problem-solving approach:

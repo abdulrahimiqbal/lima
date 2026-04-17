@@ -150,10 +150,27 @@ mod 128 frontier
 mod 256 frontier
 -> exact two-child dependence on mod-512 families
 
+mod 512 frontier
+-> 12 one-child reductions to mod-1024 families because the sibling already descends
+
 So the frontier no longer looks like a collection of ad hoc residue lemmas.
 It now looks like a genuine binary refinement kernel whose closure/exactness/drift
 must be proved as a finite object.
 ```
+
+The newest search-only lift-signature audit supports the same roadmap read:
+
+```text
+one deeper unresolved layer still compresses to a tiny number of coarse classes:
+
+open mod-256 residue set -> 3 classes
+open mod-512 residue set -> 4 classes
+open mod-1024 residue set -> 3 nontrivial coarse classes and 3 nontrivial exact profiles
+```
+
+This is not a proof artifact.
+It is one more reason to treat the endgame as finite-kernel control rather than
+indefinite residue hunting.
 ```
 
 ```text
@@ -179,7 +196,7 @@ concrete exit families currently proved:
 - n ≡ 3 mod 16
 - n ≡ 11 or 23 mod 32
 - n ≡ 7, 15, or 59 mod 128
-- n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
+- n ≡ 287, 347, 367, 423, 507, 575, 583, 735, 815, 923, 975, or 999 mod 1024
 - n ≡ 383, 615, or 2587 mod 4096
 
 general refinement theorem currently proved:

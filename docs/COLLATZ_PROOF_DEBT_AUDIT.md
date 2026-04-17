@@ -53,7 +53,7 @@ n ≡ 1 mod 4, n > 1
 n ≡ 3 mod 16
 n ≡ 11 or 23 mod 32
 n ≡ 7, 15, or 59 mod 128
-n ≡ 287, 347, 367, 575, 583, or 815 mod 1024
+n ≡ 287, 347, 367, 423, 507, 575, 583, 735, 815, 923, 975, or 999 mod 1024
 n ≡ 383, 615, or 2587 mod 4096
 ```
 
@@ -195,8 +195,36 @@ mod 256 frontier
 At the mod-256 layer there is now no one-bit reduction left under the current direct
 descent theorems. So the next real proof object is no longer "find a lucky sibling exit";
 it is control of the full binary refinement kernel itself.
+
+mod 512 frontier
+-> 12 open families already reduce to a single mod-1024 child because the sibling child
+   now has a verified direct descent theorem
 ```
+
+Newest search-only sharpening:
+
+```text
+the deeper lift-signature audit still shows small finite-state compression:
+
+open mod-256 residue set -> 3 coarse lift-signature classes
+open mod-512 residue set -> 4 coarse lift-signature classes
 ```
+
+That is not theorem-level closure.
+But it is evidence that the binary refinement kernel is still compressing rather than
+exploding, which keeps the finite-kernel exactness/drift route alive.
+
+One deeper audit sharpens that again:
+
+```text
+the open mod-1024 frontier has 65 residues under the current search budget,
+but they collapse into only 3 nontrivial coarse child-count classes
+and 3 nontrivial exact local-profile classes
+```
+
+That is still search-only.
+But it is the strongest current sign that the unresolved kernel continues to admit
+finite-state compression after another full refinement layer.
 
 ### Route B. Pressure-Height Scaffold Elimination
 
