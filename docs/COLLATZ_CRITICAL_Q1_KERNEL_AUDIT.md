@@ -15,6 +15,16 @@ plus a critical Q1 branch whose arithmetic shadow already obeys
 exact finite child-count and scarcity laws
 ```
 
+Newest hardening addition:
+
+```text
+the repo now tracks the exact checked T1..T12 template kernel,
+an exact frontier-coverage theorem for the current arithmetic frontier,
+and a bridge/final-assembly lane stated only in terms of the named kernel debts
+critical_template_kernel_exactness_all_depth
+critical_template_kernel_density_zero_nat
+```
+
 ## Current Kernel Picture
 
 Validated locally by:

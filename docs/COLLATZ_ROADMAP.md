@@ -50,6 +50,17 @@ proved the fully expanded Nat-level pullback to ordinary Collatz termination
 proved eventual positive descent below n for every n > 1
 ```
 
+Newest local hardening update:
+
+```text
+the bridge/final assembly lane is now concrete in the repo:
+- finite base coverage is explicit at kernelBound = 256
+- the T1..T12 template kernel is explicit
+- the live frontier coverage theorem is explicit
+- the bridge/final assembly no longer quantify over abstract
+  CriticalShadowControl / generic NoDangerousFrontier props
+```
+
 ## Updated Endgame
 
 The roadmap has now compressed to one final target:
@@ -61,6 +72,15 @@ for every n > 1, prove there exists k such that
 
 If that target is proved, the already verified descent core yields ordinary Collatz
 termination by strong induction.
+
+The exact remaining theorem boundary is now:
+
+```text
+critical_template_kernel_exactness_all_depth
+critical_template_kernel_density_zero_nat
+```
+
+plus the existing finite base witness at `256`.
 
 There are now only two serious endgames left in the repo:
 

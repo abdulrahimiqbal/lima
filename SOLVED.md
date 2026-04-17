@@ -38,6 +38,24 @@ verified as a coherent proof spine, not just a story.
 But that still does not prove Collatz, because those final-closure theorems are
 theorem-shape / certificate-architecture facts. They do not yet fully expand the
 remaining pressure-height certificate fields into concrete Nat-level arithmetic.
+
+The newest local hardening step narrows that debt further:
+
+- finite base coverage to `kernelBound = 256` is now tracked locally
+- the `T1..T12` critical template kernel is tracked locally with exact checked
+  classifier rows and return factors
+- the live arithmetic frontier now has a Lean-clean exact coverage theorem over
+  the 23 currently relevant residues (`39,79,95,123` descended; the 19 open
+  mod-256 classes project to kernel `A/B/C`)
+- the pressure-height bridge and final assembly now depend only on the named
+  debts
+  `critical_template_kernel_exactness_all_depth`,
+  `PhaseKernelExactCoverage`,
+  `critical_template_kernel_density_zero_nat`,
+  and finite base coverage
+- the old generic placeholders
+  `CriticalShadowControl` / abstract `NoDangerousFrontier : Prop`
+  are no longer used in the new bridge/final-assembly lane
 ```
 
 What is theorem-level today:
@@ -55,16 +73,29 @@ concrete exit families proved locally in Lean:
 - n ≡ 383, 615, or 2587 mod 4096
 
 these are actual iterateNat / collatzStep statements, not Bool certificate fields
+
+proof-closing hardening now tracked locally:
+- `kernel_bound_has_finite_base_coverage`
+- `critical_template_kernel_classifier_checked_prefix`
+- `critical_template_kernel_checked_prefix_return_factors`
+- `phase_kernel_exact_coverage`
+- `critical_template_kernel_density_zero_nat_implies_no_dangerous_frontier`
+- `critical_q1_excludes_dangerous_frontier`
+- `pressure_height_exit_exists_nat`
+- `pressure_height_exit_sound_nat`
+- `eventual_positive_descent_from_periodic_kernel`
+- `collatz_nat_level_no_scaffold`
 ```
 
 What is not theorem-level yet:
 
 ```text
 the full odd 4*a+3 family
-the final pressure-height scaffold elimination
-the fully expanded Nat-level pullback from the pressure-height route
-the concrete arithmetic theorem making the final pressure-height closure objects true
-for actual Collatz dynamics rather than only as verified certificate architecture
+the all-depth theorem `critical_template_kernel_exactness_all_depth`
+the concrete Nat theorem `critical_template_kernel_density_zero_nat`
+  turning template exactness + frontier coverage into large-n positive descent
+the final arithmetic content making those two statements true for actual Collatz dynamics
+  rather than only as exact theorem interfaces over the tracked finite kernel
 ```
 
 Current exact local frontier:

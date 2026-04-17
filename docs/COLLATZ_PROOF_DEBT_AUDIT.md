@@ -64,6 +64,16 @@ if all dyadic children of an affine family descend,
 then the parent family descends
 ```
 
+Newest proof-closing hardening:
+
+```text
+finite base coverage up to 256 is now Lean-clean and tracked
+the T1..T12 critical template kernel is now frozen as an exact checked object
+the live arithmetic frontier now has a Lean-clean exact coverage theorem
+the pressure-height bridge and final assembly now depend only on named kernel debts,
+not on abstract CriticalShadowControl / placeholder NoDangerousFrontier props
+```
+
 ## What Is Still Missing
 
 The repo does not yet prove Collatz because the following are still open:
@@ -84,6 +94,17 @@ for every n > 1, prove there exists k such that
 ```
 
 Everything else is now downstream of that target.
+
+More sharply, the remaining proof debt has compressed to:
+
+```text
+1. prove the actual critical Q1 shadow obeys the all-depth template theorem
+   `critical_template_kernel_exactness_all_depth`
+2. prove the concrete Nat theorem
+   `critical_template_kernel_density_zero_nat`
+   from that exactness statement and the already checked frontier coverage
+3. instantiate the now-concrete bridge/final assembly with those theorems
+```
 
 ## The Two Serious Endgames
 

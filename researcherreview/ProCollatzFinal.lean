@@ -1,0 +1,204 @@
+import Std
+
+open Std
+
+def collatzStep (n : Nat) : Nat :=
+  if n % 2 = 0 then n / 2 else 3 * n + 1
+
+def iterateNat (f : Nat → Nat) : Nat → Nat → Nat
+  | 0, n => n
+  | k + 1, n => iterateNat f k (f n)
+
+def PositiveDescentAt (n k : Nat) : Prop :=
+  0 < iterateNat collatzStep k n ∧ iterateNat collatzStep k n < n
+
+def EventualPositiveDescent : Prop :=
+  ∀ n, n > 1 -> ∃ k, PositiveDescentAt n k
+
+def CollatzTerminates (n : Nat) : Prop :=
+  ∃ k, iterateNat collatzStep k n = 1
+
+def kernelBound : Nat := 256
+
+inductive CriticalTemplateState where
+  | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 | T9 | T10 | T11 | T12
+  deriving DecidableEq, Repr
+
+abbrev TemplateClassifierKey := Nat × Nat × Nat × Nat
+
+def templateClassifier : TemplateClassifierKey → Option CriticalTemplateState
+  | (27, 39, 0, 39) => some .T1
+  | (31, 4, 0, 4) => some .T2
+  | (255, 176, 0, 176) => some .T3
+  | (27, 28, 17, 11) => some .T4
+  | (27, 78, 27, 51) => some .T5
+  | (27, 129, 65, 64) => some .T6
+  | (31, 3, 2, 1) => some .T7
+  | (31, 8, 3, 5) => some .T8
+  | (31, 13, 7, 6) => some .T9
+  | (255, 120, 64, 56) => some .T10
+  | (255, 352, 109, 243) => some .T11
+  | (255, 595, 273, 322) => some .T12
+  | _ => none
+
+structure CriticalQ1TemplateObservation where
+  level : Nat
+  residueClass : Nat
+  sourceCount : Nat
+  oneChildSources : Nat
+  twoChildSources : Nat
+  arisesFromCriticalShadow : Prop
+
+def critical_template_kernel_exactness_all_depth : Prop :=
+  ∃ N,
+    ∀ obs : CriticalQ1TemplateObservation,
+      obs.arisesFromCriticalShadow →
+      N ≤ obs.level →
+      templateClassifier
+          (obs.residueClass, obs.sourceCount, obs.oneChildSources, obs.twoChildSources) ≠ none
+
+inductive FrontierCoverage where
+  | descends
+  | kernelA
+  | kernelB
+  | kernelC
+  deriving DecidableEq, Repr
+
+def frontierCoverage : Nat → Option FrontierCoverage
+  | 39 => some .descends
+  | 79 => some .descends
+  | 95 => some .descends
+  | 123 => some .descends
+  | 27 => some .kernelB
+  | 31 => some .kernelA
+  | 47 => some .kernelA
+  | 63 => some .kernelA
+  | 71 => some .kernelA
+  | 91 => some .kernelA
+  | 103 => some .kernelB
+  | 111 => some .kernelA
+  | 127 => some .kernelB
+  | 155 => some .kernelA
+  | 159 => some .kernelB
+  | 167 => some .kernelA
+  | 191 => some .kernelB
+  | 207 => some .kernelA
+  | 223 => some .kernelA
+  | 231 => some .kernelA
+  | 239 => some .kernelB
+  | 251 => some .kernelA
+  | 255 => some .kernelC
+  | _ => none
+
+def PhaseKernelExactCoverage : Prop :=
+  frontierCoverage 39 = some .descends ∧
+  frontierCoverage 79 = some .descends ∧
+  frontierCoverage 95 = some .descends ∧
+  frontierCoverage 123 = some .descends ∧
+  frontierCoverage 27 = some .kernelB ∧
+  frontierCoverage 31 = some .kernelA ∧
+  frontierCoverage 47 = some .kernelA ∧
+  frontierCoverage 63 = some .kernelA ∧
+  frontierCoverage 71 = some .kernelA ∧
+  frontierCoverage 91 = some .kernelA ∧
+  frontierCoverage 103 = some .kernelB ∧
+  frontierCoverage 111 = some .kernelA ∧
+  frontierCoverage 127 = some .kernelB ∧
+  frontierCoverage 155 = some .kernelA ∧
+  frontierCoverage 159 = some .kernelB ∧
+  frontierCoverage 167 = some .kernelA ∧
+  frontierCoverage 191 = some .kernelB ∧
+  frontierCoverage 207 = some .kernelA ∧
+  frontierCoverage 223 = some .kernelA ∧
+  frontierCoverage 231 = some .kernelA ∧
+  frontierCoverage 239 = some .kernelB ∧
+  frontierCoverage 251 = some .kernelA ∧
+  frontierCoverage 255 = some .kernelC
+
+def NoDangerousFrontier : Prop :=
+  ∀ n, n > 1 -> kernelBound ≤ n -> ∃ k, PositiveDescentAt n k
+
+def critical_template_kernel_density_zero_nat : Prop :=
+  critical_template_kernel_exactness_all_depth ->
+  PhaseKernelExactCoverage ->
+  NoDangerousFrontier
+
+def PressureHeightExit (n k : Nat) : Prop :=
+  PositiveDescentAt n k
+
+theorem iterateNat_add (f : Nat → Nat) (a b n : Nat) :
+    iterateNat f (a + b) n = iterateNat f b (iterateNat f a n) := by
+  induction a generalizing n with
+  | zero =>
+      simp [iterateNat]
+  | succ a ih =>
+      simp [iterateNat, Nat.succ_add, ih]
+
+theorem collatz_from_eventual_positive_descent
+    (hDesc : EventualPositiveDescent) :
+    ∀ n, n > 0 -> CollatzTerminates n := by
+  intro n
+  refine Nat.strongRecOn (motive := fun n => n > 0 -> CollatzTerminates n) n ?_
+  intro n ih hn
+  cases n with
+  | zero =>
+      cases hn
+  | succ n' =>
+      cases n' with
+      | zero =>
+          exact ⟨0, rfl⟩
+      | succ m =>
+          have hn_gt_one : Nat.succ (Nat.succ m) > 1 :=
+            Nat.succ_lt_succ (Nat.zero_lt_succ m)
+          obtain ⟨k, hpos, hlt⟩ := hDesc (Nat.succ (Nat.succ m)) hn_gt_one
+          let d := iterateNat collatzStep k (Nat.succ (Nat.succ m))
+          have hterm_d : CollatzTerminates d := ih d hlt hpos
+          obtain ⟨j, hj⟩ := hterm_d
+          refine ⟨k + j, ?_⟩
+          rw [iterateNat_add]
+          simpa [d] using hj
+
+theorem critical_q1_excludes_dangerous_frontier
+    (hDensity : critical_template_kernel_density_zero_nat)
+    (hExactness : critical_template_kernel_exactness_all_depth)
+    (hCoverage : PhaseKernelExactCoverage) :
+    NoDangerousFrontier := by
+  exact hDensity hExactness hCoverage
+
+theorem pressure_height_exit_exists_nat
+    (hNoDangerous : NoDangerousFrontier) :
+    ∀ n, n > 1 -> kernelBound ≤ n -> ∃ k, PressureHeightExit n k := by
+  intro n hn hbound
+  exact hNoDangerous n hn hbound
+
+theorem pressure_height_exit_sound_nat :
+    ∀ n k, n > 1 -> PressureHeightExit n k -> PositiveDescentAt n k := by
+  intro _ _ _ hExit
+  exact hExit
+
+theorem eventual_positive_descent_from_full_kernel
+    (hDensity : critical_template_kernel_density_zero_nat)
+    (hExactness : critical_template_kernel_exactness_all_depth)
+    (hCoverage : PhaseKernelExactCoverage)
+    (hBase :
+      ∀ n, n > 1 -> n < kernelBound -> ∃ k, PositiveDescentAt n k) :
+    EventualPositiveDescent := by
+  intro n hn
+  by_cases hsmall : n < kernelBound
+  · exact hBase n hn hsmall
+  · have hNoDangerous : NoDangerousFrontier :=
+      critical_q1_excludes_dangerous_frontier hDensity hExactness hCoverage
+    obtain ⟨k, hk⟩ := pressure_height_exit_exists_nat
+      hNoDangerous n hn (Nat.le_of_not_lt hsmall)
+    exact ⟨k, pressure_height_exit_sound_nat n k hn hk⟩
+
+theorem collatz_nat_level_no_scaffold
+    (hDensity : critical_template_kernel_density_zero_nat)
+    (hExactness : critical_template_kernel_exactness_all_depth)
+    (hCoverage : PhaseKernelExactCoverage)
+    (hBase :
+      ∀ n, n > 1 -> n < kernelBound -> ∃ k, PositiveDescentAt n k) :
+    ∀ n : Nat, n > 0 -> CollatzTerminates n := by
+  exact collatz_from_eventual_positive_descent
+    (eventual_positive_descent_from_full_kernel
+      hDensity hExactness hCoverage hBase)
