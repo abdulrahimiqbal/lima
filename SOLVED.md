@@ -167,6 +167,14 @@ This is not a proof of impossibility.
 It is a real sharpening of the K2 subproblem:
 the next exact local target is no longer "close 256*t+31 somehow",
 but "control the 10 open mod-4096 K2 children as a recurrent kernel family".
+
+That recurrent family already splits into three deterministic-prefix archetypes:
+- 543, 799, 1567, 2079, 3871 reach 6561*t + c after 20 deterministic steps
+- 31, 2847, 3103, 3615 reach 19683*t + c after 21 deterministic steps
+- 1055 reaches 59049*t + 15227 after 22 deterministic steps
+
+So the live K2 child kernel is not a flat 10-case list anymore.
+It already compresses into a 5/4/1 archetype split before any further theorem work.
 ```
 
 Current problem-solving approach:

@@ -253,6 +253,26 @@ the next direct-route object is not the whole parent 256*t+31,
 but the recurrent 10-child mod-4096 K2 kernel it generates
 ```
 
+And even that 10-child kernel already compresses one level further:
+
+```text
+20 deterministic steps -> 6561*t + c :
+543, 799, 1567, 2079, 3871
+
+21 deterministic steps -> 19683*t + c :
+31, 2847, 3103, 3615
+
+22 deterministic steps -> 59049*t + 15227 :
+1055
+```
+
+So the immediate direct-route target is now:
+
+```text
+prove control of the three K2 mod-4096 child archetypes,
+not ten unrelated child theorems
+```
+
 ### Route B. Pressure-Height Scaffold Elimination
 
 Current verified status:

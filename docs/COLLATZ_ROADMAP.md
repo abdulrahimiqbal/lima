@@ -256,6 +256,21 @@ the next direct local target inside K2 is the 10-child recurrent mod-4096 family
 not the parent 256*t+31 as a single opaque theorem
 ```
 
+Local deterministic checking already splits that K2 child family into three archetypes:
+
+```text
+543, 799, 1567, 2079, 3871 -> 6561*t + c after 20 deterministic steps
+31, 2847, 3103, 3615 -> 19683*t + c after 21 deterministic steps
+1055 -> 59049*t + 15227 after 22 deterministic steps
+```
+
+So the direct-route endgame is sharper again:
+
+```text
+close three recurrent K2 mod-4096 child archetypes,
+or prove they all fold into one higher-level kernel theorem
+```
+
 Immediate unresolved arithmetic frontier:
 
 ```text
