@@ -183,6 +183,14 @@ One parity split deeper, those three archetypes already form a structured transi
 
 So the K2 kernel is showing an upper-triangular 3-adic ladder shape,
 not an unstructured explosion of unrelated children.
+
+Even better, the ladder is exactly balanced at the first parity split:
+- every 6561 branch has one child staying at odd coefficient 6561 and one child moving to 19683
+- every 19683 branch has one child staying at 19683 and one child moving to 59049
+- the 59049 branch has one child staying at 59049 and one child moving to 177147
+
+So the live K2 kernel is exhibiting a precise `same-or-times-3` transition law,
+not just a qualitative ladder picture.
 ```
 
 Current problem-solving approach:

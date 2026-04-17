@@ -285,6 +285,21 @@ That does not prove descent.
 But it is the first clean sign that the live K2 kernel may admit
 a finite-state 3-adic ladder theorem rather than arbitrary branching.
 
+The branching is also exactly balanced at this first split:
+
+```text
+6561  : 5 same-coefficient branches, 5 times-3 branches
+19683 : 4 same-coefficient branches, 4 times-3 branches
+59049 : 1 same-coefficient branch, 1 times-3 branch
+```
+
+So the sharpened direct-route theorem hunt is:
+
+```text
+explain why this exact same-or-times-3 ladder law
+still forces eventual descent or feeds the pressure-height kernel bound
+```
+
 ### Route B. Pressure-Height Scaffold Elimination
 
 Current verified status:

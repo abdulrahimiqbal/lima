@@ -286,6 +286,22 @@ the missing object may be a finite-state 3-adic ladder control theorem
 for the K2 kernel, rather than 10 independent child closures
 ```
 
+The first parity split is also exactly balanced:
+
+```text
+at each current K2 ladder state,
+one parity child stays on the same odd coefficient
+and the other moves to 3 times that coefficient
+after forced even normalization
+```
+
+So the roadmap is now even sharper:
+
+```text
+the next theorem is not just "control a ladder",
+but "control an exact same-or-times-3 branching law on that ladder"
+```
+
 Immediate unresolved arithmetic frontier:
 
 ```text
