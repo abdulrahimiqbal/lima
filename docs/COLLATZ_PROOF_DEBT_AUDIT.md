@@ -106,7 +106,7 @@ single-family rewrite frontier:
 What is already known:
 
 ```text
-39, 79, 95, and 123 have composed rewrite certificates
+39, 79, 95, and 123 now have Lean-clean 13-step descent theorems
 the remaining nine mod-256 parents are packaged as explicit parent-closure obligations
 the unresolved refinement tree compresses into a small number of profile classes
 simple local child-count measures do not close the tree
@@ -152,6 +152,14 @@ C = {127}
 
 So the likely missing theorem is smaller than "13 unrelated residue cases":
 it may be three cylinder-archetype exclusion theorems.
+
+After the theorem-level frontier split, the live parent kernel is sharper still:
+
+```text
+A_parent = {27, 31, 63, 103, 111}
+B_parent = {47, 71, 91}
+C_parent = {127}
+```
 ```
 
 ### Route B. Pressure-Height Scaffold Elimination

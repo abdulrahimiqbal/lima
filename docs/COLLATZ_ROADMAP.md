@@ -7,6 +7,7 @@ For the current endgame audit, also read:
 ```text
 docs/COLLATZ_PROOF_DEBT_AUDIT.md
 docs/COLLATZ_REFINEMENT_SIGNATURE_AUDIT.md
+docs/COLLATZ_FRONTIER128_SPLIT_HARDENING.md
 ```
 
 ## Current Position
@@ -101,6 +102,20 @@ C = {127}
 
 So the direct-route endgame may now reduce to excluding infinite unresolved branches for
 three archetypes rather than thirteen unrelated residue cases.
+
+The frontier split hardening upgrades part of this from search to theorem:
+
+```text
+39, 79, 95, and 123 now have Lean-clean 13-step descent theorems.
+
+So the live theorem-level parent frontier is:
+27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
+
+grouped as:
+A_parent = {27, 31, 63, 103, 111}
+B_parent = {47, 71, 91}
+C_parent = {127}
+```
 ```
 
 ```text
