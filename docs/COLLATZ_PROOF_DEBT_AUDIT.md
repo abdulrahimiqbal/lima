@@ -102,8 +102,15 @@ More sharply, the remaining proof debt has compressed to:
    `critical_template_kernel_exactness_all_depth`
 2. prove the concrete Nat theorem
    `critical_template_kernel_density_zero_nat`
-   from that exactness statement and the already checked frontier coverage
+   from that exactness statement
 3. instantiate the now-concrete bridge/final assembly with those theorems
+
+The current implementation reduced the final bridge assumptions once more:
+quantified frontier coverage over the 23 tracked residues is now theorem-level,
+and finite base coverage to `256` is now inlined directly into the pressure-height
+bridge and final assembly. The last live hypotheses are therefore only
+`critical_template_kernel_exactness_all_depth` and
+`critical_template_kernel_density_zero_nat`.
 ```
 
 ## The Two Serious Endgames

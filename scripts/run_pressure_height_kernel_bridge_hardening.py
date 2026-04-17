@@ -3,20 +3,44 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path
 from shutil import which
 
 
-DEFAULT_LEAN = Path.home() / ".elan" / "bin" / "lean"
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.run_collatz_critical_q1_base_coverage_hardening import (
+    BASE_WITNESSES,
+    KERNEL_BOUND,
+)
+from scripts.run_collatz_critical_q1_template_density_zero_nat_hardening import (
+    DEFAULT_LEAN,
+)
+
+
 LEAN_PATH = ROOT / "researcherreview" / "ProPressureHeightKernelBridge.lean"
 
 
+def _base_witness_body() -> str:
+    lines = []
+    for i in range(0, len(BASE_WITNESSES), 16):
+        chunk = ", ".join(str(x) for x in BASE_WITNESSES[i : i + 16])
+        suffix = "," if i + 16 < len(BASE_WITNESSES) else ""
+        lines.append(f"  {chunk}{suffix}")
+    return "\n".join(lines)
+
+
 def build_lean_source() -> str:
-    return """import Std
+    witness_body = _base_witness_body()
+    return f"""import Std
 
 open Std
+
+set_option maxRecDepth 1000000
 
 def collatzStep (n : Nat) : Nat :=
   if n % 2 = 0 then n / 2 else 3 * n + 1
@@ -31,7 +55,7 @@ def PositiveDescentAt (n k : Nat) : Prop :=
 def EventualPositiveDescent : Prop :=
   ∀ n, n > 1 -> ∃ k, PositiveDescentAt n k
 
-def kernelBound : Nat := 256
+def kernelBound : Nat := {KERNEL_BOUND}
 
 inductive CriticalTemplateState where
   | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 | T9 | T10 | T11 | T12
@@ -70,81 +94,47 @@ def critical_template_kernel_exactness_all_depth : Prop :=
       templateClassifier
           (obs.residueClass, obs.sourceCount, obs.oneChildSources, obs.twoChildSources) ≠ none
 
-inductive FrontierCoverage where
-  | descends
-  | kernelA
-  | kernelB
-  | kernelC
-  deriving DecidableEq, Repr
-
-def frontierCoverage : Nat → Option FrontierCoverage
-  | 39 => some .descends
-  | 79 => some .descends
-  | 95 => some .descends
-  | 123 => some .descends
-  | 27 => some .kernelB
-  | 31 => some .kernelA
-  | 47 => some .kernelA
-  | 63 => some .kernelA
-  | 71 => some .kernelA
-  | 91 => some .kernelA
-  | 103 => some .kernelB
-  | 111 => some .kernelA
-  | 127 => some .kernelB
-  | 155 => some .kernelA
-  | 159 => some .kernelB
-  | 167 => some .kernelA
-  | 191 => some .kernelB
-  | 207 => some .kernelA
-  | 223 => some .kernelA
-  | 231 => some .kernelA
-  | 239 => some .kernelB
-  | 251 => some .kernelA
-  | 255 => some .kernelC
-  | _ => none
-
-def PhaseKernelExactCoverage : Prop :=
-  frontierCoverage 39 = some .descends ∧
-  frontierCoverage 79 = some .descends ∧
-  frontierCoverage 95 = some .descends ∧
-  frontierCoverage 123 = some .descends ∧
-  frontierCoverage 27 = some .kernelB ∧
-  frontierCoverage 31 = some .kernelA ∧
-  frontierCoverage 47 = some .kernelA ∧
-  frontierCoverage 63 = some .kernelA ∧
-  frontierCoverage 71 = some .kernelA ∧
-  frontierCoverage 91 = some .kernelA ∧
-  frontierCoverage 103 = some .kernelB ∧
-  frontierCoverage 111 = some .kernelA ∧
-  frontierCoverage 127 = some .kernelB ∧
-  frontierCoverage 155 = some .kernelA ∧
-  frontierCoverage 159 = some .kernelB ∧
-  frontierCoverage 167 = some .kernelA ∧
-  frontierCoverage 191 = some .kernelB ∧
-  frontierCoverage 207 = some .kernelA ∧
-  frontierCoverage 223 = some .kernelA ∧
-  frontierCoverage 231 = some .kernelA ∧
-  frontierCoverage 239 = some .kernelB ∧
-  frontierCoverage 251 = some .kernelA ∧
-  frontierCoverage 255 = some .kernelC
-
 def NoDangerousFrontier : Prop :=
   ∀ n, n > 1 -> kernelBound ≤ n -> ∃ k, PositiveDescentAt n k
 
 def critical_template_kernel_density_zero_nat : Prop :=
-  critical_template_kernel_exactness_all_depth ->
-  PhaseKernelExactCoverage ->
-  NoDangerousFrontier
+  critical_template_kernel_exactness_all_depth -> NoDangerousFrontier
+
+def baseWitnesses : Array Nat := #[
+{witness_body}
+]
+
+def baseWitnessNat (n : Nat) : Nat :=
+  baseWitnesses.getD n 0
+
+def baseWitness (n : Fin {KERNEL_BOUND}) : Nat :=
+  baseWitnessNat n.val
+
+theorem baseWitness_sound_fin :
+    ∀ n : Fin {KERNEL_BOUND},
+      1 < n.val ->
+      0 < iterateNat collatzStep (baseWitness n) n.val ∧
+        iterateNat collatzStep (baseWitness n) n.val < n.val := by
+  decide
+
+theorem kernel_bound_has_finite_base_coverage :
+    ∀ n, 1 < n -> n < kernelBound ->
+      ∃ k, 0 < iterateNat collatzStep k n ∧
+        iterateNat collatzStep k n < n := by
+  intro n hn hlt
+  have hfin : n < {KERNEL_BOUND} := by
+    simpa [kernelBound] using hlt
+  refine ⟨baseWitness ⟨n, hfin⟩, ?_⟩
+  simpa [baseWitness] using baseWitness_sound_fin ⟨n, hfin⟩ hn
 
 def PressureHeightExit (n k : Nat) : Prop :=
   PositiveDescentAt n k
 
 theorem critical_q1_excludes_dangerous_frontier
     (hDensity : critical_template_kernel_density_zero_nat)
-    (hExactness : critical_template_kernel_exactness_all_depth)
-    (hCoverage : PhaseKernelExactCoverage) :
+    (hExactness : critical_template_kernel_exactness_all_depth) :
     NoDangerousFrontier := by
-  exact hDensity hExactness hCoverage
+  exact hDensity hExactness
 
 theorem pressure_height_exit_exists_nat
     (hNoDangerous : NoDangerousFrontier) :
@@ -159,16 +149,13 @@ theorem pressure_height_exit_sound_nat :
 
 theorem eventual_positive_descent_from_periodic_kernel
     (hDensity : critical_template_kernel_density_zero_nat)
-    (hExactness : critical_template_kernel_exactness_all_depth)
-    (hCoverage : PhaseKernelExactCoverage)
-    (hBase :
-      ∀ n, n > 1 -> n < kernelBound -> ∃ k, PositiveDescentAt n k) :
+    (hExactness : critical_template_kernel_exactness_all_depth) :
     EventualPositiveDescent := by
   intro n hn
   by_cases hsmall : n < kernelBound
-  · exact hBase n hn hsmall
+  · exact kernel_bound_has_finite_base_coverage n hn hsmall
   · have hNoDangerous : NoDangerousFrontier :=
-      critical_q1_excludes_dangerous_frontier hDensity hExactness hCoverage
+      critical_q1_excludes_dangerous_frontier hDensity hExactness
     obtain ⟨k, hk⟩ := pressure_height_exit_exists_nat
       hNoDangerous n hn (Nat.le_of_not_lt hsmall)
     exact ⟨k, pressure_height_exit_sound_nat n k hn hk⟩
@@ -219,10 +206,13 @@ def build_payload() -> dict[str, object]:
         "sorry": "sorry" in source,
         "bool_field": ": Bool" in source,
         "abstract_shadow_control": "CriticalShadowControl" in source,
+        "abstract_phase_coverage": "PhaseKernelExactCoverage" in source,
+        "explicit_base_assumption": "hBase" in source,
     }
     return {
         "verdict": "pressure_height_kernel_bridge_hardening",
         "theorem_names": [
+            "kernel_bound_has_finite_base_coverage",
             "critical_q1_excludes_dangerous_frontier",
             "pressure_height_exit_exists_nat",
             "pressure_height_exit_sound_nat",
@@ -230,7 +220,6 @@ def build_payload() -> dict[str, object]:
         ],
         "interface_names": [
             "critical_template_kernel_exactness_all_depth",
-            "PhaseKernelExactCoverage",
             "critical_template_kernel_density_zero_nat",
             "NoDangerousFrontier",
             "PressureHeightExit",

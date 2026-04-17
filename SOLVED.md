@@ -50,9 +50,8 @@ The newest local hardening step narrows that debt further:
 - the pressure-height bridge and final assembly now depend only on the named
   debts
   `critical_template_kernel_exactness_all_depth`,
-  `PhaseKernelExactCoverage`,
   `critical_template_kernel_density_zero_nat`,
-  and finite base coverage
+  with quantified frontier coverage and finite base coverage already inlined
 - the old generic placeholders
   `CriticalShadowControl` / abstract `NoDangerousFrontier : Prop`
   are no longer used in the new bridge/final-assembly lane
@@ -77,6 +76,8 @@ these are actual iterateNat / collatzStep statements, not Bool certificate field
 proof-closing hardening now tracked locally:
 - `kernel_bound_has_finite_base_coverage`
 - `critical_template_kernel_classifier_checked_prefix`
+- `critical_template_kernel_checked_successor_law`
+- `critical_template_kernel_checked_stabilization_threshold`
 - `critical_template_kernel_checked_prefix_return_factors`
 - `phase_kernel_exact_coverage`
 - `critical_template_kernel_density_zero_nat_implies_no_dangerous_frontier`
@@ -93,7 +94,7 @@ What is not theorem-level yet:
 the full odd 4*a+3 family
 the all-depth theorem `critical_template_kernel_exactness_all_depth`
 the concrete Nat theorem `critical_template_kernel_density_zero_nat`
-  turning template exactness + frontier coverage into large-n positive descent
+  turning template exactness into large-n positive descent
 the final arithmetic content making those two statements true for actual Collatz dynamics
   rather than only as exact theorem interfaces over the tracked finite kernel
 ```

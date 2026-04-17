@@ -12,7 +12,6 @@ def test_template_density_zero_nat_exposes_concrete_interfaces() -> None:
 
     assert payload["interface_names"] == [
         "critical_template_kernel_exactness_all_depth",
-        "PhaseKernelExactCoverage",
         "NoDangerousFrontier",
         "critical_template_kernel_density_zero_nat",
     ]
@@ -21,6 +20,7 @@ def test_template_density_zero_nat_exposes_concrete_interfaces() -> None:
         "sorry": False,
         "bool_field": False,
         "abstract_density_bridge": False,
+        "abstract_phase_coverage": False,
     }
 
 
@@ -30,6 +30,7 @@ def test_template_density_zero_nat_generated_source_matches_repo_file_and_compil
 
     assert payload["lean_check"]["ok"], payload["lean_check"]["stderr"]
     assert "def critical_template_kernel_density_zero_nat : Prop" in source
+    assert "PhaseKernelExactCoverage" not in source
     assert (
         "theorem critical_template_kernel_density_zero_nat_implies_no_dangerous_frontier"
         in source

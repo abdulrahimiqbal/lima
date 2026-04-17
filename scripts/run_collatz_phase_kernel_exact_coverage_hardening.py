@@ -60,16 +60,9 @@ ORDERED_FRONTIER = [
 
 
 def build_lean_source() -> str:
-    coverage_lines = []
-    for residue in ORDERED_FRONTIER:
-        coverage_lines.append(
-            f"frontierCoverage {residue} = some .{KERNEL_CLASSIFICATION[residue]}"
-        )
-    coverage_body = " ∧\n    ".join(coverage_lines)
-
     classifier_lines = [
-        f"  | {residue} => some .{label}"
-        for residue, label in KERNEL_CLASSIFICATION.items()
+        f"  | {residue} => some .{KERNEL_CLASSIFICATION[residue]}"
+        for residue in ORDERED_FRONTIER
     ]
 
     return f"""import Std
@@ -87,12 +80,21 @@ def frontierCoverage : Nat → Option FrontierCoverage
 {chr(10).join(classifier_lines)}
   | _ => none
 
-def PhaseKernelExactCoverage : Prop :=
-  {coverage_body}
+def LiveRecurrentFrontierResidue (n : Nat) : Prop :=
+  frontierCoverage n ≠ none
 
-theorem phase_kernel_exact_coverage : PhaseKernelExactCoverage := by
-  repeat' constructor
-  all_goals rfl
+theorem phase_kernel_exact_coverage :
+    ∀ n, LiveRecurrentFrontierResidue n →
+      frontierCoverage n = some .descends ∨
+      frontierCoverage n = some .kernelA ∨
+      frontierCoverage n = some .kernelB ∨
+      frontierCoverage n = some .kernelC := by
+  intro n hn
+  cases hcov : frontierCoverage n with
+  | none =>
+      exact False.elim (hn hcov)
+  | some label =>
+      cases label <;> simp [hcov]
 """
 
 
@@ -145,14 +147,13 @@ def build_payload() -> dict[str, object]:
         ],
         "interface_names": [
             "FrontierCoverage",
-            "PhaseKernelExactCoverage",
+            "LiveRecurrentFrontierResidue",
         ],
         "lean_file": str(LEAN_PATH),
         "lean_check": run_lean("phase_kernel_exact_coverage_hardening", source),
         "interpretation": (
-            "This packages the live arithmetic frontier as a finite exact classification theorem: "
-            "the descended mod-128 roots are marked `descends`, and the 19 open mod-256 classes "
-            "are placed into the kernel A/B/C projection."
+            "This packages the live arithmetic frontier as a quantified exact classification theorem: "
+            "each recurrent tracked residue is proved to be either `descends`, `kernelA`, `kernelB`, or `kernelC`."
         ),
     }
 

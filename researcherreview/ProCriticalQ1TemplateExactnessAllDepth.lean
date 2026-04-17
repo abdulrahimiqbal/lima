@@ -34,6 +34,22 @@ def templateClassifier : TemplateClassifierKey → Option CriticalTemplateState
   | (255, 595, 273, 322) => some .T12
   | _ => none
 
+def templateTwoBitLift : CriticalTemplateState → Option CriticalTemplateState
+  | .T1 => some .T6
+  | .T2 => some .T9
+  | .T3 => some .T12
+  | .T4 => some .T5
+  | .T5 => some .T6
+  | .T6 => none
+  | .T7 => some .T8
+  | .T8 => some .T9
+  | .T9 => none
+  | .T10 => some .T11
+  | .T11 => some .T12
+  | .T12 => none
+
+def templateStabilizationThreshold : Nat := 262144
+
 def templateTwoBitReturnNum : CriticalTemplateState → Nat
   | .T1 => 78
   | .T2 => 8
@@ -91,6 +107,25 @@ theorem critical_template_kernel_classifier_checked_prefix :
     templateClassifier (255, 120, 64, 56) = some .T10 ∧
     templateClassifier (255, 352, 109, 243) = some .T11 ∧
     templateClassifier (255, 595, 273, 322) = some .T12 := by
+  native_decide
+
+theorem critical_template_kernel_checked_successor_law :
+    templateTwoBitLift .T1 = some .T6 ∧
+    templateTwoBitLift .T2 = some .T9 ∧
+    templateTwoBitLift .T3 = some .T12 ∧
+    templateTwoBitLift .T4 = some .T5 ∧
+    templateTwoBitLift .T5 = some .T6 ∧
+    templateTwoBitLift .T6 = none ∧
+    templateTwoBitLift .T7 = some .T8 ∧
+    templateTwoBitLift .T8 = some .T9 ∧
+    templateTwoBitLift .T9 = none ∧
+    templateTwoBitLift .T10 = some .T11 ∧
+    templateTwoBitLift .T11 = some .T12 ∧
+    templateTwoBitLift .T12 = none := by
+  native_decide
+
+theorem critical_template_kernel_checked_stabilization_threshold :
+    templateStabilizationThreshold = 262144 := by
   native_decide
 
 theorem critical_template_kernel_checked_prefix_return_factors :

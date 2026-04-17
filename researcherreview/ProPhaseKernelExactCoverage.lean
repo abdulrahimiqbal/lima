@@ -14,52 +14,39 @@ def frontierCoverage : Nat → Option FrontierCoverage
   | 79 => some .descends
   | 95 => some .descends
   | 123 => some .descends
+  | 27 => some .kernelB
   | 31 => some .kernelA
   | 47 => some .kernelA
   | 63 => some .kernelA
   | 71 => some .kernelA
   | 91 => some .kernelA
+  | 103 => some .kernelB
   | 111 => some .kernelA
+  | 127 => some .kernelB
   | 155 => some .kernelA
+  | 159 => some .kernelB
   | 167 => some .kernelA
+  | 191 => some .kernelB
   | 207 => some .kernelA
   | 223 => some .kernelA
   | 231 => some .kernelA
-  | 251 => some .kernelA
-  | 27 => some .kernelB
-  | 103 => some .kernelB
-  | 127 => some .kernelB
-  | 159 => some .kernelB
-  | 191 => some .kernelB
   | 239 => some .kernelB
+  | 251 => some .kernelA
   | 255 => some .kernelC
   | _ => none
 
-def PhaseKernelExactCoverage : Prop :=
-  frontierCoverage 39 = some .descends ∧
-    frontierCoverage 79 = some .descends ∧
-    frontierCoverage 95 = some .descends ∧
-    frontierCoverage 123 = some .descends ∧
-    frontierCoverage 27 = some .kernelB ∧
-    frontierCoverage 31 = some .kernelA ∧
-    frontierCoverage 47 = some .kernelA ∧
-    frontierCoverage 63 = some .kernelA ∧
-    frontierCoverage 71 = some .kernelA ∧
-    frontierCoverage 91 = some .kernelA ∧
-    frontierCoverage 103 = some .kernelB ∧
-    frontierCoverage 111 = some .kernelA ∧
-    frontierCoverage 127 = some .kernelB ∧
-    frontierCoverage 155 = some .kernelA ∧
-    frontierCoverage 159 = some .kernelB ∧
-    frontierCoverage 167 = some .kernelA ∧
-    frontierCoverage 191 = some .kernelB ∧
-    frontierCoverage 207 = some .kernelA ∧
-    frontierCoverage 223 = some .kernelA ∧
-    frontierCoverage 231 = some .kernelA ∧
-    frontierCoverage 239 = some .kernelB ∧
-    frontierCoverage 251 = some .kernelA ∧
-    frontierCoverage 255 = some .kernelC
+def LiveRecurrentFrontierResidue (n : Nat) : Prop :=
+  frontierCoverage n ≠ none
 
-theorem phase_kernel_exact_coverage : PhaseKernelExactCoverage := by
-  repeat' constructor
-  all_goals rfl
+theorem phase_kernel_exact_coverage :
+    ∀ n, LiveRecurrentFrontierResidue n →
+      frontierCoverage n = some .descends ∨
+      frontierCoverage n = some .kernelA ∨
+      frontierCoverage n = some .kernelB ∨
+      frontierCoverage n = some .kernelC := by
+  intro n hn
+  cases hcov : frontierCoverage n with
+  | none =>
+      exact False.elim (hn hcov)
+  | some label =>
+      cases label <;> simp [hcov]

@@ -2,6 +2,8 @@ import Std
 
 open Std
 
+set_option maxRecDepth 1000000
+
 def collatzStep (n : Nat) : Nat :=
   if n % 2 = 0 then n / 2 else 3 * n + 1
 
@@ -54,81 +56,62 @@ def critical_template_kernel_exactness_all_depth : Prop :=
       templateClassifier
           (obs.residueClass, obs.sourceCount, obs.oneChildSources, obs.twoChildSources) ≠ none
 
-inductive FrontierCoverage where
-  | descends
-  | kernelA
-  | kernelB
-  | kernelC
-  deriving DecidableEq, Repr
-
-def frontierCoverage : Nat → Option FrontierCoverage
-  | 39 => some .descends
-  | 79 => some .descends
-  | 95 => some .descends
-  | 123 => some .descends
-  | 27 => some .kernelB
-  | 31 => some .kernelA
-  | 47 => some .kernelA
-  | 63 => some .kernelA
-  | 71 => some .kernelA
-  | 91 => some .kernelA
-  | 103 => some .kernelB
-  | 111 => some .kernelA
-  | 127 => some .kernelB
-  | 155 => some .kernelA
-  | 159 => some .kernelB
-  | 167 => some .kernelA
-  | 191 => some .kernelB
-  | 207 => some .kernelA
-  | 223 => some .kernelA
-  | 231 => some .kernelA
-  | 239 => some .kernelB
-  | 251 => some .kernelA
-  | 255 => some .kernelC
-  | _ => none
-
-def PhaseKernelExactCoverage : Prop :=
-  frontierCoverage 39 = some .descends ∧
-  frontierCoverage 79 = some .descends ∧
-  frontierCoverage 95 = some .descends ∧
-  frontierCoverage 123 = some .descends ∧
-  frontierCoverage 27 = some .kernelB ∧
-  frontierCoverage 31 = some .kernelA ∧
-  frontierCoverage 47 = some .kernelA ∧
-  frontierCoverage 63 = some .kernelA ∧
-  frontierCoverage 71 = some .kernelA ∧
-  frontierCoverage 91 = some .kernelA ∧
-  frontierCoverage 103 = some .kernelB ∧
-  frontierCoverage 111 = some .kernelA ∧
-  frontierCoverage 127 = some .kernelB ∧
-  frontierCoverage 155 = some .kernelA ∧
-  frontierCoverage 159 = some .kernelB ∧
-  frontierCoverage 167 = some .kernelA ∧
-  frontierCoverage 191 = some .kernelB ∧
-  frontierCoverage 207 = some .kernelA ∧
-  frontierCoverage 223 = some .kernelA ∧
-  frontierCoverage 231 = some .kernelA ∧
-  frontierCoverage 239 = some .kernelB ∧
-  frontierCoverage 251 = some .kernelA ∧
-  frontierCoverage 255 = some .kernelC
-
 def NoDangerousFrontier : Prop :=
   ∀ n, n > 1 -> kernelBound ≤ n -> ∃ k, PositiveDescentAt n k
 
 def critical_template_kernel_density_zero_nat : Prop :=
-  critical_template_kernel_exactness_all_depth ->
-  PhaseKernelExactCoverage ->
-  NoDangerousFrontier
+  critical_template_kernel_exactness_all_depth -> NoDangerousFrontier
+
+def baseWitnesses : Array Nat := #[
+  0, 0, 1, 6, 1, 3, 1, 11, 1, 3, 1, 8, 1, 3, 1, 11,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 96, 1, 3, 1, 91,
+  1, 3, 1, 6, 1, 3, 1, 13, 1, 3, 1, 8, 1, 3, 1, 88,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 11, 1, 3, 1, 88,
+  1, 3, 1, 6, 1, 3, 1, 83, 1, 3, 1, 8, 1, 3, 1, 13,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 73, 1, 3, 1, 13,
+  1, 3, 1, 6, 1, 3, 1, 68, 1, 3, 1, 8, 1, 3, 1, 50,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 13, 1, 3, 1, 24,
+  1, 3, 1, 6, 1, 3, 1, 11, 1, 3, 1, 8, 1, 3, 1, 11,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 65, 1, 3, 1, 34,
+  1, 3, 1, 6, 1, 3, 1, 47, 1, 3, 1, 8, 1, 3, 1, 13,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 11, 1, 3, 1, 21,
+  1, 3, 1, 6, 1, 3, 1, 13, 1, 3, 1, 8, 1, 3, 1, 21,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 13, 1, 3, 1, 50,
+  1, 3, 1, 6, 1, 3, 1, 19, 1, 3, 1, 8, 1, 3, 1, 32,
+  1, 3, 1, 6, 1, 3, 1, 8, 1, 3, 1, 44, 1, 3, 1, 21
+]
+
+def baseWitnessNat (n : Nat) : Nat :=
+  baseWitnesses.getD n 0
+
+def baseWitness (n : Fin 256) : Nat :=
+  baseWitnessNat n.val
+
+theorem baseWitness_sound_fin :
+    ∀ n : Fin 256,
+      1 < n.val ->
+      0 < iterateNat collatzStep (baseWitness n) n.val ∧
+        iterateNat collatzStep (baseWitness n) n.val < n.val := by
+  decide
+
+theorem kernel_bound_has_finite_base_coverage :
+    ∀ n, 1 < n -> n < kernelBound ->
+      ∃ k, 0 < iterateNat collatzStep k n ∧
+        iterateNat collatzStep k n < n := by
+  intro n hn hlt
+  have hfin : n < 256 := by
+    simpa [kernelBound] using hlt
+  refine ⟨baseWitness ⟨n, hfin⟩, ?_⟩
+  simpa [baseWitness] using baseWitness_sound_fin ⟨n, hfin⟩ hn
 
 def PressureHeightExit (n k : Nat) : Prop :=
   PositiveDescentAt n k
 
 theorem critical_q1_excludes_dangerous_frontier
     (hDensity : critical_template_kernel_density_zero_nat)
-    (hExactness : critical_template_kernel_exactness_all_depth)
-    (hCoverage : PhaseKernelExactCoverage) :
+    (hExactness : critical_template_kernel_exactness_all_depth) :
     NoDangerousFrontier := by
-  exact hDensity hExactness hCoverage
+  exact hDensity hExactness
 
 theorem pressure_height_exit_exists_nat
     (hNoDangerous : NoDangerousFrontier) :
@@ -143,16 +126,13 @@ theorem pressure_height_exit_sound_nat :
 
 theorem eventual_positive_descent_from_periodic_kernel
     (hDensity : critical_template_kernel_density_zero_nat)
-    (hExactness : critical_template_kernel_exactness_all_depth)
-    (hCoverage : PhaseKernelExactCoverage)
-    (hBase :
-      ∀ n, n > 1 -> n < kernelBound -> ∃ k, PositiveDescentAt n k) :
+    (hExactness : critical_template_kernel_exactness_all_depth) :
     EventualPositiveDescent := by
   intro n hn
   by_cases hsmall : n < kernelBound
-  · exact hBase n hn hsmall
+  · exact kernel_bound_has_finite_base_coverage n hn hsmall
   · have hNoDangerous : NoDangerousFrontier :=
-      critical_q1_excludes_dangerous_frontier hDensity hExactness hCoverage
+      critical_q1_excludes_dangerous_frontier hDensity hExactness
     obtain ⟨k, hk⟩ := pressure_height_exit_exists_nat
       hNoDangerous n hn (Nat.le_of_not_lt hsmall)
     exact ⟨k, pressure_height_exit_sound_nat n k hn hk⟩

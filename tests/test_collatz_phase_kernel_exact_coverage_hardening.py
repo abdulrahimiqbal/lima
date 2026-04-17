@@ -15,6 +15,10 @@ def test_phase_kernel_exact_coverage_classifies_entire_live_frontier() -> None:
     assert payload["frontier_classification"]["31"] == "kernelA"
     assert payload["frontier_classification"]["255"] == "kernelC"
     assert len(payload["frontier_classification"]) == 23
+    assert payload["interface_names"] == [
+        "FrontierCoverage",
+        "LiveRecurrentFrontierResidue",
+    ]
 
 
 def test_phase_kernel_exact_coverage_generated_source_matches_repo_file_and_compiles() -> None:
@@ -22,6 +26,7 @@ def test_phase_kernel_exact_coverage_generated_source_matches_repo_file_and_comp
     source = build_lean_source()
 
     assert payload["lean_check"]["ok"], payload["lean_check"]["stderr"]
-    assert "def PhaseKernelExactCoverage : Prop" in source
+    assert "def LiveRecurrentFrontierResidue (n : Nat) : Prop" in source
     assert "theorem phase_kernel_exact_coverage" in source
+    assert "∀ n, LiveRecurrentFrontierResidue n →" in source
     assert Path(LEAN_PATH).read_text() == source

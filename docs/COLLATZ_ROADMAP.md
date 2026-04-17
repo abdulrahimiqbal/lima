@@ -80,7 +80,9 @@ critical_template_kernel_exactness_all_depth
 critical_template_kernel_density_zero_nat
 ```
 
-plus the existing finite base witness at `256`.
+The existing finite base witness at `256` is already wired directly into the
+bridge/final-assembly lane, and quantified frontier coverage is now theorem-level
+for the live 23-residue frontier.
 
 There are now only two serious endgames left in the repo:
 

@@ -20,6 +20,14 @@ from scripts.run_collatz_critical_q1_template_kernel_hardening import (
 
 
 LEAN_PATH = ROOT / "researcherreview" / "ProCriticalQ1TemplateExactnessAllDepth.lean"
+STABILIZATION_THRESHOLD = 262144
+
+
+def _successor_of(row: dict[str, object]) -> str:
+    successors = row["two_bit_succ"]
+    if not successors:
+        return "none"
+    return f"some .{successors[0]}"
 
 
 def build_lean_source() -> str:
@@ -28,6 +36,8 @@ def build_lean_source() -> str:
     checked_lines = []
     return_num_lines = []
     return_den_lines = []
+    lift_lines = []
+    successor_lines = []
 
     for row in TEMPLATE_STATES:
         key = (
@@ -43,14 +53,16 @@ def build_lean_source() -> str:
             "templateClassifier "
             f"({key[0]}, {key[1]}, {key[2]}, {key[3]}) = some .{row['state']}"
         )
-        return_num_lines.append(
-            f"  | .{row['state']} => {row['target_count']}"
-        )
-        return_den_lines.append(
-            f"  | .{row['state']} => {4 * row['source_count']}"
+        return_num_lines.append(f"  | .{row['state']} => {row['target_count']}")
+        return_den_lines.append(f"  | .{row['state']} => {4 * row['source_count']}")
+        lift_target = _successor_of(row)
+        lift_lines.append(f"  | .{row['state']} => {lift_target}")
+        successor_lines.append(
+            f"templateTwoBitLift .{row['state']} = {lift_target}"
         )
 
     checked_classifier = " ∧\n    ".join(checked_lines)
+    checked_successors = " ∧\n    ".join(successor_lines)
 
     return f"""import Std
 
@@ -65,6 +77,11 @@ abbrev TemplateClassifierKey := Nat × Nat × Nat × Nat
 def templateClassifier : TemplateClassifierKey → Option CriticalTemplateState
 {chr(10).join(classifier_lines)}
   | _ => none
+
+def templateTwoBitLift : CriticalTemplateState → Option CriticalTemplateState
+{chr(10).join(lift_lines)}
+
+def templateStabilizationThreshold : Nat := {STABILIZATION_THRESHOLD}
 
 def templateTwoBitReturnNum : CriticalTemplateState → Nat
 {chr(10).join(return_num_lines)}
@@ -90,6 +107,14 @@ def critical_template_kernel_exactness_all_depth : Prop :=
 
 theorem critical_template_kernel_classifier_checked_prefix :
     {checked_classifier} := by
+  native_decide
+
+theorem critical_template_kernel_checked_successor_law :
+    {checked_successors} := by
+  native_decide
+
+theorem critical_template_kernel_checked_stabilization_threshold :
+    templateStabilizationThreshold = {STABILIZATION_THRESHOLD} := by
   native_decide
 
 theorem critical_template_kernel_checked_prefix_return_factors :
@@ -153,6 +178,7 @@ def build_payload() -> dict[str, object]:
                 "numerator": row["target_count"],
                 "denominator": 4 * row["source_count"],
             },
+            "two_bit_successor": row["two_bit_succ"][0] if row["two_bit_succ"] else None,
         }
         for row in TEMPLATE_STATES
     ]
@@ -161,18 +187,24 @@ def build_payload() -> dict[str, object]:
         "interface_names": [
             "CriticalQ1TemplateObservation",
             "critical_template_kernel_exactness_all_depth",
+            "templateTwoBitLift",
+            "templateStabilizationThreshold",
         ],
         "theorem_names": [
             "critical_template_kernel_classifier_checked_prefix",
+            "critical_template_kernel_checked_successor_law",
+            "critical_template_kernel_checked_stabilization_threshold",
             "critical_template_kernel_checked_prefix_return_factors",
         ],
+        "stabilization_threshold": STABILIZATION_THRESHOLD,
         "classifier_rows": classifier_rows,
         "lean_file": str(LEAN_PATH),
         "lean_check": run_lean(
             "critical_q1_template_exactness_all_depth_hardening", source
         ),
         "remaining_gap": (
-            "The checked prefix classifier and return factors are now exact and Lean-clean. "
+            "The template classifier, two-bit successor law, stabilization threshold, "
+            "and checked return factors are now exact and Lean-clean. "
             "The remaining proof debt is the all-depth arithmetic theorem named "
             "`critical_template_kernel_exactness_all_depth`."
         ),
