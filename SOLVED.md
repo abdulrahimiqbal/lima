@@ -24,6 +24,14 @@ for every n > 1, prove there exists k such that
 0 < collatz^[k](n) < n.
 
 If that target is proved, ordinary Collatz termination follows by strong induction.
+
+The latest 13-job Aristotle final-closure tranche reconciles as 13 / 13 Lean-clean
+artifact bundles. That means the pressure-height endgame architecture is now
+verified as a coherent proof spine, not just a story.
+
+But that still does not prove Collatz, because those final-closure theorems are
+theorem-shape / certificate-architecture facts. They do not yet fully expand the
+remaining pressure-height certificate fields into concrete Nat-level arithmetic.
 ```
 
 What is theorem-level today:
@@ -49,6 +57,8 @@ What is not theorem-level yet:
 the full odd 4*a+3 family
 the final pressure-height scaffold elimination
 the fully expanded Nat-level pullback from the pressure-height route
+the concrete arithmetic theorem making the final pressure-height closure objects true
+for actual Collatz dynamics rather than only as verified certificate architecture
 ```
 
 Current exact local frontier:
@@ -1673,6 +1683,15 @@ proved_count: 13
 blocked_count: 0
 inconclusive_count: 0
 reconciled_pending_job_count: 0
+```
+
+Direct result-bundle pull on 2026-04-16 confirms the same picture:
+
+```text
+13 / 13 local result archives contain ARISTOTLE_SUMMARY.md
+13 / 13 summaries report no sorry statements
+13 / 13 summaries report Main.lean builds successfully
+the dashboard/status layer was misleading here; the proof artifacts themselves are clean
 ```
 
 Verified final-closure outcomes:
