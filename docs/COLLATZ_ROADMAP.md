@@ -2,6 +2,12 @@
 
 This is Lima's current zoom-out map for deciding whether the world-evolution path is worth pursuing.
 
+For the current endgame audit, also read:
+
+```text
+docs/COLLATZ_PROOF_DEBT_AUDIT.md
+```
+
 ## Current Position
 
 Lima has already shown that invented worlds can make formal contact with Lean/Aristotle. That is not a Collatz result. The remaining question is whether invention can produce a non-circular object that shrinks the proof burden.
@@ -40,6 +46,32 @@ proved global Composite Scarcity / density-zero closure without scaffold fields
 proved the fully expanded Nat-level pullback to ordinary Collatz termination
 proved eventual positive descent below n for every n > 1
 ```
+
+## Updated Endgame
+
+The roadmap has now compressed to one final target:
+
+```text
+for every n > 1, prove there exists k such that
+0 < collatz^[k](n) < n
+```
+
+If that target is proved, the already verified descent core yields ordinary Collatz
+termination by strong induction.
+
+There are now only two serious endgames left in the repo:
+
+```text
+1. direct arithmetic route:
+   prove a well-founded dyadic refinement + affine rewrite closure theorem
+
+2. pressure-height route:
+   eliminate the remaining scaffold fields and prove the concrete Nat-level
+   pressure-height exit / pullback theorem
+```
+
+The current best bet is route 1, because it already lives directly over actual
+Nat-level descent families and the remaining frontier is finite and named.
 
 ## Immediate Lean Snapshot
 
@@ -106,6 +138,26 @@ single-family rewrite frontier:
 parent-closure probe frontier:
 - 31, 47, 63, 71, 91, 111 each reduce to 10 unresolved mod-4096 children after inlining 6 direct children
 - 27, 103, 127 each reduce to 15 unresolved mod-4096 children after inlining 1 direct child
+```
+
+Updated roadmap from here:
+
+```text
+Phase A. preserve the proved base
+- descent core
+- concrete exit families
+- parent-closure theorem
+- pressure-height endgame architecture
+
+Phase B. close one remaining bridge
+- either refinement + rewrite well-foundedness
+- or concrete pressure-height scaffold elimination into Nat arithmetic
+
+Phase C. derive universal eventual descent
+for every n > 1, ∃ k, 0 < collatz^[k](n) < n
+
+Phase D. apply the descent core
+universal eventual descent -> ordinary Collatz termination
 ```
 
 ## Flow Diagram
