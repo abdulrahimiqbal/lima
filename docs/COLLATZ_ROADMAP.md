@@ -116,6 +116,44 @@ A_parent = {27, 31, 63, 103, 111}
 B_parent = {47, 71, 91}
 C_parent = {127}
 ```
+
+The newest kernel alignment sharpens the hybrid route again:
+
+```text
+the theorem-backed mod-128 child reductions and the mod-256 refinement-signature audit
+now agree on a two-class coarse kernel:
+
+K1 roots = {27, 103, 127}
+K2 roots = {31, 47, 63, 71, 91, 111}
+
+and the theorem-backed reduction targets from
+39, 47, 71, 79, 91, 95, 123 mod 128
+all land inside K2.
+```
+
+So the best current roadmap reading is:
+
+```text
+use theorem-level frontier reduction to compress the odd arithmetic debt into
+a two-class coarse kernel, then finish through explicit kernel exactness/drift
+inside the pressure-height spine
+```
+
+The newest factorization hardenings make this more concrete:
+
+```text
+the unresolved odd frontier is now theorem-factorized across two layers:
+
+mod 128 frontier
+-> exact one-child-or-two-child dependence on mod-256 families
+
+mod 256 frontier
+-> exact two-child dependence on mod-512 families
+
+So the frontier no longer looks like a collection of ad hoc residue lemmas.
+It now looks like a genuine binary refinement kernel whose closure/exactness/drift
+must be proved as a finite object.
+```
 ```
 
 ```text

@@ -160,6 +160,42 @@ A_parent = {27, 31, 63, 103, 111}
 B_parent = {47, 71, 91}
 C_parent = {127}
 ```
+
+Newest hybrid sharpening:
+
+```text
+the theorem-backed mod-128 child reductions and the mod-256 signature audit now align:
+
+K1 roots = {27, 103, 127}
+K2 roots = {31, 47, 63, 71, 91, 111}
+
+and every theorem-backed reduction target from
+39, 47, 71, 79, 91, 95, 123 mod 128
+lands inside the K2 signature rather than creating a third coarse kernel class
+```
+
+So the direct frontier is now supporting a stronger finite-obstruction thesis:
+
+```text
+the live odd frontier may factor through a 2-class coarse kernel
+before the pressure-height exactness/drift theorems are applied
+```
+
+Newest theorem-level hardening beneath that audit:
+
+```text
+the exact unresolved frontier now factors theorem-level through two refinement layers:
+
+mod 128 frontier
+-> exact factorization into one or two open mod-256 children
+
+mod 256 frontier
+-> exact factorization into two open mod-512 children
+
+At the mod-256 layer there is now no one-bit reduction left under the current direct
+descent theorems. So the next real proof object is no longer "find a lucky sibling exit";
+it is control of the full binary refinement kernel itself.
+```
 ```
 
 ### Route B. Pressure-Height Scaffold Elimination

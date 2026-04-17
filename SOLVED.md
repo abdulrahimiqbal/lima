@@ -75,6 +75,43 @@ single-family affine rewrite frontier:
 27, 31, 47, 63, 71, 91, 103, 111, 127 mod 256
 ```
 
+Newest kernel compression:
+
+```text
+The theorem-backed mod-128 child-reduction hardening and the search-backed
+mod-256 signature audit now line up.
+
+K1 roots at mod 256:
+27, 103, 127
+
+K2 roots at mod 256:
+31, 47, 63, 71, 91, 111
+
+And the theorem-backed mod-128 reduction targets
+167, 47, 71, 207, 91, 223, 251
+all land in the same K2 signature class.
+
+So the remaining odd obstruction now looks less like "13 separate roots" and
+more like a 2-class finite kernel with one smaller K1 branch and one larger K2 branch.
+This is still not theorem-level exactness or drift. It is a stronger audit signal
+for what the last finite object probably is.
+```
+
+Newest theorem-level factorization hardening:
+
+```text
+The unresolved frontier is now packaged theorem-level across two refinement layers.
+
+At mod 128:
+each of the 13 frontier families is proved to factor through either
+- one open mod-256 child when the sibling already descends, or
+- both mod-256 children when neither sibling is yet proved
+
+At mod 256:
+every surviving open family is proved to factor through both of its mod-512 children.
+No one-bit reduction remains at this layer under the current direct descent facts.
+```
+
 Current problem-solving approach:
 
 ```text
