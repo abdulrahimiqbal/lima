@@ -224,15 +224,17 @@ Lean-facing hardening:
   scripts/run_collatz_critical_q1_child_law_hardening.py
 - the three-state quotient package A/B/C now also compiles cleanly in Lean via
   scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+- the all-depth abstract recurrence/subcriticality algebra for A/B/C now compiles
+  cleanly in Lean via scripts/run_collatz_critical_q1_recurrence_subcritical_hardening.py
 ```
 
 This still is not the Collatz proof.
 But it compresses the remaining gap much further:
 
 ```text
-prove a phase-aware finite-kernel exactness / scarcity theorem
-for the critical Q1 branch, then pull it back through the existing
-pressure-height spine
+prove that the actual critical Q1 shadow follows the A/B/C recurrence all-depth,
+then combine that with the already Lean-clean abstract subcriticality algebra
+and pull it back through the existing pressure-height spine
 ```
 
 Current problem-solving approach:

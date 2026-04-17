@@ -276,6 +276,31 @@ This is still not the final Collatz theorem.
 But it is the first explicit finite quotient theorem package that looks close to the
 actual remaining obstruction instead of to a placeholder certificate shell.
 
+The algebraic side is now pushed one step further:
+
+```text
+scripts/run_collatz_critical_q1_recurrence_subcritical_hardening.py
+```
+
+compiles a Lean-clean all-depth recurrence/subcriticality bundle for the abstract
+three-state A/B/C system:
+
+```text
+aSeq is fixed
+bSeq(n+1) = bSeq(n) + 1
+cSeq(n+1) = cSeq(n) + bSeq(n)
+bSeq(n) < cSeq(n) for all n
+bSeq(n+1) < 2 * bSeq(n) for all n
+cSeq(n+1) < 2 * cSeq(n) for all n
+```
+
+So one proof bottleneck is now removed:
+
+```text
+the algebra needed for uniform subcriticality is already Lean-clean
+once the actual critical shadow is shown to obey the A/B/C recurrence
+```
+
 ## What This Means For The Proof
 
 The strongest current endgame reading is now:
@@ -312,8 +337,8 @@ T1. phase-aware finite kernel exactness
     the current three-state A/B/C quotient is now a serious candidate local factor
 
 T2. critical Q1 scarcity theorem
-    prove that the exact 1->1, 7->8->9, 22->29->37 child laws imply
-    strict long-run scarcity under dyadic normalization
+    prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth;
+    the abstract recurrence-to-subcriticality algebra is now already Lean-clean
 
 T3. kernel rarity / critical-template exclusion
     prove that the rare all-Q1 self-cloning template cannot sustain

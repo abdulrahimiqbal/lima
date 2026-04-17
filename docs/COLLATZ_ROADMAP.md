@@ -335,7 +335,8 @@ It is now:
 
 ```text
 1. make the kernel phase-aware and exact
-2. prove scarcity / rarity on the critical Q1 branch
+2. prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth
+3. use the already Lean-clean abstract A/B/C subcriticality algebra
 3. pull that finite theorem through the pressure-height spine
 ```
 

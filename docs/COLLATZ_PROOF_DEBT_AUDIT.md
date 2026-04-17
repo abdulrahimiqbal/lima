@@ -260,6 +260,27 @@ or prove that the phase-cycle weighted contraction already excludes that branch
 after pullback to the arithmetic frontier
 ```
 
+Newest hardening:
+
+```text
+the abstract algebraic side of the critical Q1 scarcity theorem is now Lean-clean.
+
+For the three-state A/B/C recurrence system, Lean now proves:
+- aSeq is constant
+- bSeq(n+1) = bSeq(n) + 1
+- cSeq(n+1) = cSeq(n) + bSeq(n)
+- bSeq(n) < cSeq(n) for all n
+- bSeq(n+1) < 2 * bSeq(n) for all n
+- cSeq(n+1) < 2 * cSeq(n) for all n
+```
+
+So the remaining direct-route theorem debt has sharpened further:
+
+```text
+not "prove subcriticality somehow",
+but "prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth"
+```
+
 Newest live K2 sharpening:
 
 ```text
