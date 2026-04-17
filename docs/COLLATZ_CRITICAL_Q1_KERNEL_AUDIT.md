@@ -398,6 +398,35 @@ So the honest updated read is:
 the kernel remains finite-state and uniformly subcritical on checked return scales,
 but the final object is not yet a simple alternating law.
 
+The repo now also has the two implementation objects this audit was missing:
+
+```text
+scripts/run_collatz_critical_q1_phase_machine_exactness_hardening.py
+```
+
+freezes the checked prefix as an explicit Lean `CriticalPhaseMachine` witness,
+with exact counts, transition profiles, and return bounds through `4194304`.
+
+```text
+scripts/run_collatz_phase_machine_pullback_hardening.py
+```
+
+adds the exact theorem-shaped interfaces for the remaining bridge:
+
+```text
+critical_q1_phase_machine_exactness
+critical_q1_phase_machine_subcritical
+phase_kernel_exact_coverage
+critical_q1_excludes_dangerous_frontier
+kernel_control_implies_eventual_descent
+collatz_eventual_descent
+collatz_terminates
+```
+
+Those do not finish the proof, but they remove the interface ambiguity.
+The remaining gap is now purely mathematical: prove the exactness, coverage,
+and NoDangerousFrontier bridge statements for the actual Collatz dynamics.
+
 ## What This Means For The Proof
 
 The strongest current endgame reading is now:

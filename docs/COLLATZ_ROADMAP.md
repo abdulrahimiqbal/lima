@@ -339,6 +339,10 @@ the explicit critical obstruction is also now arithmetic:
   13/16, 43/52, 595/704
   then
   19/32, 193/312, 917/1408
+- the checked prefix is now frozen as an explicit Lean witness via
+  scripts/run_collatz_critical_q1_phase_machine_exactness_hardening.py
+- the exact remaining theorem interfaces and pullback composition chain are now
+  compiled via scripts/run_collatz_phase_machine_pullback_hardening.py
 - and exact dyadic-normalized class factors
   1/2
   4/7 then 9/16
@@ -361,6 +365,11 @@ It is now:
 3. use the already Lean-clean abstract A/B/C subcriticality algebra together with
    the checked phase-prefix contraction
 4. pull that finite theorem through the pressure-height spine
+
+The implementation state is now aligned with that roadmap:
+- the machine witness object exists
+- the theorem interfaces exist
+- the unresolved part is the mathematical proof of exactness / coverage / bridge
 ```
 
 Immediate unresolved arithmetic frontier:

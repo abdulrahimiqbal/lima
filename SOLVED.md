@@ -240,6 +240,21 @@ Lean-facing hardening:
   13/16, 43/52, 595/704
   then
   19/32, 193/312, 917/1408
+- the checked critical prefix is now frozen as an explicit Lean object via
+  scripts/run_collatz_critical_q1_phase_machine_exactness_hardening.py:
+  a concrete CriticalPhaseMachine witness with exact checked counts,
+  one-step transition profiles, and return-scale bounds through 4194304
+- the exact theorem-shaped pullback interfaces are now compiled via
+  scripts/run_collatz_phase_machine_pullback_hardening.py:
+  CriticalPhaseMachineState
+  CriticalPhaseMachine
+  critical_q1_phase_machine_exactness
+  critical_q1_phase_machine_subcritical
+  phase_kernel_exact_coverage
+  critical_q1_excludes_dangerous_frontier
+  kernel_control_implies_eventual_descent
+  collatz_eventual_descent
+  collatz_terminates
 ```
 
 This still is not the Collatz proof.

@@ -264,6 +264,10 @@ validated arithmetic shadow:
   13/16, 43/52, 595/704
   then
   19/32, 193/312, 917/1408
+- the checked prefix is now frozen as an explicit Lean witness via
+  scripts/run_collatz_critical_q1_phase_machine_exactness_hardening.py
+- and the remaining theorem interfaces / composition chain are now compiled via
+  scripts/run_collatz_phase_machine_pullback_hardening.py
 - the exact dyadic-normalized class factors are:
   1/2
   4/7 then 9/16
@@ -300,6 +304,20 @@ So the remaining direct-route theorem debt has sharpened further:
 not "prove subcriticality somehow",
 but "prove that the actual critical Q1 shadow obeys an all-depth phase-aware
 finite phase machine extending the checked A/B/C prefix"
+```
+
+Newest implementation hardening:
+
+```text
+the repo now has both:
+1. an explicit CriticalPhaseMachine witness for the checked prefix
+2. exact theorem-shaped interfaces for the remaining pullback chain
+
+So the remaining debt is no longer "what are the theorem names?".
+It is the mathematical content of those theorem names:
+- all-depth machine exactness
+- exact coverage of the recurrent unresolved frontier
+- the concrete bridge from machine control to NoDangerousFrontier
 ```
 
 Newest live K2 sharpening:
