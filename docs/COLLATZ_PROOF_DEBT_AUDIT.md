@@ -245,6 +245,13 @@ validated arithmetic shadow:
   22 -> 29 -> 37
 - those exact laws are now packaged as a Lean-clean explicit three-state quotient
   A / B / C in scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+- the checked phase-aware prefix now also compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_phase_kernel_hardening.py, with
+  A: 1 -> 2 -> 3 -> 4 -> 8
+  B: 9 -> 18 -> 28 -> 39 -> 78
+  C: 37 -> 74 -> 120 -> 176 -> 352
+  and exact four-step dyadic factors
+  1/2, 13/24, 22/37
 - the exact dyadic-normalized class factors are:
   1/2
   4/7 then 9/16
@@ -255,8 +262,8 @@ validated arithmetic shadow:
 So the current direct-route bottleneck is sharper again:
 
 ```text
-prove a phase-aware finite-kernel scarcity theorem for the critical Q1 branch,
-or prove that the phase-cycle weighted contraction already excludes that branch
+prove an all-depth phase-aware finite-kernel theorem for the critical Q1 branch,
+extending the checked A/B/C phase prefix and forcing uniform subcriticality
 after pullback to the arithmetic frontier
 ```
 
@@ -278,7 +285,8 @@ So the remaining direct-route theorem debt has sharpened further:
 
 ```text
 not "prove subcriticality somehow",
-but "prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth"
+but "prove that the actual critical Q1 shadow obeys an all-depth phase-aware
+finite cycle extending the checked A/B/C prefix"
 ```
 
 Newest live K2 sharpening:

@@ -226,15 +226,23 @@ Lean-facing hardening:
   scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
 - the all-depth abstract recurrence/subcriticality algebra for A/B/C now compiles
   cleanly in Lean via scripts/run_collatz_critical_q1_recurrence_subcritical_hardening.py
+- the phase-aware critical-Q1 prefix through 1048576 now compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_phase_kernel_hardening.py, with explicit counts
+  1 -> 2 -> 3 -> 4 -> 8,
+  9 -> 18 -> 28 -> 39 -> 78,
+  37 -> 74 -> 120 -> 176 -> 352
+  and uniform two-bit / four-step dyadic subcriticality
 ```
 
 This still is not the Collatz proof.
 But it compresses the remaining gap much further:
 
 ```text
-prove that the actual critical Q1 shadow follows the A/B/C recurrence all-depth,
+prove that the actual critical Q1 shadow factors through an all-depth phase-aware
+finite cycle extending the checked A/B/C prefix,
 then combine that with the already Lean-clean abstract subcriticality algebra
-and pull it back through the existing pressure-height spine
+and the checked phase-prefix contraction, and pull it back through the existing
+pressure-height spine
 ```
 
 Current problem-solving approach:

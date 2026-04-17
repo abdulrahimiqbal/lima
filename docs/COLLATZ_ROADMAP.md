@@ -318,6 +318,15 @@ the explicit critical obstruction is also now arithmetic:
   22 -> 29 -> 37
 - those laws are now packaged in a Lean-clean three-state quotient
   A / B / C via scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+- the checked phase-aware prefix is now also Lean-clean via
+  scripts/run_collatz_critical_q1_phase_kernel_hardening.py:
+  A: 1 -> 2 -> 3 -> 4 -> 8
+  B: 9 -> 18 -> 28 -> 39 -> 78
+  C: 37 -> 74 -> 120 -> 176 -> 352
+  with four-step dyadic factors
+  1/2
+  13/24
+  22/37
 - and exact dyadic-normalized class factors
   1/2
   4/7 then 9/16
@@ -335,9 +344,11 @@ It is now:
 
 ```text
 1. make the kernel phase-aware and exact
-2. prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth
-3. use the already Lean-clean abstract A/B/C subcriticality algebra
-3. pull that finite theorem through the pressure-height spine
+2. prove that the actual critical Q1 shadow obeys an all-depth phase-aware cycle
+   extending the checked A/B/C prefix
+3. use the already Lean-clean abstract A/B/C subcriticality algebra together with
+   the checked phase-prefix contraction
+4. pull that finite theorem through the pressure-height spine
 ```
 
 Immediate unresolved arithmetic frontier:

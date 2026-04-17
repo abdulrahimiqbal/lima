@@ -301,6 +301,42 @@ the algebra needed for uniform subcriticality is already Lean-clean
 once the actual critical shadow is shown to obey the A/B/C recurrence
 ```
 
+The next phase-aware hardening is also now in hand:
+
+```text
+scripts/run_collatz_critical_q1_phase_kernel_hardening.py
+```
+
+compiles a Lean-clean phase-prefix bundle through modulus `1048576`:
+
+```text
+A : 1 -> 2 -> 3 -> 4 -> 8
+B : 9 -> 18 -> 28 -> 39 -> 78
+C : 37 -> 74 -> 120 -> 176 -> 352
+```
+
+with exact transition laws:
+
+```text
+65536  -> 131072   : every source residue bifurcates
+131072 -> 262144   : partial return
+262144 -> 524288   : partial return
+524288 -> 1048576  : every source residue bifurcates
+```
+
+and uniform dyadic contraction on both checked return scales:
+
+```text
+two-bit return 65536 -> 262144:
+3/4, 7/9, 30/37
+
+four-step return 65536 -> 1048576:
+1/2, 13/24, 22/37
+```
+
+So the right remaining object is now clearer:
+not a one-bit child law, but an all-depth phase-aware cycle extending this checked prefix.
+
 ## What This Means For The Proof
 
 The strongest current endgame reading is now:
@@ -337,8 +373,10 @@ T1. phase-aware finite kernel exactness
     the current three-state A/B/C quotient is now a serious candidate local factor
 
 T2. critical Q1 scarcity theorem
-    prove that the actual critical Q1 shadow obeys the A/B/C recurrence all-depth;
-    the abstract recurrence-to-subcriticality algebra is now already Lean-clean
+    prove that the actual critical Q1 shadow obeys an all-depth phase-aware cycle
+    extending the checked A/B/C prefix;
+    the abstract recurrence-to-subcriticality algebra and the checked phase-prefix
+    contraction are now already Lean-clean
 
 T3. kernel rarity / critical-template exclusion
     prove that the rare all-Q1 self-cloning template cannot sustain
