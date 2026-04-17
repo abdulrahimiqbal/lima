@@ -226,6 +226,40 @@ That is still search-only.
 But it is the strongest current sign that the unresolved kernel continues to admit
 finite-state compression after another full refinement layer.
 
+Newest phase-aware kernel sharpening:
+
+```text
+the kernel route is no longer only a coarse clustering story
+
+validated finite quotient signal:
+- a 9-state coarse kernel through moduli 1024 / 2048 / 4096
+- one 8-state nontrivial SCC plus the trivial residue-1 state
+- refinement to 10 states by modulus 32768, so the final object likely has to be phase-aware
+
+validated arithmetic shadow:
+- the rare Q1 -> Q1,Q1 self-cloning branch projects onto exactly the 19 open mod-256 classes
+  by source moduli 16384 and 32768
+- those classes obey exact finite child-count laws:
+  1 -> 1
+  7 -> 8 -> 9
+  22 -> 29 -> 37
+- those exact laws are now packaged as a Lean-clean explicit three-state quotient
+  A / B / C in scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+- the exact dyadic-normalized class factors are:
+  1/2
+  4/7 then 9/16
+  29/44 then 37/58
+  all strictly below 1
+```
+
+So the current direct-route bottleneck is sharper again:
+
+```text
+prove a phase-aware finite-kernel scarcity theorem for the critical Q1 branch,
+or prove that the phase-cycle weighted contraction already excludes that branch
+after pullback to the arithmetic frontier
+```
+
 Newest live K2 sharpening:
 
 ```text

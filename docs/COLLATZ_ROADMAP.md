@@ -8,6 +8,7 @@ For the current endgame audit, also read:
 docs/COLLATZ_PROOF_DEBT_AUDIT.md
 docs/COLLATZ_REFINEMENT_SIGNATURE_AUDIT.md
 docs/COLLATZ_FRONTIER128_SPLIT_HARDENING.md
+docs/COLLATZ_CRITICAL_Q1_KERNEL_AUDIT.md
 ```
 
 ## Current Position
@@ -300,6 +301,42 @@ So the roadmap is now even sharper:
 ```text
 the next theorem is not just "control a ladder",
 but "control an exact same-or-times-3 branching law on that ladder"
+```
+
+Newest kernel sharpening:
+
+```text
+the first explicit quotient candidate is now in hand:
+- a 9-state coarse kernel with one 8-state nontrivial SCC
+- refining to 10 states by modulus 32768
+
+the explicit critical obstruction is also now arithmetic:
+- the rare Q1 self-cloning branch projects onto exactly the 19 open mod-256 classes
+- those classes obey exact child-count laws
+  1 -> 1
+  7 -> 8 -> 9
+  22 -> 29 -> 37
+- those laws are now packaged in a Lean-clean three-state quotient
+  A / B / C via scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+- and exact dyadic-normalized class factors
+  1/2
+  4/7 then 9/16
+  29/44 then 37/58
+all strictly below 1
+```
+
+So the roadmap is no longer:
+
+```text
+"hunt vaguely for a final kernel theorem"
+```
+
+It is now:
+
+```text
+1. make the kernel phase-aware and exact
+2. prove scarcity / rarity on the critical Q1 branch
+3. pull that finite theorem through the pressure-height spine
 ```
 
 Immediate unresolved arithmetic frontier:

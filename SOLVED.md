@@ -17,6 +17,7 @@ docs/COLLATZ_FRONTIER128_SPLIT_HARDENING.md
 docs/COLLATZ_SCC_KERNEL_ENDGAME.md
 docs/COLLATZ_REFINEMENT_SIGNATURE_AUDIT.md
 docs/COLLATZ_KERNEL_REFINEMENT_AUDIT.md
+docs/COLLATZ_CRITICAL_Q1_KERNEL_AUDIT.md
 ```
 
 Current status:
@@ -191,6 +192,47 @@ Even better, the ladder is exactly balanced at the first parity split:
 
 So the live K2 kernel is exhibiting a precise `same-or-times-3` transition law,
 not just a qualitative ladder picture.
+```
+
+Newest phase-aware kernel sharpening:
+
+```text
+The repo now has a validated finite-kernel candidate plus an exact arithmetic shadow
+for its critical self-cloning branch.
+
+Finite quotient candidate:
+- a 9-state coarse kernel through moduli 1024 / 2048 / 4096
+- one 8-state nontrivial SCC plus the trivial residue-1 state
+- a deeper extension that refines the quotient to 10 states by modulus 32768,
+  so the final proof object likely has to be phase-aware rather than purely one-layer
+
+Critical Q1 arithmetic shadow:
+- by source moduli 16384 and 32768, the rare Q1 -> Q1,Q1 branch projects onto
+  exactly the 19 open mod-256 frontier classes
+- those classes obey exact child-count laws:
+  12 singleton classes: 1 -> 1
+  6 medium classes: 7 -> 8 -> 9
+  heavy class 255: 22 -> 29 -> 37
+- the dyadic-normalized class factors are:
+  1/2
+  4/7 then 9/16
+  29/44 then 37/58
+  all strictly below 1
+
+Lean-facing hardening:
+- the finite child-law package for these classes now compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_child_law_hardening.py
+- the three-state quotient package A/B/C now also compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_kernel_quotient_hardening.py
+```
+
+This still is not the Collatz proof.
+But it compresses the remaining gap much further:
+
+```text
+prove a phase-aware finite-kernel exactness / scarcity theorem
+for the critical Q1 branch, then pull it back through the existing
+pressure-height spine
 ```
 
 Current problem-solving approach:
