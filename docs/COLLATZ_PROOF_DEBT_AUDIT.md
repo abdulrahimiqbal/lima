@@ -273,6 +273,18 @@ prove control of the three K2 mod-4096 child archetypes,
 not ten unrelated child theorems
 ```
 
+One parity split deeper, the three archetypes already interact in a highly structured way:
+
+```text
+6561  -> 6561 or 19683
+19683 -> 19683 or 59049
+59049 -> 59049 or 177147
+```
+
+That does not prove descent.
+But it is the first clean sign that the live K2 kernel may admit
+a finite-state 3-adic ladder theorem rather than arbitrary branching.
+
 ### Route B. Pressure-Height Scaffold Elimination
 
 Current verified status:

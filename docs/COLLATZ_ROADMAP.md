@@ -271,6 +271,21 @@ close three recurrent K2 mod-4096 child archetypes,
 or prove they all fold into one higher-level kernel theorem
 ```
 
+And one parity split deeper, the archetypes already show a simple transition ladder:
+
+```text
+6561  -> 6561 or 19683
+19683 -> 19683 or 59049
+59049 -> 59049 or 177147
+```
+
+So the direct-route roadmap is narrowing again:
+
+```text
+the missing object may be a finite-state 3-adic ladder control theorem
+for the K2 kernel, rather than 10 independent child closures
+```
+
 Immediate unresolved arithmetic frontier:
 
 ```text

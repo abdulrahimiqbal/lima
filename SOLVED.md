@@ -175,6 +175,14 @@ That recurrent family already splits into three deterministic-prefix archetypes:
 
 So the live K2 child kernel is not a flat 10-case list anymore.
 It already compresses into a 5/4/1 archetype split before any further theorem work.
+
+One parity split deeper, those three archetypes already form a structured transition graph:
+- 6561 archetype branches either back to odd coefficient 6561 or up to 19683
+- 19683 archetype branches either back to 19683 or up to 59049
+- 59049 archetype branches either back to 59049 or up to 177147
+
+So the K2 kernel is showing an upper-triangular 3-adic ladder shape,
+not an unstructured explosion of unrelated children.
 ```
 
 Current problem-solving approach:
