@@ -257,10 +257,13 @@ validated arithmetic shadow:
   262144 -> 524288 mixed,
   524288 -> 1048576 all-bifurcate,
   1048576 -> 2097152 mixed,
+  2097152 -> 4194304 mixed,
   and checked two-bit return factors
   2/3, 39/56, 11/15
   then
   13/16, 43/52, 595/704
+  then
+  19/32, 193/312, 917/1408
 - the exact dyadic-normalized class factors are:
   1/2
   4/7 then 9/16
@@ -272,7 +275,7 @@ So the current direct-route bottleneck is sharper again:
 
 ```text
 prove an all-depth phase-aware finite-kernel theorem for the critical Q1 branch,
-extending the checked mixed / all-bifurcate A/B/C phase prefix and forcing uniform
+extending the checked A/B/C phase prefix and forcing uniform
 subcriticality
 after pullback to the arithmetic frontier
 ```
@@ -296,7 +299,7 @@ So the remaining direct-route theorem debt has sharpened further:
 ```text
 not "prove subcriticality somehow",
 but "prove that the actual critical Q1 shadow obeys an all-depth phase-aware
-finite mixed / all-bifurcate cycle extending the checked A/B/C prefix"
+finite phase machine extending the checked A/B/C prefix"
 ```
 
 Newest live K2 sharpening:

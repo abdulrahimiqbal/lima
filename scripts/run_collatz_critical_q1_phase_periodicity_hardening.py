@@ -19,12 +19,12 @@ from scripts.run_collatz_critical_q1_phase_kernel_hardening import (
 )
 
 
-TRACKED_MODULI = [262144, 524288, 1048576, 2097152]
+TRACKED_MODULI = [262144, 524288, 1048576, 2097152, 4194304]
 
 PHASE_COUNTS = {
-    "A": [3, 4, 8, 13],
-    "B": [28, 39, 78, 129],
-    "C": [120, 176, 352, 595],
+    "A": [3, 4, 8, 13, 19],
+    "B": [28, 39, 78, 129, 193],
+    "C": [120, 176, 352, 595, 917],
 }
 
 TRANSITIONS = {
@@ -42,6 +42,11 @@ TRANSITIONS = {
         "A": {"source_count": 8, "target_count": 13, "child_count_stats": {1: 3, 2: 5}},
         "B": {"source_count": 78, "target_count": 129, "child_count_stats": {1: 27, 2: 51}},
         "C": {"source_count": 352, "target_count": 595, "child_count_stats": {1: 109, 2: 243}},
+    },
+    "2097152_to_4194304": {
+        "A": {"source_count": 13, "target_count": 19, "child_count_stats": {1: 7, 2: 6}},
+        "B": {"source_count": 129, "target_count": 193, "child_count_stats": {1: 65, 2: 64}},
+        "C": {"source_count": 595, "target_count": 917, "child_count_stats": {1: 273, 2: 322}},
     },
 }
 
@@ -89,6 +94,11 @@ def counts2097152 : CriticalPeriodicState → Nat
   | .B => 129
   | .C => 595
 
+def counts4194304 : CriticalPeriodicState → Nat
+  | .A => 19
+  | .B => 193
+  | .C => 917
+
 def childLaw262144To524288 : CriticalPeriodicState → ChildLawProfile
   | .A => (3, 4, 2, 1)
   | .B => (28, 39, 17, 11)
@@ -103,6 +113,11 @@ def childLaw1048576To2097152 : CriticalPeriodicState → ChildLawProfile
   | .A => (8, 13, 3, 5)
   | .B => (78, 129, 27, 51)
   | .C => (352, 595, 109, 243)
+
+def childLaw2097152To4194304 : CriticalPeriodicState → ChildLawProfile
+  | .A => (13, 19, 7, 6)
+  | .B => (129, 193, 65, 64)
+  | .C => (595, 917, 273, 322)
 
 theorem critical_q1_mixed_phase_262144_to_524288 :
     childLaw262144To524288 .A = (3, 4, 2, 1) ∧
@@ -122,12 +137,22 @@ theorem critical_q1_mixed_phase_1048576_to_2097152 :
     childLaw1048576To2097152 .C = (352, 595, 109, 243) := by
   decide
 
+theorem critical_q1_mixed_phase_2097152_to_4194304 :
+    childLaw2097152To4194304 .A = (13, 19, 7, 6) ∧
+    childLaw2097152To4194304 .B = (129, 193, 65, 64) ∧
+    childLaw2097152To4194304 .C = (595, 917, 273, 322) := by
+  decide
+
 theorem critical_q1_two_bit_return_262144_to_1048576_subcritical :
     8 < 12 ∧ 78 < 112 ∧ 352 < 480 := by
   decide
 
 theorem critical_q1_two_bit_return_524288_to_2097152_subcritical :
     13 < 16 ∧ 129 < 156 ∧ 595 < 704 := by
+  decide
+
+theorem critical_q1_two_bit_return_1048576_to_4194304_subcritical :
+    19 < 32 ∧ 193 < 312 ∧ 917 < 1408 := by
   decide
 """
 
@@ -183,6 +208,10 @@ def build_payload() -> dict[str, object]:
             state: serialize_fraction(Fraction(PHASE_COUNTS[state][3], 4 * PHASE_COUNTS[state][1]))
             for state in PHASE_STATES
         },
+        "1048576_to_4194304": {
+            state: serialize_fraction(Fraction(PHASE_COUNTS[state][4], 4 * PHASE_COUNTS[state][2]))
+            for state in PHASE_STATES
+        },
     }
     check = run_lean("critical_q1_phase_periodicity_hardening", LEAN_SOURCE)
     return {
@@ -202,14 +231,16 @@ def build_payload() -> dict[str, object]:
             "critical_q1_mixed_phase_262144_to_524288",
             "critical_q1_all_bifurcate_524288_to_1048576",
             "critical_q1_mixed_phase_1048576_to_2097152",
+            "critical_q1_mixed_phase_2097152_to_4194304",
             "critical_q1_two_bit_return_262144_to_1048576_subcritical",
             "critical_q1_two_bit_return_524288_to_2097152_subcritical",
+            "critical_q1_two_bit_return_1048576_to_4194304_subcritical",
         ],
         "lean_check": check,
         "interpretation": (
-            "The refined critical kernel exhibits a checked alternating phase law across the next "
-            "three dyadic lifts: mixed, then all-bifurcate, then mixed again. Both checked two-bit "
-            "returns remain uniformly subcritical on the A/B/C quotient."
+            "The refined critical kernel exhibits a checked phase-structured law across the next "
+            "four dyadic lifts: mixed, then all-bifurcate, then mixed, then mixed again. Three "
+            "consecutive checked two-bit returns remain uniformly subcritical on the A/B/C quotient."
         ),
     }
 

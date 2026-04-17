@@ -370,8 +370,33 @@ and checked two-bit return factors:
 ```
 
 So the proof debt is even more specific:
-the remaining theorem is best understood as an all-depth alternating mixed /
-all-bifurcate phase law, not merely a generic phase-aware refinement statement.
+the remaining theorem is best understood as an all-depth finite phase machine,
+not merely a generic phase-aware refinement statement.
+
+One step deeper, the same periodicity lane now stays Lean-clean through `4194304`:
+
+```text
+2097152 -> 4194304 : mixed
+```
+
+with counts:
+
+```text
+A : 13 -> 19
+B : 129 -> 193
+C : 595 -> 917
+```
+
+and another checked two-bit return bound:
+
+```text
+1048576 -> 4194304:
+19/32, 193/312, 917/1408
+```
+
+So the honest updated read is:
+the kernel remains finite-state and uniformly subcritical on checked return scales,
+but the final object is not yet a simple alternating law.
 
 ## What This Means For The Proof
 
@@ -409,8 +434,8 @@ T1. phase-aware finite kernel exactness
     the current three-state A/B/C quotient is now a serious candidate local factor
 
 T2. critical Q1 scarcity theorem
-    prove that the actual critical Q1 shadow obeys an all-depth alternating
-    mixed / all-bifurcate phase cycle extending the checked A/B/C prefix;
+    prove that the actual critical Q1 shadow obeys an all-depth finite
+    phase machine extending the checked A/B/C prefix;
     the abstract recurrence-to-subcriticality algebra and the checked phase-prefix
     contraction are now already Lean-clean
 

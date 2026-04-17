@@ -332,10 +332,13 @@ the explicit critical obstruction is also now arithmetic:
   262144 -> 524288 mixed
   524288 -> 1048576 all-bifurcate
   1048576 -> 2097152 mixed
+  2097152 -> 4194304 mixed
   with checked two-bit return factors
   2/3, 39/56, 11/15
   then
   13/16, 43/52, 595/704
+  then
+  19/32, 193/312, 917/1408
 - and exact dyadic-normalized class factors
   1/2
   4/7 then 9/16
@@ -354,7 +357,7 @@ It is now:
 ```text
 1. make the kernel phase-aware and exact
 2. prove that the actual critical Q1 shadow obeys an all-depth phase-aware
-   mixed / all-bifurcate cycle extending the checked A/B/C prefix
+   finite phase machine extending the checked A/B/C prefix
 3. use the already Lean-clean abstract A/B/C subcriticality algebra together with
    the checked phase-prefix contraction
 4. pull that finite theorem through the pressure-height spine

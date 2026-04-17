@@ -8,17 +8,17 @@ def test_phase_periodicity_tracks_mixed_and_all_bifurcate_steps() -> None:
         {
             "state": "A",
             "residues_mod_256": [31, 47, 63, 71, 91, 111, 155, 167, 207, 223, 231, 251],
-            "counts": [3, 4, 8, 13],
+            "counts": [3, 4, 8, 13, 19],
         },
         {
             "state": "B",
             "residues_mod_256": [27, 103, 127, 159, 191, 239],
-            "counts": [28, 39, 78, 129],
+            "counts": [28, 39, 78, 129, 193],
         },
         {
             "state": "C",
             "residues_mod_256": [255],
-            "counts": [120, 176, 352, 595],
+            "counts": [120, 176, 352, 595, 917],
         },
     ]
 
@@ -37,6 +37,11 @@ def test_phase_periodicity_tracks_mixed_and_all_bifurcate_steps() -> None:
         "B": {"source_count": 78, "target_count": 129, "child_count_stats": {1: 27, 2: 51}},
         "C": {"source_count": 352, "target_count": 595, "child_count_stats": {1: 109, 2: 243}},
     }
+    assert payload["transitions"]["2097152_to_4194304"] == {
+        "A": {"source_count": 13, "target_count": 19, "child_count_stats": {1: 7, 2: 6}},
+        "B": {"source_count": 129, "target_count": 193, "child_count_stats": {1: 65, 2: 64}},
+        "C": {"source_count": 595, "target_count": 917, "child_count_stats": {1: 273, 2: 322}},
+    }
 
 
 def test_phase_periodicity_two_bit_returns_remain_subcritical() -> None:
@@ -53,6 +58,11 @@ def test_phase_periodicity_two_bit_returns_remain_subcritical() -> None:
             "B": {"rational": "43/52", "float": 43 / 52},
             "C": {"rational": "595/704", "float": 595 / 704},
         },
+        "1048576_to_4194304": {
+            "A": {"rational": "19/32", "float": 19 / 32},
+            "B": {"rational": "193/312", "float": 193 / 312},
+            "C": {"rational": "917/1408", "float": 917 / 1408},
+        },
     }
 
 
@@ -64,3 +74,5 @@ def test_phase_periodicity_generated_source_compiles_in_lean() -> None:
     assert "theorem critical_q1_mixed_phase_262144_to_524288" in source
     assert "theorem critical_q1_all_bifurcate_524288_to_1048576" in source
     assert "theorem critical_q1_mixed_phase_1048576_to_2097152" in source
+    assert "theorem critical_q1_mixed_phase_2097152_to_4194304" in source
+    assert "theorem critical_q1_two_bit_return_1048576_to_4194304_subcritical" in source
