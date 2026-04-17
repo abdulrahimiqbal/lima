@@ -252,6 +252,15 @@ validated arithmetic shadow:
   C: 37 -> 74 -> 120 -> 176 -> 352
   and exact four-step dyadic factors
   1/2, 13/24, 22/37
+- the next periodic extension now also compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_phase_periodicity_hardening.py, with
+  262144 -> 524288 mixed,
+  524288 -> 1048576 all-bifurcate,
+  1048576 -> 2097152 mixed,
+  and checked two-bit return factors
+  2/3, 39/56, 11/15
+  then
+  13/16, 43/52, 595/704
 - the exact dyadic-normalized class factors are:
   1/2
   4/7 then 9/16
@@ -263,7 +272,8 @@ So the current direct-route bottleneck is sharper again:
 
 ```text
 prove an all-depth phase-aware finite-kernel theorem for the critical Q1 branch,
-extending the checked A/B/C phase prefix and forcing uniform subcriticality
+extending the checked mixed / all-bifurcate A/B/C phase prefix and forcing uniform
+subcriticality
 after pullback to the arithmetic frontier
 ```
 
@@ -286,7 +296,7 @@ So the remaining direct-route theorem debt has sharpened further:
 ```text
 not "prove subcriticality somehow",
 but "prove that the actual critical Q1 shadow obeys an all-depth phase-aware
-finite cycle extending the checked A/B/C prefix"
+finite mixed / all-bifurcate cycle extending the checked A/B/C prefix"
 ```
 
 Newest live K2 sharpening:

@@ -337,6 +337,42 @@ four-step return 65536 -> 1048576:
 So the right remaining object is now clearer:
 not a one-bit child law, but an all-depth phase-aware cycle extending this checked prefix.
 
+The periodicity lane now goes one layer deeper too:
+
+```text
+scripts/run_collatz_critical_q1_phase_periodicity_hardening.py
+```
+
+compiles a Lean-clean extension through modulus `2097152`:
+
+```text
+262144 -> 524288   : mixed
+524288 -> 1048576  : all bifurcate
+1048576 -> 2097152 : mixed
+```
+
+with counts:
+
+```text
+A : 3 -> 4 -> 8 -> 13
+B : 28 -> 39 -> 78 -> 129
+C : 120 -> 176 -> 352 -> 595
+```
+
+and checked two-bit return factors:
+
+```text
+262144 -> 1048576:
+2/3, 39/56, 11/15
+
+524288 -> 2097152:
+13/16, 43/52, 595/704
+```
+
+So the proof debt is even more specific:
+the remaining theorem is best understood as an all-depth alternating mixed /
+all-bifurcate phase law, not merely a generic phase-aware refinement statement.
+
 ## What This Means For The Proof
 
 The strongest current endgame reading is now:
@@ -373,8 +409,8 @@ T1. phase-aware finite kernel exactness
     the current three-state A/B/C quotient is now a serious candidate local factor
 
 T2. critical Q1 scarcity theorem
-    prove that the actual critical Q1 shadow obeys an all-depth phase-aware cycle
-    extending the checked A/B/C prefix;
+    prove that the actual critical Q1 shadow obeys an all-depth alternating
+    mixed / all-bifurcate phase cycle extending the checked A/B/C prefix;
     the abstract recurrence-to-subcriticality algebra and the checked phase-prefix
     contraction are now already Lean-clean
 

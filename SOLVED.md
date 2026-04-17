@@ -232,6 +232,12 @@ Lean-facing hardening:
   9 -> 18 -> 28 -> 39 -> 78,
   37 -> 74 -> 120 -> 176 -> 352
   and uniform two-bit / four-step dyadic subcriticality
+- the next periodic extension through 2097152 now also compiles cleanly in Lean via
+  scripts/run_collatz_critical_q1_phase_periodicity_hardening.py, with explicit
+  mixed / all-bifurcate / mixed transitions and checked two-bit return bounds
+  2/3, 39/56, 11/15
+  then
+  13/16, 43/52, 595/704
 ```
 
 This still is not the Collatz proof.
@@ -239,7 +245,7 @@ But it compresses the remaining gap much further:
 
 ```text
 prove that the actual critical Q1 shadow factors through an all-depth phase-aware
-finite cycle extending the checked A/B/C prefix,
+finite mixed / all-bifurcate phase cycle extending the checked A/B/C prefix,
 then combine that with the already Lean-clean abstract subcriticality algebra
 and the checked phase-prefix contraction, and pull it back through the existing
 pressure-height spine
