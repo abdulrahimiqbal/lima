@@ -7,6 +7,7 @@ Commands:
 ```text
 .venv_test/bin/python scripts/run_collatz_refinement_signature_audit.py
 .venv_test/bin/python scripts/run_collatz_refinement_arithmetic_measure_search.py
+.venv_test/bin/python scripts/run_collatz_cylinder_persistence_audit.py
 ```
 
 ## What This Is
@@ -80,6 +81,47 @@ the remaining obstruction is not an arbitrary residue explosion;
 it is a persistent self-similar unresolved branch structure inside 13 fixed mod-128 cylinders
 ```
 
+## Cylinder Persistence
+
+The cylinder persistence audit pushes those same 13 residue classes deeper, through:
+
+```text
+128
+256
+512
+1024
+2048
+4096
+8192
+16384
+32768
+65536
+```
+
+None of the 13 cylinders dies out by depth `65536`.
+
+More importantly, they collapse into exactly **three** growth archetypes:
+
+```text
+A = 27, 31, 63, 103, 111
+sequence: 1, 2, 4, 7, 14, 25, 41, 82, 145, 237
+
+B = 39, 47, 71, 79, 91, 95, 123
+sequence: 1, 1, 2, 3, 6, 10, 15, 30, 51, 79
+
+C = 127
+sequence: 1, 2, 4, 8, 16, 31, 57, 114, 213, 376
+```
+
+So the remaining odd frontier is not 13 unrelated cases.
+It is:
+
+```text
+three exact persistence archetypes inside 13 residue cylinders
+```
+
+This is the strongest finite-kernel signal yet.
+
 ## Arithmetic Measure Search
 
 The arithmetic-augmented measure search mixed:
@@ -126,6 +168,7 @@ The search has now separated two possibilities:
 ```text
 1. a finite-state combinatorial closure theorem is too weak by itself
 2. the missing theorem probably needs an arithmetic / 2-adic cylinder ingredient
+3. the unresolved cylinders themselves compress to only three exact growth archetypes
 ```
 
 The direct unresolved branches are better thought of as nested dyadic cylinders than as
@@ -149,6 +192,13 @@ a proved descent family or contradiction
 
 This is closer to a 2-adic / cylinder exclusion theorem than to a short local rank.
 
+The persistence audit sharpens this again:
+
+```text
+it may be enough to prove that no infinite unresolved branch exists for the
+three cylinder-growth archetypes A, B, and C
+```
+
 ## Roadmap Consequence
 
 The next direct-route probes should not ask for:
@@ -162,9 +212,9 @@ another broad residue wave
 They should ask for one of:
 
 ```text
-1. a theorem excluding infinite unresolved branches in a fixed residue cylinder
+1. a theorem excluding infinite unresolved branches in one archetype A/B/C
 2. a theorem extracting a well-founded quantity from the cylinder arithmetic
-3. a theorem showing one of the 13 cylinders eventually forces a currently proved exit family
+3. a theorem showing an archetype eventually forces a currently proved exit family
 ```
 
 If those fail uniformly, the pressure-height scaffold-elimination route becomes the only

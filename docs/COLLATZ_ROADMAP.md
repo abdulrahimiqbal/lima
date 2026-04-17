@@ -87,6 +87,20 @@ mod-128 residue cylinders.
 
 So the direct frontier is still valuable, but now mainly as a way to identify the exact
 finite kernel / cylinder family that the pressure-height route must kill concretely.
+
+The newest persistence audit sharpens that finite kernel again:
+
+```text
+the 13 unresolved mod-128 cylinders persist through modulus 65536,
+but they collapse into three exact growth archetypes:
+
+A = {27, 31, 63, 103, 111}
+B = {39, 47, 71, 79, 91, 95, 123}
+C = {127}
+```
+
+So the direct-route endgame may now reduce to excluding infinite unresolved branches for
+three archetypes rather than thirteen unrelated residue cases.
 ```
 
 ```text

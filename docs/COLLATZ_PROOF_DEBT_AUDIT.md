@@ -138,6 +138,20 @@ mod 128.
 
 So the direct-route missing object is now better read as a cylinder exclusion theorem:
 for each of those 13 mod-128 cylinders, there is no infinite unresolved refinement branch.
+
+Pushing the cylinders deeper strengthens this:
+
+```text
+all 13 cylinders persist through modulus 65536,
+but they collapse into exactly three shared growth archetypes:
+
+A = {27, 31, 63, 103, 111}
+B = {39, 47, 71, 79, 91, 95, 123}
+C = {127}
+```
+
+So the likely missing theorem is smaller than "13 unrelated residue cases":
+it may be three cylinder-archetype exclusion theorems.
 ```
 
 ### Route B. Pressure-Height Scaffold Elimination
@@ -261,7 +275,9 @@ finite-state kernel compression of the remaining odd frontier, followed by
 pressure-height scaffold hardening on that kernel
 
 The newest direct-route reading of that kernel is:
-13 unresolved residue cylinders mod 128 together with an infinite-branch exclusion theorem.
+13 unresolved residue cylinders mod 128,
+compressed further into three persistence archetypes A/B/C,
+together with an infinite-branch exclusion theorem.
 
 secondary:
 standalone well-founded dyadic refinement + affine rewrite closure
